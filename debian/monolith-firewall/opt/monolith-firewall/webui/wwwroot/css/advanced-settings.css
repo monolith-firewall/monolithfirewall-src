@@ -1,0 +1,56 @@
+.advanced-settings .tuneable-search {
+  max-width: 420px;
+}
+
+.advanced-settings .tuneables-table th,
+.advanced-settings .tuneables-table td {
+  vertical-align: top;
+}
+
+.advanced-settings .tuneable-description {
+  color: #6c757d;
+  font-size: 0.85rem;
+}
+
+.advanced-settings .tuneable-key {
+  color: #6c757d;
+  font-family: "Courier New", monospace;
+  font-size: 0.8rem;
+}
+
+.advanced-settings .tuneable-actions {
+  white-space: nowrap;
+}
+
+.advanced-settings .tuneable-featured-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.advanced-settings .tuneable-featured-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e6e9ec;
+  padding-bottom: 1rem;
+}
+
+.advanced-settings .tuneable-featured-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.advanced-settings .tuneable-featured-info {
+  min-width: 260px;
+}
+
+.advanced-settings .tuneable-featured-input {
+  min-width: 160px;
+  text-align: right;
+}
+
+.advanced-settings .tuneable-input-select {
+  min-width: 140px;
+}

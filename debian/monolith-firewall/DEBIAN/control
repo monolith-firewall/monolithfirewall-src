@@ -1,0 +1,30 @@
+Package: monolith-firewall
+Version: 1.0.0-1
+Architecture: amd64
+Maintainer: Monolith FireWall Team <dev@monolithfirewall.org>
+Installed-Size: 305214
+Depends: libc6 (>= 2.34), libgcc-s1 (>= 3.0), libstdc++6 (>= 6), nftables, iproute2, systemd, sqlite3, sudo, procps, iputils-ping, bridge-utils, vlan, ifupdown2, isc-dhcp-client, isc-dhcp-server, unbound, tcpdump, mtr
+Recommends: traceroute, iptables
+Section: net
+Priority: optional
+Homepage: https://github.com/monolithfirewall/monolithfirewall
+Description: Ultra-modular firewall system for Debian
+ Monolith FireWall is a next-generation firewall solution featuring:
+ .
+  * Ultra-modular design with package system
+  * Central configuration management with SQLite
+  * Template-driven configuration generation
+  * API-first architecture with Named Pipe IPC
+  * Modern web UI with Bootstrap 5
+  * Command-line management tools
+  * pfSense-inspired interface
+ .
+ This package includes:
+  - Core framework with package manager
+  - Web UI (accessible on ports 80/443 with SSL)
+  - CLI management tool
+  - Package manager for installing modules
+  - System packages for firewall, NAT, DHCP, DNS, and more
+ .
+ Note: This package requires .NET 10.0 Runtime to be installed.
+ Install it from: https://dotnet.microsoft.com/download/dotnet/10.0

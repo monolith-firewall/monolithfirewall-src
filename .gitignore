@@ -1,0 +1,45 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.dll
+*.pdb
+*.exe
+
+# Build outputs
+artifacts/
+*.deb
+*.mfwpkg
+
+# IDE
+.vs/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Runtime
+/var/lib/monolith-firewall/
+
+# Packages (installed)
+/opt/monolith-firewall/packages/
+
+# Test results
+TestResults/
+coverage/
+
+# Temporary
+tmp/
+temp/
+AGENTS.md
+.editorconfig
+/net/network/interfaces.d

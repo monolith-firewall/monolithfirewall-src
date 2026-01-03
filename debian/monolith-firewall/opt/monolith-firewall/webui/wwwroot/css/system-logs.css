@@ -1,0 +1,131 @@
+/* System Logs Page Styles */
+
+.system-logs-page {
+    padding: 1.5rem 0;
+}
+
+/* Category filter menu */
+#monolithCategoryMenu {
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 1rem;
+}
+
+#monolithCategoryMenu .nav-link {
+    color: var(--text);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    padding: 0.75rem 1.25rem;
+    transition: all 0.2s ease;
+}
+
+#monolithCategoryMenu .nav-link:hover {
+    color: var(--primary);
+    border-bottom-color: var(--primary-light);
+}
+
+#monolithCategoryMenu .nav-link.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+}
+
+/* Security sub-tabs */
+#securitySubTabs {
+    border-bottom: 2px solid var(--border);
+}
+
+#securitySubTabs .nav-link {
+    color: var(--text);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    padding: 0.75rem 1.25rem;
+    transition: all 0.2s ease;
+}
+
+#securitySubTabs .nav-link:hover {
+    color: var(--primary);
+    border-bottom-color: var(--primary-light);
+}
+
+#securitySubTabs .nav-link.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+}
+
+/* Logs table */
+.logs-table {
+    font-size: 0.875rem;
+}
+
+.logs-table th {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    border-bottom: 2px solid var(--border);
+    padding: 0.75rem;
+}
+
+.logs-table td {
+    padding: 0.75rem;
+    vertical-align: middle;
+}
+
+.logs-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.logs-table tbody tr:hover {
+    background-color: var(--light);
+}
+
+/* Level badges */
+.badge.bg-info {
+    background-color: var(--info) !important;
+}
+
+.badge.bg-warning {
+    background-color: var(--warning) !important;
+    color: #000 !important;
+}
+
+.badge.bg-danger {
+    background-color: var(--danger) !important;
+}
+
+/* Pagination */
+.pagination-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+}
+
+/* Filter cards */
+.filter-card {
+    background: var(--light);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .logs-table {
+        font-size: 0.75rem;
+    }
+    
+    .logs-table th,
+    .logs-table td {
+        padding: 0.5rem;
+    }
+    
+    #monolithCategoryMenu .nav-link,
+    #securitySubTabs .nav-link {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+    }
+}

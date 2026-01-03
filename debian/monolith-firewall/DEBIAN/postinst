@@ -1,0 +1,216 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    configure)
+        # Check for .NET 10.0 Runtime
+        if ! command -v dotnet &> /dev/null; then
+            echo "════════════════════════════════════════════════════════════════"
+            echo "  ERROR: .NET Runtime is not installed."
+            echo "════════════════════════════════════════════════════════════════"
+            echo ""
+            echo "MonolithFireWall requires .NET 10.0 Runtime or higher."
+            echo ""
+            echo "To install .NET 10.0 Runtime:"
+            echo "  1. Visit: https://dotnet.microsoft.com/download/dotnet/10.0"
+            echo "  2. Or run: wget https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh"
+            echo "            chmod +x /tmp/dotnet-install.sh"
+            echo "            sudo /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet"
+            echo "            sudo ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet"
+            echo ""
+            echo "════════════════════════════════════════════════════════════════"
+            exit 1
+        fi
+
+        # Check .NET version
+        DOTNET_VERSION=$(dotnet --version 2>/dev/null || echo "0.0.0")
+        MAJOR_VERSION=$(echo "$DOTNET_VERSION" | cut -d. -f1)
+
+        if [ "$MAJOR_VERSION" -lt 10 ]; then
+            echo "════════════════════════════════════════════════════════════════"
+            echo "  ERROR: Incompatible .NET version detected."
+            echo "════════════════════════════════════════════════════════════════"
+            echo ""
+            echo "MonolithFireWall requires .NET 10.0 or higher."
+            echo "Current version: $DOTNET_VERSION"
+            echo ""
+            echo "Please upgrade to .NET 10.0:"
+            echo "  https://dotnet.microsoft.com/download/dotnet/10.0"
+            echo ""
+            echo "════════════════════════════════════════════════════════════════"
+            exit 1
+        fi
+
+        systemd_ok=0
+        if command -v systemctl >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+            if timeout 5 systemctl is-system-running >/dev/null 2>&1; then
+                systemd_ok=1
+            fi
+        fi
+        # Create monolith-firewall user if it doesn't exist
+        if ! getent passwd monolith-firewall > /dev/null; then
+            useradd --system --home-dir /var/lib/monolith-firewall \
+                --shell /usr/sbin/nologin \
+                --comment "Monolith FireWall System User" \
+                --create-home \
+                monolith-firewall
+        fi
+
+        # Ensure directories exist
+        mkdir -p /var/lib/monolith-firewall
+        mkdir -p /var/log/monolith-firewall
+        mkdir -p /etc/monolith-firewall
+        mkdir -p /etc/network/interfaces.d
+        mkdir -p /var/lib/monolith-firewall/backups/interfaces
+
+        # Set ownership and permissions
+        chown -R root:root /var/lib/monolith-firewall
+        chown -R root:root /var/log/monolith-firewall
+        chmod 755 /var/lib/monolith-firewall
+        chmod 755 /var/log/monolith-firewall
+        chmod 755 /var/lib/monolith-firewall/backups
+        chmod 755 /var/lib/monolith-firewall/backups/interfaces
+
+        # Create configuration directory
+        chown root:root /etc/monolith-firewall
+        chmod 755 /etc/monolith-firewall
+
+        # Allow Core service to manage Monolith network config
+        chown root:monolith-firewall /etc/network/interfaces.d
+        chmod 2775 /etc/network/interfaces.d
+        if [ -f /etc/network/interfaces.d/monolith ]; then
+            chown root:monolith-firewall /etc/network/interfaces.d/monolith
+            chmod 664 /etc/network/interfaces.d/monolith
+        fi
+        if [ -f /etc/network/interfaces.d/monolith-unmanaged ]; then
+            chown root:monolith-firewall /etc/network/interfaces.d/monolith-unmanaged
+            chmod 664 /etc/network/interfaces.d/monolith-unmanaged
+        fi
+        if [ -f /etc/network/interfaces ]; then
+            chown root:monolith-firewall /etc/network/interfaces
+            chmod 664 /etc/network/interfaces
+        fi
+
+        # Allow Core service to apply sysctl tuneables
+cat > /etc/sudoers.d/monolith-firewall-sysctl << 'EOF'
+monolith-firewall ALL=(root) NOPASSWD: /usr/sbin/sysctl, /sbin/sysctl, /usr/sbin/ifreload, /sbin/ifreload
+EOF
+        chown root:root /etc/sudoers.d/monolith-firewall-sysctl
+        chmod 440 /etc/sudoers.d/monolith-firewall-sysctl
+
+        # Make executables executable (guard for varying apphost names)
+        for bin in \
+            /opt/monolith-firewall/core/Monolith.FireWall.Core \
+            /opt/monolith-firewall/webui/Monolith.FireWall.WebUI \
+            /opt/monolith-firewall/pkgmgr/Monolith.FireWall.PackageManager; do
+            if [ -f "$bin" ]; then
+                chmod +x "$bin"
+            fi
+        done
+
+        if [ "$systemd_ok" = "1" ]; then
+            # Reload systemd
+            systemctl daemon-reload
+
+            # Enable services
+            systemctl enable monolith-firewall-core.service
+            systemctl enable monolith-firewall-webui.service
+        fi
+
+        # Check if this is first install
+        if [ ! -f /var/lib/monolith-firewall/.setup-complete ]; then
+            # Mark setup as complete
+            touch /var/lib/monolith-firewall/.setup-complete
+            chown root:root /var/lib/monolith-firewall/.setup-complete
+            
+            if [ "$systemd_ok" = "1" ]; then
+                # Start services on first install
+                systemctl start monolith-firewall-core.service || true
+                systemctl start monolith-firewall-webui.service || true
+            fi
+            
+            echo "═══════════════════════════════════════════════════════════════"
+            echo "  Monolith FireWall Installation Complete!"
+            echo "═══════════════════════════════════════════════════════════════"
+            echo ""
+            echo "  Services have been started automatically."
+            echo ""
+            echo "  Access the Web UI at:"
+            echo "     http://YOUR-IP or https://YOUR-IP"
+            echo ""
+            echo "  Service management:"
+            echo "     sudo systemctl status monolith-firewall-core"
+            echo "     sudo systemctl status monolith-firewall-webui"
+            echo ""
+            echo "  Install packages with:"
+            echo "     sudo monolith-pkgmgr install <package.mfwpkg>"
+            echo ""
+            echo "═══════════════════════════════════════════════════════════════"
+        else
+            if [ "$systemd_ok" = "1" ]; then
+                # Restart services on upgrade
+                systemctl restart monolith-firewall-core.service || true
+                systemctl restart monolith-firewall-webui.service || true
+            fi
+        fi
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+# Automatically added by dh_installsystemd/13.24.2
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
+	# The following line should be removed in trixie or trixie+1
+	deb-systemd-helper unmask 'monolith-firewall-core.service' >/dev/null || true
+
+	# was-enabled defaults to true, so new installations run enable.
+	if deb-systemd-helper --quiet was-enabled 'monolith-firewall-core.service'; then
+		# Enables the unit on first installation, creates new
+		# symlinks on upgrades if the unit file has changed.
+		deb-systemd-helper enable 'monolith-firewall-core.service' >/dev/null || true
+	else
+		# Update the statefile to add new symlinks (if any), which need to be
+		# cleaned up on purge. Also remove old symlinks.
+		deb-systemd-helper update-state 'monolith-firewall-core.service' >/dev/null || true
+	fi
+fi
+# End automatically added section
+# Automatically added by dh_installsystemd/13.24.2
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
+	# The following line should be removed in trixie or trixie+1
+	deb-systemd-helper unmask 'monolith-firewall-webui.service' >/dev/null || true
+
+	# was-enabled defaults to true, so new installations run enable.
+	if deb-systemd-helper --quiet was-enabled 'monolith-firewall-webui.service'; then
+		# Enables the unit on first installation, creates new
+		# symlinks on upgrades if the unit file has changed.
+		deb-systemd-helper enable 'monolith-firewall-webui.service' >/dev/null || true
+	else
+		# Update the statefile to add new symlinks (if any), which need to be
+		# cleaned up on purge. Also remove old symlinks.
+		deb-systemd-helper update-state 'monolith-firewall-webui.service' >/dev/null || true
+	fi
+fi
+# End automatically added section
+# Automatically added by dh_installsystemd/13.24.2
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
+	if [ -d /run/systemd/system ]; then
+		systemctl --system daemon-reload >/dev/null || true
+		if [ -n "$2" ]; then
+			_dh_action=restart
+		else
+			_dh_action=start
+		fi
+		deb-systemd-invoke $_dh_action 'monolith-firewall-core.service' 'monolith-firewall-webui.service' >/dev/null || true
+	fi
+fi
+# End automatically added section
+
+
+exit 0

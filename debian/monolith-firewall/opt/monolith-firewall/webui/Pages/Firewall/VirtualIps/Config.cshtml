@@ -1,0 +1,101 @@
+
+<div class="package-page virtual-ips-page" data-module="virtual-ips" data-package="firewall">
+    <div class="container-fluid p-4">
+        <!-- Page Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2 class="page-title">
+                    <svg width="24" height="24" fill="currentColor" viewBox="0 0 16 16" class="me-2">
+                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7z"/>
+                    </svg>
+                    Virtual IPs
+                </h2>
+                <p class="text-muted">Configure virtual IP addresses (CARP, IP Alias, Proxy ARP)</p>
+            </div>
+        </div>
+
+        <!-- Apply Changes Banner -->
+        <div id="applyChangesBanner" class="alert alert-warning d-none mb-3" role="alert">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>⚠️ Pending Changes</strong>
+                    <span class="ms-2">You have unsaved changes. Click "Apply Changes" to apply them to the system.</span>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-sm btn-success me-2" onclick="VirtualIps.applyChanges()">
+                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                            <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
+                        </svg>
+                        Apply Changes
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="VirtualIps.discardChanges()">
+                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                            <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+                        </svg>
+                        Discard
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="virtualIpsStatusMessage" class="alert d-none"></div>
+
+        <!-- Main Tabs -->
+        <ul class="nav nav-tabs mb-4" id="virtualIpsTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="virtual-ips-list-tab" data-bs-toggle="tab" data-bs-target="#virtual-ips-list" 
+                        type="button" role="tab" aria-controls="virtual-ips-list" aria-selected="true">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                        <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
+                        <path d="M5 8a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 5 8zm0-2.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm0 5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-1-5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0zM4 8a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0zm0 2.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z"/>
+                    </svg>
+                    Virtual IPs
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="virtualIpsTabContent">
+            <!-- Virtual IPs List Tab -->
+            <div class="tab-pane fade show active" id="virtual-ips-list" role="tabpanel" aria-labelledby="virtual-ips-list-tab">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Virtual IPs</h5>
+                        <button type="button" class="btn btn-sm btn-primary" id="btn-add-virtual-ip">
+                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                                <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+                            </svg>
+                            Add Virtual IP
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="virtualIpsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Interface</th>
+                                        <th>Address</th>
+                                        <th>Description</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted">
+                                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                            Loading virtual IPs...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

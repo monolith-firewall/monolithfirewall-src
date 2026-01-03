@@ -1,0 +1,102 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+export DOTNET_CLI_TELEMETRY_OPTOUT = 1
+export DOTNET_SKIP_FIRST_TIME_EXPERIENCE = 1
+export PATH := /usr/share/dotnet:$(PATH)
+export DOTNET_ROOT = /usr/share/dotnet
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	# Build happens in override_dh_auto_install to avoid dh_prep cleanup.
+	:
+
+override_dh_auto_install:
+	# Build Core
+	dotnet publish src/Monolith.FireWall.Core/Monolith.FireWall.Core.csproj \
+		-c Release \
+		-r linux-x64 \
+		--self-contained true \
+		-o $(CURDIR)/debian/tmp/opt/monolith-firewall/core
+
+	# Build WebUI
+	dotnet publish src/Monolith.FireWall.WebUI/Monolith.FireWall.WebUI.csproj \
+		-c Release \
+		-r linux-x64 \
+		--self-contained true \
+		-o $(CURDIR)/debian/tmp/opt/monolith-firewall/webui
+	
+	# Ensure wwwroot/p/ directory structure is copied
+	if [ -d "src/Monolith.FireWall.WebUI/wwwroot/p" ]; then \
+		mkdir -p $(CURDIR)/debian/tmp/opt/monolith-firewall/webui/wwwroot/p; \
+		cp -r src/Monolith.FireWall.WebUI/wwwroot/p/* $(CURDIR)/debian/tmp/opt/monolith-firewall/webui/wwwroot/p/; \
+	fi
+	# Ensure firewall SPA pages are available at runtime
+	if [ -d "src/Monolith.FireWall.WebUI/Pages/Firewall" ]; then \
+		mkdir -p $(CURDIR)/debian/tmp/opt/monolith-firewall/webui/Pages; \
+		cp -r src/Monolith.FireWall.WebUI/Pages/Firewall $(CURDIR)/debian/tmp/opt/monolith-firewall/webui/Pages/; \
+	fi
+
+	# Build PackageManager (if exists)
+	if [ -f "src/Monolith.FireWall.PackageManager/Monolith.FireWall.PackageManager.csproj" ]; then \
+		dotnet publish src/Monolith.FireWall.PackageManager/Monolith.FireWall.PackageManager.csproj \
+			-c Release \
+			-r linux-x64 \
+			--self-contained true \
+			-o $(CURDIR)/debian/tmp/opt/monolith-firewall/pkgmgr; \
+	fi
+
+	# Install systemd service files
+	install -D -m 644 debian/systemd/monolith-firewall-core.service \
+		$(CURDIR)/debian/tmp/lib/systemd/system/monolith-firewall-core.service
+	install -D -m 644 debian/systemd/monolith-firewall-webui.service \
+		$(CURDIR)/debian/tmp/lib/systemd/system/monolith-firewall-webui.service
+
+	# Install ifupdown2 policy overrides
+	install -D -m 644 debian/ifupdown2-policy/monolith.json \
+		$(CURDIR)/debian/tmp/etc/network/ifupdown2/policy.d/monolith.json
+
+	# Create directories
+	install -d $(CURDIR)/debian/tmp/var/lib/monolith-firewall
+	install -d $(CURDIR)/debian/tmp/var/lib/monolith-firewall/packages
+	install -d $(CURDIR)/debian/tmp/etc/monolith-firewall
+	install -d $(CURDIR)/debian/tmp/usr/bin
+
+	# Copy Monolith.System package if it exists
+	if [ -f "build/packages/monolith-system.mfwpkg" ]; then \
+		install -m 644 build/packages/monolith-system.mfwpkg $(CURDIR)/debian/tmp/var/lib/monolith-firewall/packages/; \
+	fi
+
+	# Create symlink for package manager (if exists)
+	if [ -f "$(CURDIR)/debian/tmp/opt/monolith-firewall/pkgmgr/Monolith.FireWall.PackageManager" ]; then \
+		ln -sf /opt/monolith-firewall/pkgmgr/Monolith.FireWall.PackageManager \
+			$(CURDIR)/debian/tmp/usr/bin/monolith-pkgmgr; \
+	fi
+
+override_dh_install:
+	# Move everything from tmp to package directory
+	mkdir -p $(CURDIR)/debian/monolith-firewall
+	cp -a $(CURDIR)/debian/tmp/* $(CURDIR)/debian/monolith-firewall/
+
+override_dh_missing:
+	# Skip missing file checks - we handle installation manually
+	dh_missing --list-missing
+
+override_dh_shlibdeps:
+	# Self-contained .NET publishes bundle runtime libs; ignore missing shlib metadata.
+	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
+
+override_dh_builddeb:
+	# Fix permissions for WSL2/Windows filesystem
+	chmod 755 $(CURDIR)/debian/monolith-firewall/DEBIAN
+	dh_builddeb
+
+override_dh_auto_clean:
+	dotnet clean || true
+	rm -rf $(CURDIR)/debian/tmp
+
+override_dh_auto_test:
+	# Skip tests for now
+	:

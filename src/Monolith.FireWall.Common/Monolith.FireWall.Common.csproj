@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Libs/CodeLogic3/src/CodeLogic.csproj" />
+    <ProjectReference Include="../Libs/CodeLogic3.Libs/CL.SQLite/CL.SQLite.csproj" />
+  </ItemGroup>
+
+</Project>

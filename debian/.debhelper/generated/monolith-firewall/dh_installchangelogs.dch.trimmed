@@ -1,0 +1,12 @@
+monolith-firewall (1.0.0-1) unstable; urgency=medium
+
+  * Initial release
+  * Core service with CodeLogic 3.0 framework
+  * Package loading and module registry with RCL support
+  * WebUI with Bootstrap 5.3.8 and jQuery SPA
+  * Named pipe IPC communication
+  * CL.SQLite integration for database operations
+  * User management module (monolith-system)
+  * Package scanner and loader for dynamic package discovery
+
+ -- Monolith FireWall Team <dev@monolithfirewall.org>  Sat, 28 Dec 2025 12:00:00 +0000

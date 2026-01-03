@@ -1,0 +1,74 @@
+@page "/firewall/nat"
+@{
+    Layout = null;
+}
+
+<div class="package-page nat-page" data-module="nat" data-package="firewall">
+    <div class="container-fluid p-4">
+        <!-- Page Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2 class="page-title">
+                    <svg width="24" height="24" fill="currentColor" viewBox="0 0 16 16" class="me-2">
+                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7z"/>
+                    </svg>
+                    NAT Rules
+                </h2>
+                <p class="text-muted">Configure Network Address Translation (NAT) rules</p>
+            </div>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="natStatusMessage" class="alert d-none"></div>
+
+        <!-- Pending Changes Banner -->
+        <div id="pendingChangesBanner" class="alert alert-warning d-none mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>⚠ Pending Changes</strong>
+                    <span class="ms-2">You have unsaved changes. Apply or discard them before making additional changes.</span>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-sm btn-success me-2" id="btnApplyChanges">Apply Changes</button>
+                    <button type="button" class="btn btn-sm btn-secondary" id="btnDiscardChanges">Discard</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Card -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">NAT Rules</h5>
+                <button type="button" class="btn btn-primary" id="btnAddRule">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+                    </svg>
+                    Add Rule
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="natTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 60px;">#</th>
+                                <th>Interface</th>
+                                <th>Family</th>
+                                <th>Protocol</th>
+                                <th>Source</th>
+                                <th>Destination</th>
+                                <th>Redirect Target</th>
+                                <th>Description</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="natTableBody">
+                            <tr><td colspan="10" class="text-center text-muted">Loading NAT rules...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

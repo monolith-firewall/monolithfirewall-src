@@ -1,0 +1,27 @@
+.routing-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.routing-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.routing-tabs {
+  margin-bottom: 0;
+}
+
+.routing-content {
+  padding-top: 1rem;
+}
+
+@media (max-width: 768px) {
+  .routing-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

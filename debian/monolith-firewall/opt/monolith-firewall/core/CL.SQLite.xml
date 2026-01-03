@@ -1,0 +1,1418 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>CL.SQLite</name>
+    </assembly>
+    <members>
+        <member name="T:CL.SQLite.Models.SQLiteTableAttribute">
+            <summary>
+            Specifies that a class represents a SQLite database table
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteTableAttribute.TableName">
+            <summary>
+            Gets or sets the name of the table in the database
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Models.SQLiteTableAttribute.#ctor(System.String)">
+            <summary>
+            Initializes a new instance of the SQLiteTableAttribute
+            </summary>
+            <param name="tableName">The name of the table</param>
+        </member>
+        <member name="T:CL.SQLite.Models.SQLiteIndexAttribute">
+            <summary>
+            Specifies an index on a table (supports composite indexes).
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteIndexAttribute.Columns">
+            <summary>
+            Column names included in the index (order matters).
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteIndexAttribute.IsUnique">
+            <summary>
+            Indicates whether the index enforces uniqueness.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteIndexAttribute.Name">
+            <summary>
+            Optional index name override.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Models.SQLiteIndexAttribute.#ctor(System.String[])">
+            <summary>
+            Creates an index attribute for the specified columns.
+            </summary>
+            <param name="columns">Columns included in the index.</param>
+        </member>
+        <member name="T:CL.SQLite.Models.SQLiteColumnAttribute">
+            <summary>
+            Specifies properties for a SQLite database column
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteColumnAttribute.IsPrimaryKey">
+            <summary>
+            Gets or sets whether the column is a primary key
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteColumnAttribute.IsIndexed">
+            <summary>
+            Gets or sets whether the column should be indexed
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteColumnAttribute.IsUnique">
+            <summary>
+            Gets or sets whether the column must have unique values
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteColumnAttribute.IsAutoIncrement">
+            <summary>
+            Gets or sets whether the column value is auto-incremented
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteColumnAttribute.ColumnName">
+            <summary>
+            Gets or sets the name of the column in the database
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteColumnAttribute.DataType">
+            <summary>
+            Gets or sets the data type of the column
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteColumnAttribute.Size">
+            <summary>
+            Gets or sets the maximum size of the column (if applicable)
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteColumnAttribute.IsNotNull">
+            <summary>
+            Gets or sets whether the column cannot contain null values
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteColumnAttribute.DefaultValue">
+            <summary>
+            Gets or sets the default value of the column
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.SQLiteForeignKeyAttribute">
+            <summary>
+            Specifies a foreign key constraint for a column
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteForeignKeyAttribute.ReferencedTable">
+            <summary>
+            Gets or sets the referenced table name
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteForeignKeyAttribute.ReferencedColumn">
+            <summary>
+            Gets or sets the referenced column name
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteForeignKeyAttribute.OnDelete">
+            <summary>
+            Gets or sets the action to take on delete
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteForeignKeyAttribute.OnUpdate">
+            <summary>
+            Gets or sets the action to take on update
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Models.SQLiteForeignKeyAttribute.#ctor(System.String,System.String)">
+            <summary>
+            Initializes a new instance of the SQLiteForeignKeyAttribute
+            </summary>
+            <param name="referencedTable">The referenced table name</param>
+            <param name="referencedColumn">The referenced column name</param>
+        </member>
+        <member name="T:CL.SQLite.Models.ForeignKeyAction">
+            <summary>
+            Foreign key actions for referential integrity
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.ForeignKeyAction.NoAction">
+            <summary>
+            No action is taken
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.ForeignKeyAction.Restrict">
+            <summary>
+            Restrict the operation
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.ForeignKeyAction.SetNull">
+            <summary>
+            Set the foreign key to NULL
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.ForeignKeyAction.SetDefault">
+            <summary>
+            Set the foreign key to its default value
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.ForeignKeyAction.Cascade">
+            <summary>
+            Cascade the operation to dependent rows
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.SQLiteConfiguration">
+            <summary>
+            Configuration settings for SQLite database connections.
+            This model is auto-generated as config/sqlite.json when missing.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteConfiguration.Enabled">
+            <summary>
+            Gets or sets whether this SQLite connection is enabled.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteConfiguration.DatabasePath">
+            <summary>
+            Gets or sets the path to the SQLite database file
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteConfiguration.ConnectionTimeoutSeconds">
+            <summary>
+            Gets or sets the connection timeout in seconds
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteConfiguration.CommandTimeoutSeconds">
+            <summary>
+            Gets or sets the command timeout in seconds
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteConfiguration.SkipTableSync">
+            <summary>
+            Gets or sets whether to skip automatic table synchronization on startup
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteConfiguration.CacheMode">
+            <summary>
+            Gets or sets the cache mode for the database connection
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteConfiguration.UseWAL">
+            <summary>
+            Gets or sets whether to use Write-Ahead Logging (WAL) mode
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteConfiguration.EnableForeignKeys">
+            <summary>
+            Gets or sets whether to enable foreign key constraints
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteConfiguration.MaxPoolSize">
+            <summary>
+            Gets or sets the maximum number of connections in the pool
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Models.SQLiteConfiguration.Validate">
+            <summary>
+            Validates the configuration.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.CacheMode">
+            <summary>
+            SQLite cache modes
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.CacheMode.Default">
+            <summary>
+            Default cache mode
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.CacheMode.Private">
+            <summary>
+            Private cache mode - each connection has its own cache
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.CacheMode.Shared">
+            <summary>
+            Shared cache mode - connections share a single cache
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.SQLiteDataType">
+            <summary>
+            Supported SQLite data types using type affinity
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.SQLiteDataType.INTEGER">
+            <summary>
+            Integer value - stored as 1, 2, 3, 4, 6, or 8 bytes depending on magnitude
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.SQLiteDataType.REAL">
+            <summary>
+            Floating point value - stored as an 8-byte IEEE floating point number
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.SQLiteDataType.TEXT">
+            <summary>
+            Text string - stored using the database encoding (UTF-8, UTF-16BE or UTF-16LE)
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.SQLiteDataType.BLOB">
+            <summary>
+            Binary large object - stored exactly as it was input
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.SQLiteDataType.NUMERIC">
+            <summary>
+            Numeric value - can be stored as INTEGER or REAL depending on the value
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.SQLiteDataType.DATETIME">
+            <summary>
+            Date and time value - stored as TEXT in ISO 8601 format ('YYYY-MM-DD HH:MM:SS')
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.SQLiteDataType.DATE">
+            <summary>
+            Date value - stored as TEXT in ISO 8601 format ('YYYY-MM-DD')
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.SQLiteDataType.BOOLEAN">
+            <summary>
+            Boolean value - stored as INTEGER (0 for false, 1 for true)
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.SQLiteDataType.UUID">
+            <summary>
+            Universally unique identifier - stored as TEXT or BLOB
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.Result`1">
+            <summary>
+            Represents the result of a database operation.
+            </summary>
+            <typeparam name="T">The type of data returned by the operation.</typeparam>
+        </member>
+        <member name="P:CL.SQLite.Models.Result`1.IsSuccess">
+            <summary>
+            Gets or sets a value indicating whether the operation was successful.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.Result`1.Data">
+            <summary>
+            Gets or sets the data returned by the operation.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.Result`1.ErrorMessage">
+            <summary>
+            Gets or sets the error message if the operation failed.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.Result`1.Exception">
+            <summary>
+            Gets or sets the exception that occurred during the operation.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Models.Result`1.Success(`0)">
+            <summary>
+            Creates a successful operation result.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Models.Result`1.Failure(System.String,System.Exception)">
+            <summary>
+            Creates a failed operation result.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.Result">
+            <summary>
+            Represents the result of a database operation without data.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.Result.IsSuccess">
+            <summary>
+            Gets or sets a value indicating whether the operation was successful.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.Result.ErrorMessage">
+            <summary>
+            Gets or sets the error message if the operation failed.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.Result.Exception">
+            <summary>
+            Gets or sets the exception that occurred during the operation.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Models.Result.Success">
+            <summary>
+            Creates a successful operation result.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Models.Result.Failure(System.String,System.Exception)">
+            <summary>
+            Creates a failed operation result.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.SQLiteQuery">
+            <summary>
+            Represents a SQL query with parameters
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteQuery.QueryString">
+            <summary>
+            Gets or sets the SQL query string
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.SQLiteQuery.Parameters">
+            <summary>
+            Gets or sets the query parameters
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.TableSyncResult">
+            <summary>
+            Represents the result of a table synchronization operation
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.TableSyncResult.Success">
+            <summary>
+            Gets whether the synchronization was successful
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.TableSyncResult.Message">
+            <summary>
+            Gets the message describing the result
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.TableSyncResult.Exception">
+            <summary>
+            Gets any exception that occurred
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Models.TableSyncResult.Succeeded(System.String)">
+            <summary>
+            Creates a successful synchronization result.
+            </summary>
+            <param name="message">Result message.</param>
+        </member>
+        <member name="M:CL.SQLite.Models.TableSyncResult.Failed(System.String,System.Exception)">
+            <summary>
+            Creates a failed synchronization result.
+            </summary>
+            <param name="message">Error message.</param>
+            <param name="exception">Optional exception.</param>
+        </member>
+        <member name="T:CL.SQLite.Models.TransactionIsolation">
+            <summary>
+            Transaction isolation levels for SQLite
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.TransactionIsolation.Deferred">
+            <summary>
+            Deferred transaction - locks are acquired when needed
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.TransactionIsolation.Immediate">
+            <summary>
+            Immediate transaction - acquires a reserved lock immediately
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.TransactionIsolation.Exclusive">
+            <summary>
+            Exclusive transaction - acquires an exclusive lock immediately
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.WhereCondition">
+            <summary>
+            Represents a WHERE condition for LINQ query building
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.WhereCondition.Column">
+            <summary>
+            Gets or sets the column name
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "P:CL.SQLite.Models.WhereCondition.Operator" -->
+        <member name="P:CL.SQLite.Models.WhereCondition.Value">
+            <summary>
+            Gets or sets the value to compare against
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.WhereCondition.LogicalOperator">
+            <summary>
+            Gets or sets the logical operator (AND, OR)
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.OrderByClause">
+            <summary>
+            Represents an ORDER BY clause
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.OrderByClause.Column">
+            <summary>
+            Gets or sets the column name
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.OrderByClause.Order">
+            <summary>
+            Gets or sets the sort order (Asc or Desc)
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.SortOrder">
+            <summary>
+            Sort order enumeration
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.SortOrder.Asc">
+            <summary>
+            Ascending order
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.SortOrder.Desc">
+            <summary>
+            Descending order
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.AggregateFunction">
+            <summary>
+            Represents an aggregate function (SUM, AVG, MIN, MAX, COUNT)
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.AggregateFunction.Type">
+            <summary>
+            Gets or sets the aggregate type
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.AggregateFunction.Column">
+            <summary>
+            Gets or sets the column name to aggregate
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.AggregateFunction.Alias">
+            <summary>
+            Gets or sets the alias for the result
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.AggregateType">
+            <summary>
+            Aggregate function type enumeration
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.AggregateType.Sum">
+            <summary>
+            SUM aggregate
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.AggregateType.Avg">
+            <summary>
+            AVG aggregate
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.AggregateType.Min">
+            <summary>
+            MIN aggregate
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.AggregateType.Max">
+            <summary>
+            MAX aggregate
+            </summary>
+        </member>
+        <member name="F:CL.SQLite.Models.AggregateType.Count">
+            <summary>
+            COUNT aggregate
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Models.PagedResult`1">
+            <summary>
+            Represents paginated results
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.PagedResult`1.Items">
+            <summary>
+            Gets or sets the items on this page
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.PagedResult`1.PageNumber">
+            <summary>
+            Gets or sets the current page number
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.PagedResult`1.PageSize">
+            <summary>
+            Gets or sets the page size
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.PagedResult`1.TotalItems">
+            <summary>
+            Gets or sets the total number of items
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Models.PagedResult`1.TotalPages">
+            <summary>
+            Gets the total number of pages
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.ConnectionManager">
+            <summary>
+            Manages SQLite database connections with connection pooling
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ConnectionManager.#ctor(CL.SQLite.Models.SQLiteConfiguration,CodeLogic.Logging.ILogger,System.String)">
+            <summary>
+            Creates a SQLite connection manager with pooling.
+            </summary>
+            <param name="config">SQLite configuration settings.</param>
+            <param name="logger">Logger for connection events.</param>
+            <param name="dataDirectory">Optional base directory for relative database paths.</param>
+        </member>
+        <member name="M:CL.SQLite.Services.ConnectionManager.GetConnectionAsync(System.Threading.CancellationToken)">
+            <summary>
+            Gets a connection from the pool or creates a new one
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ConnectionManager.ReleaseConnectionAsync(Microsoft.Data.Sqlite.SqliteConnection)">
+            <summary>
+            Releases a connection back to the pool
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ConnectionManager.ExecuteAsync``1(System.Func{Microsoft.Data.Sqlite.SqliteConnection,System.Threading.Tasks.Task{``0}},System.Threading.CancellationToken)">
+            <summary>
+            Executes an action with a connection from the pool
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ConnectionManager.Dispose">
+            <summary>
+            Disposes the connection manager and all pooled connections.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.ConnectionManager.PooledConnection">
+            <summary>
+            Represents a pooled database connection
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.ConnectionManager.PooledConnection.Connection">
+            <summary>
+            Underlying SQLite connection.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.ConnectionManager.PooledConnection.Lock">
+            <summary>
+            Semaphore used to guard concurrent access to the connection.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.ConnectionManager.PooledConnection.LastUsed">
+            <summary>
+            Timestamp when the connection was last used.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.ConnectionManager.PooledConnection.InUse">
+            <summary>
+            Indicates whether the connection is currently in use.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ConnectionManager.PooledConnection.#ctor(Microsoft.Data.Sqlite.SqliteConnection)">
+            <summary>
+            Creates a pooled connection wrapper.
+            </summary>
+            <param name="connection">Open SQLite connection.</param>
+        </member>
+        <member name="M:CL.SQLite.Services.ConnectionManager.PooledConnection.MarkInUse">
+            <summary>
+            Marks the connection as in use and updates last-used timestamp.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ConnectionManager.PooledConnection.MarkAvailable">
+            <summary>
+            Marks the connection as available and updates last-used timestamp.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ConnectionManager.PooledConnection.IsValid">
+            <summary>
+            Determines whether the connection is healthy and reusable.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ConnectionManager.PooledConnection.IsIdleTooLong(System.TimeSpan)">
+            <summary>
+            Determines whether the connection has been idle beyond the timeout.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ConnectionManager.PooledConnection.Dispose">
+            <summary>
+            Disposes the pooled connection and its lock.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.ExpressionVisitor">
+            <summary>
+            Converts LINQ Expression Trees to SQLite WHERE clause predicates.
+            Handles common LINQ patterns and translates them to SQL.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ExpressionVisitor.Parse``1(System.Linq.Expressions.Expression{System.Func{``0,System.Boolean}})">
+            <summary>
+            Converts a LINQ expression to WHERE conditions.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ExpressionVisitor.ParseOrderBy``1(System.Linq.Expressions.Expression{System.Func{``0,System.Object}})">
+            <summary>
+            Converts a LINQ expression to an ORDER BY column and direction.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ExpressionVisitor.ParseOrderBy``2(System.Linq.Expressions.Expression{System.Func{``0,``1}},System.Boolean)">
+            <summary>
+            Converts a LINQ expression to an ORDER BY column with direction.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ExpressionVisitor.ParseSelect``1(System.Linq.Expressions.Expression{System.Func{``0,System.Object}})">
+            <summary>
+            Extracts column names from a projection expression.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ExpressionVisitor.ParseGroupBy``1(System.Linq.Expressions.Expression{System.Func{``0,System.Object}})">
+            <summary>
+            Extracts column names from a GROUP BY expression.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ExpressionVisitor.ParseGroupBy``2(System.Linq.Expressions.Expression{System.Func{``0,``1}})">
+            <summary>
+            Extracts column names from a GROUP BY expression (generic version).
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.ExpressionVisitor.Visit(System.Linq.Expressions.Expression)">
+            <summary>
+            Visits an expression node and appends SQL fragments as needed.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.MigrationTracker">
+            <summary>
+            Tracks and manages database schema migrations to prevent duplicate operations.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.#ctor(System.String,CodeLogic.Logging.ILogger)">
+            <summary>
+            Creates a migration tracker rooted at the provided data directory.
+            </summary>
+            <param name="dataDirectory">Directory used for migration history files.</param>
+            <param name="logger">Optional logger for migration operations.</param>
+        </member>
+        <member name="T:CL.SQLite.Services.MigrationTracker.MigrationRecord">
+            <summary>
+            Represents a migration record.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationTracker.MigrationRecord.Id">
+            <summary>
+            Unique migration identifier.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationTracker.MigrationRecord.TableName">
+            <summary>
+            Table name targeted by the migration.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationTracker.MigrationRecord.MigrationType">
+            <summary>
+            Migration type (e.g., CREATE, ALTER, DROP).
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationTracker.MigrationRecord.AppliedAt">
+            <summary>
+            Timestamp when the migration was applied.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationTracker.MigrationRecord.Description">
+            <summary>
+            Optional migration description.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationTracker.MigrationRecord.Success">
+            <summary>
+            Indicates whether the migration succeeded.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationTracker.MigrationRecord.ErrorMessage">
+            <summary>
+            Error message for failed migrations.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationTracker.MigrationRecord.MigrationSql">
+            <summary>
+            SQL applied for the migration.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.EnsureMigrationsDirectoryExists">
+            <summary>
+            Ensures the migrations directory exists.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.RecordMigrationAsync(System.String,System.String,System.String,System.Boolean,System.String,System.String)">
+            <summary>
+            Records a migration operation.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.MigrationExistsAsync(System.String,System.String)">
+            <summary>
+            Checks if a migration has already been applied.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.GetTableMigrationsAsync(System.String)">
+            <summary>
+            Gets all migrations for a specific table.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.GetFailedMigrationsAsync">
+            <summary>
+            Gets all failed migrations.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.GetMigrationHistoryAsync">
+            <summary>
+            Gets the complete migration history.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.GetStatisticsAsync">
+            <summary>
+            Gets migration statistics.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.CleanupOldMigrationsAsync(System.Int32,System.Nullable{System.Int32})">
+            <summary>
+            Clears old migration records, keeping only recent ones.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.ExportHistoryAsync(System.String)">
+            <summary>
+            Exports migration history to a file.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.ImportHistoryAsync(System.String)">
+            <summary>
+            Imports migration history from a file.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.LoadMigrationHistoryAsync">
+            <summary>
+            Loads migration history from file.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.SaveMigrationHistoryAsync(System.Collections.Generic.List{CL.SQLite.Services.MigrationTracker.MigrationRecord})">
+            <summary>
+            Saves migration history to file.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.GenerateMigrationId(System.String,System.String)">
+            <summary>
+            Generates a unique migration ID.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationTracker.GetMigrationsDirectoryPath">
+            <summary>
+            Gets the path to the migrations directory.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.MigrationStatistics">
+            <summary>
+            Migration statistics summary.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationStatistics.TotalMigrations">
+            <summary>
+            Total number of migrations recorded.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationStatistics.SuccessfulMigrations">
+            <summary>
+            Count of successful migrations.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationStatistics.FailedMigrations">
+            <summary>
+            Count of failed migrations.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationStatistics.UniqueTables">
+            <summary>
+            Number of unique tables affected.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationStatistics.FirstMigration">
+            <summary>
+            Timestamp of the first migration.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationStatistics.LastMigration">
+            <summary>
+            Timestamp of the last migration.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationStatistics.MigrationsByType">
+            <summary>
+            Counts of migrations grouped by type.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.MigrationStatistics.RecentMigrations">
+            <summary>
+            Count of migrations in the last 24 hours.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.MigrationStatistics.ToString">
+            <summary>
+            Returns a formatted summary of migration statistics.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.NullLogger.Trace(System.String)">
+            <summary>
+            No-op trace logger.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.NullLogger.Debug(System.String)">
+            <summary>
+            No-op debug logger.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.NullLogger.Info(System.String)">
+            <summary>
+            No-op info logger.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.NullLogger.Warning(System.String)">
+            <summary>
+            No-op warning logger.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.NullLogger.Error(System.String,System.Exception)">
+            <summary>
+            No-op error logger.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.NullLogger.Critical(System.String,System.Exception)">
+            <summary>
+            No-op critical logger.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.QueryBuilder`1">
+            <summary>
+            Type-safe fluent query builder for constructing complex SQL queries using LINQ expressions.
+            Provides compile-time error checking and full IntelliSense support for SQLite database queries.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.#ctor(CL.SQLite.Services.ConnectionManager,CodeLogic.Logging.ILogger)">
+            <summary>
+            Creates a query builder for the specified model type.
+            </summary>
+            <param name="connectionManager">Connection manager for database access.</param>
+            <param name="logger">Optional logger for query diagnostics.</param>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.Where(System.Linq.Expressions.Expression{System.Func{`0,System.Boolean}})">
+            <summary>
+            Adds a LINQ-based WHERE condition (type-safe!).
+            Example: .Where(u => u.IsActive == true)
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.OrderBy``1(System.Linq.Expressions.Expression{System.Func{`0,``0}})">
+            <summary>
+            Adds a LINQ-based ORDER BY clause (ascending).
+            Example: .OrderBy(u => u.CreatedAt)
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.OrderByDescending``1(System.Linq.Expressions.Expression{System.Func{`0,``0}})">
+            <summary>
+            Adds a LINQ-based ORDER BY clause (descending).
+            Example: .OrderByDescending(u => u.CreatedAt)
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.ThenBy``1(System.Linq.Expressions.Expression{System.Func{`0,``0}})">
+            <summary>
+            Adds a LINQ-based secondary ORDER BY clause (ascending).
+            Example: .OrderBy(u => u.IsActive).ThenBy(u => u.Email)
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.ThenByDescending``1(System.Linq.Expressions.Expression{System.Func{`0,``0}})">
+            <summary>
+            Adds a LINQ-based secondary ORDER BY clause (descending).
+            Example: .OrderBy(u => u.IsActive).ThenByDescending(u => u.Email)
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.GroupBy``1(System.Linq.Expressions.Expression{System.Func{`0,``0}})">
+            <summary>
+            Adds a LINQ-based GROUP BY clause.
+            Example: .GroupBy(u => u.Department)
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.Select``1(System.Linq.Expressions.Expression{System.Func{`0,``0}})">
+            <summary>
+            Adds a LINQ-based SELECT clause (column projection).
+            Example: .Select(u => new { u.Id, u.Email })
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.Sum``1(System.Linq.Expressions.Expression{System.Func{`0,``0}},System.String)">
+            <summary>
+            Adds a LINQ-based SUM aggregate.
+            Example: .Sum(u => u.TotalAmount, "total")
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.Avg``1(System.Linq.Expressions.Expression{System.Func{`0,``0}},System.String)">
+            <summary>
+            Adds a LINQ-based AVG aggregate.
+            Example: .Avg(u => u.Rating, "average")
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.Min``1(System.Linq.Expressions.Expression{System.Func{`0,``0}},System.String)">
+            <summary>
+            Adds a LINQ-based MIN aggregate.
+            Example: .Min(u => u.Price, "minimum")
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.Max``1(System.Linq.Expressions.Expression{System.Func{`0,``0}},System.String)">
+            <summary>
+            Adds a LINQ-based MAX aggregate.
+            Example: .Max(u => u.Price, "maximum")
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.Take(System.Int32)">
+            <summary>
+            Limits the number of results returned.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.Skip(System.Int32)">
+            <summary>
+            Sets the offset for pagination.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.ExecuteAsync(System.Threading.CancellationToken)">
+            <summary>
+            Executes the query and returns the results.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.FirstOrDefaultAsync(System.Threading.CancellationToken)">
+            <summary>
+            Executes the query and returns the first result or null.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.ToPagedAsync(System.Int32,System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Executes the query and returns paginated results.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.CountAsync(System.Threading.CancellationToken)">
+            <summary>
+            Executes a COUNT query and returns the count.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.QueryBuilder`1.ToSql">
+            <summary>
+            Returns the SQL query that would be executed (for debugging).
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.Repository`1">
+            <summary>
+            Generic repository for SQLite database operations
+            </summary>
+            <typeparam name="T">The model type that represents a database table</typeparam>
+        </member>
+        <member name="M:CL.SQLite.Services.Repository`1.#ctor(CL.SQLite.Services.ConnectionManager,CodeLogic.Logging.ILogger)">
+            <summary>
+            Creates a repository for the specified model type.
+            </summary>
+            <param name="connectionManager">Connection manager for database access.</param>
+            <param name="logger">Optional logger for repository operations.</param>
+        </member>
+        <member name="M:CL.SQLite.Services.Repository`1.InsertAsync(`0,System.Threading.CancellationToken)">
+            <summary>
+            Inserts a new record into the database
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.Repository`1.UpsertAsync(`0,System.Threading.CancellationToken)">
+            <summary>
+            Inserts or replaces a record based on primary key.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.Repository`1.GetByIdAsync(System.Object,System.Threading.CancellationToken)">
+            <summary>
+            Gets a record by ID
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.Repository`1.GetAllAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Gets all records from the table
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.Repository`1.UpdateAsync(`0,System.Threading.CancellationToken)">
+            <summary>
+            Updates a record in the database
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.Repository`1.DeleteAsync(System.Object,System.Threading.CancellationToken)">
+            <summary>
+            Deletes a record by ID
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.Repository`1.DeleteWhereAsync(System.Linq.Expressions.Expression{System.Func{`0,System.Boolean}},System.Threading.CancellationToken)">
+            <summary>
+            Deletes records matching a predicate.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.SchemaAnalyzer">
+            <summary>
+            Analyzes and compares SQLite database schemas with C# model definitions.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.SchemaAnalyzer.#ctor(CodeLogic.Logging.ILogger)">
+            <summary>
+            Creates a schema analyzer with optional logging.
+            </summary>
+            <param name="logger">Logger for diagnostics.</param>
+        </member>
+        <member name="T:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition">
+            <summary>
+            Represents a column definition from the model.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition.PropertyName">
+            <summary>
+            CLR property name backing the column.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition.ColumnName">
+            <summary>
+            Column name in the database.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition.DataType">
+            <summary>
+            SQLite data type for the column.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition.Primary">
+            <summary>
+            Indicates whether the column is a primary key.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition.AutoIncrement">
+            <summary>
+            Indicates whether the column auto-increments.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition.NotNull">
+            <summary>
+            Indicates whether the column disallows null values.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition.Unique">
+            <summary>
+            Indicates whether the column has a unique constraint.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition.IsIndexed">
+            <summary>
+            Indicates whether the column is indexed.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition.DefaultValue">
+            <summary>
+            Default value expression for the column.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition.ForeignKey">
+            <summary>
+            Optional foreign key metadata.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition.Comment">
+            <summary>
+            Optional column comment.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.SchemaAnalyzer.DatabaseColumnDefinition">
+            <summary>
+            Represents a column definition from the database.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.DatabaseColumnDefinition.Cid">
+            <summary>
+            Column identifier (ordinal).
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.DatabaseColumnDefinition.ColumnName">
+            <summary>
+            Column name in the database.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.DatabaseColumnDefinition.DataType">
+            <summary>
+            Database-reported data type.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.DatabaseColumnDefinition.NotNull">
+            <summary>
+            Indicates whether the column disallows null values.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.DatabaseColumnDefinition.DefaultValue">
+            <summary>
+            Default value expression in the database.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.DatabaseColumnDefinition.PrimaryKey">
+            <summary>
+            Indicates whether the column is part of the primary key.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.SchemaAnalyzer.GenerateModelColumnDefinitions(System.Type)">
+            <summary>
+            Generates column definitions from a model type based on SQLiteColumnAttribute.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.SchemaAnalyzer.GetDatabaseColumnsAsync(Microsoft.Data.Sqlite.SqliteConnection,System.String)">
+            <summary>
+            Retrieves existing columns from a database table.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.SchemaAnalyzer.TableExistsAsync(Microsoft.Data.Sqlite.SqliteConnection,System.String)">
+            <summary>
+            Checks if a table exists in the database.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.SchemaAnalyzer.GetTableIndexesAsync(Microsoft.Data.Sqlite.SqliteConnection,System.String)">
+            <summary>
+            Gets existing indexes for a table.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.SchemaAnalyzer.GenerateCreateTableStatement(System.String,System.Collections.Generic.List{CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition},CL.SQLite.Models.SQLiteTableAttribute)">
+            <summary>
+            Generates SQL CREATE TABLE statement from model definition.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.SchemaAnalyzer.GenerateColumnDefinition(CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition,System.Boolean)">
+            <summary>
+            Generates a single column definition string.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.SchemaAnalyzer.GenerateCreateIndexStatements(System.Type,System.String,System.Collections.Generic.List{CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition})">
+            <summary>
+            Generates SQL CREATE INDEX statements from model definition.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.SchemaAnalyzer.ConvertDataTypeToSQLite(CL.SQLite.Models.SQLiteDataType)">
+            <summary>
+            Converts C# SQLiteDataType enum to SQLite data type string.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.SchemaAnalyzer.DetectDifferences(System.Collections.Generic.List{CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition},System.Collections.Generic.List{CL.SQLite.Services.SchemaAnalyzer.DatabaseColumnDefinition})">
+            <summary>
+            Detects differences between model definition and database schema.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.SchemaAnalyzer.HasColumnChanged(CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition,CL.SQLite.Services.SchemaAnalyzer.DatabaseColumnDefinition)">
+            <summary>
+            Determines if a column definition has changed.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.SchemaAnalyzer.SchemaDifferences">
+            <summary>
+            Schema differences result.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.SchemaDifferences.MissingColumns">
+            <summary>
+            Columns present in the model but missing in the database.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.SchemaDifferences.ExtraColumns">
+            <summary>
+            Columns present in the database but missing in the model.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.SchemaDifferences.ModifiedColumns">
+            <summary>
+            Columns that exist in both but differ in definition.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SchemaAnalyzer.SchemaDifferences.HasDifferences">
+            <summary>
+            Indicates whether any differences were found.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.TableSyncService">
+            <summary>
+            Synchronizes C# model definitions with SQLite database tables.
+            Handles table creation, schema synchronization, and migration tracking.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.TableSyncService.#ctor(CL.SQLite.Services.ConnectionManager,System.String,CodeLogic.Logging.ILogger)">
+            <summary>
+            Creates a table synchronization service.
+            </summary>
+            <param name="connectionManager">Connection manager for database access.</param>
+            <param name="dataDirectory">Optional data directory for migrations.</param>
+            <param name="logger">Optional logger for sync diagnostics.</param>
+        </member>
+        <member name="P:CL.SQLite.Services.TableSyncService.MigrationTracker">
+            <summary>
+            Gets the migration tracker for accessing migration history.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.TableSyncService.SyncTableAsync``1(System.Threading.CancellationToken)">
+            <summary>
+            Synchronizes a single model type with its database table.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.TableSyncService.SyncTablesAsync(System.Type[],System.Threading.CancellationToken)">
+            <summary>
+            Synchronizes multiple model types at once.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.TableSyncService.SyncNamespaceAsync(System.String,System.Boolean,System.Threading.CancellationToken)">
+            <summary>
+            Synchronizes all model types in a specified namespace.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.TableSyncService.GetSyncStatusAsync``1(System.Threading.CancellationToken)">
+            <summary>
+            Gets synchronization status for a table.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.TableSyncService.SyncTableInternalAsync(System.Type,System.String,System.Threading.CancellationToken)">
+            <summary>
+            Internal implementation of table synchronization.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.TableSyncService.GetSyncStatusInternalAsync(System.Type,System.String,System.Threading.CancellationToken)">
+            <summary>
+            Gets synchronization status without making changes.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.TableSyncService.GenerateAddColumnStatement(System.String,CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition)">
+            <summary>
+            Generates ALTER TABLE ADD COLUMN statement.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.TableSyncService.GenerateColumnDefinitionForAlter(CL.SQLite.Services.SchemaAnalyzer.ModelColumnDefinition)">
+            <summary>
+            Generates column definition for ALTER TABLE.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.TableSyncService.GetTableName(System.Type)">
+            <summary>
+            Gets the table name from a model type.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.TableSyncService.GetTypesInNamespace(System.String,System.Boolean)">
+            <summary>
+            Gets all types in a specified namespace from all loaded assemblies.
+            </summary>
+        </member>
+        <member name="T:CL.SQLite.Services.SyncStatus">
+            <summary>
+            Represents the synchronization status of a table.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SyncStatus.IsInSync">
+            <summary>
+            Indicates whether the table schema matches the model.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SyncStatus.TableExists">
+            <summary>
+            Indicates whether the table exists in the database.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SyncStatus.ColumnCount">
+            <summary>
+            Total column count in the database table.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SyncStatus.MissingColumnsCount">
+            <summary>
+            Count of missing columns compared to the model.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SyncStatus.ExtraColumnsCount">
+            <summary>
+            Count of extra columns not present in the model.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SyncStatus.ModifiedColumnsCount">
+            <summary>
+            Count of columns with modified definitions.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SyncStatus.Message">
+            <summary>
+            Informational message about the sync operation.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.Services.SyncStatus.ErrorMessage">
+            <summary>
+            Error message when the sync fails.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.Services.WhereClauseBuilder.Build(System.Collections.Generic.IReadOnlyList{CL.SQLite.Models.WhereCondition})">
+            <summary>
+            Builds a SQL WHERE clause and parameter map from condition descriptors.
+            </summary>
+            <param name="conditions">Conditions to convert into SQL.</param>
+            <returns>SQL clause and parameter values.</returns>
+        </member>
+        <member name="T:CL.SQLite.SQLiteLibrary">
+            <summary>
+            SQLite library implementation for CodeLogic framework
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.SQLiteLibrary.Manifest">
+            <summary>
+            Library manifest metadata for CL.SQLite.
+            </summary>
+        </member>
+        <member name="P:CL.SQLite.SQLiteLibrary.TableSyncService">
+            <summary>
+            Gets the TableSyncService for schema synchronization.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.SQLiteLibrary.OnConfigureAsync(CodeLogic.Abstractions.LibraryContext)">
+            <summary>
+            Phase 1: Configure
+            Registers configuration models.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.SQLiteLibrary.OnInitializeAsync(CodeLogic.Abstractions.LibraryContext)">
+            <summary>
+            Phase 2: Initialize
+            Sets up services based on loaded configuration.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.SQLiteLibrary.OnStartAsync(CodeLogic.Abstractions.LibraryContext)">
+            <summary>
+            Phase 3: Start
+            Starts library services.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.SQLiteLibrary.OnStopAsync">
+            <summary>
+            Phase 4: Stop
+            Stops services gracefully.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.SQLiteLibrary.HealthCheckAsync">
+            <summary>
+            Health check implementation.
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.SQLiteLibrary.Dispose">
+            <summary>
+            Dispose resources
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.SQLiteLibrary.GetConnectionManager">
+            <summary>
+            Gets the connection manager (must be initialized first)
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.SQLiteLibrary.CreateRepository``1">
+            <summary>
+            Creates a repository for the specified model type
+            </summary>
+        </member>
+        <member name="M:CL.SQLite.SQLiteLibrary.CreateQueryBuilder``1">
+            <summary>
+            Creates a type-safe LINQ query builder for the specified model type
+            </summary>
+        </member>
+    </members>
+</doc>

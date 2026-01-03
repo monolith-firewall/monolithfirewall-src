@@ -1,0 +1,705 @@
+using Monolith.FireWall.Common.Services;
+using Monolith.FireWall.Core.Models;
+using Monolith.FireWall.Core.Services.Platform;
+using Monolith.FireWall.Platform.Validation;
+using System.Text.Json;
+
+namespace Monolith.FireWall.Core.Services;
+
+public sealed class InterfaceAssignmentManager
+{
+    private readonly InterfaceAssignmentStore _store;
+    private readonly NetworkInventoryService _inventory;
+    private readonly InterfaceConfigManager _configManager;
+    private readonly PlatformCommandRunner _commandRunner;
+    private readonly SystemSettingsManager _settingsManager;
+    private readonly LoggingManager _loggingManager;
+
+    public InterfaceAssignmentManager(
+        InterfaceAssignmentStore store,
+        NetworkInventoryService inventory,
+        InterfaceConfigManager configManager,
+        PlatformCommandRunner commandRunner,
+        SystemSettingsManager settingsManager)
+    {
+        _store = store;
+        _inventory = inventory;
+        _configManager = configManager;
+        _commandRunner = commandRunner;
+        _settingsManager = settingsManager;
+        _loggingManager = LoggingManager.Instance;
+    }
+
+    public async Task<InterfaceAssignmentsSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
+    {
+        var assignments = await _store.GetAssignmentsAsync();
+        var interfaces = await _inventory.ListInterfacesAsync();
+        var addresses = await _inventory.ListAddressesAsync(null, cancellationToken);
+
+        var ifaceMap = interfaces.ToDictionary(i => i.Name, StringComparer.OrdinalIgnoreCase);
+        var addressMap = addresses
+            .Where(a => string.Equals(a.Family, "inet", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(a => a.Interface, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var views = assignments.Select(a => BuildAssignmentView(a, ifaceMap, addressMap)).ToList();
+        var assignedIfaces = new HashSet<string>(assignments.Select(a => a.InterfaceName), StringComparer.OrdinalIgnoreCase);
+
+        var unassigned = interfaces
+            .Where(i => !assignedIfaces.Contains(i.Name))
+            .Where(i => IsPhysicalInterface(i.Name))
+            .Select(i => new InterfaceInventoryView
+            {
+                Interface = i.Name,
+                MacAddress = i.MacAddress,
+                Status = i.IsUp ? "up" : "down",
+                IpAddress = addressMap.TryGetValue(i.Name, out var addr)
+                    ? $"{addr.Address}/{addr.PrefixLength}"
+                    : null
+            })
+            .OrderBy(i => i.Interface, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new InterfaceAssignmentsSnapshot
+        {
+            Assigned = views.Where(v => v.Type == "physical").ToList(),
+            Vlans = views.Where(v => v.Type == "vlan").ToList(),
+            Bridges = views.Where(v => v.Type == "bridge").ToList(),
+            Unassigned = unassigned,
+            ManagedFile = _configManager.ManagedPath
+        };
+    }
+
+    public async Task<(bool Success, string? Error, InterfaceAssignmentEntity? Assignment)> SaveAssignmentAsync(
+        InterfaceAssignmentRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request == null)
+        {
+            return (false, "Request is required", null);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Type))
+        {
+            return (false, "Assignment type is required", null);
+        }
+
+        var type = ParseType(request.Type);
+        if (type == null)
+        {
+            return (false, "Invalid assignment type", null);
+        }
+
+        var inventory = await _inventory.ListInterfacesAsync();
+        var inventorySet = new HashSet<string>(inventory.Select(i => i.Name), StringComparer.OrdinalIgnoreCase);
+
+        var ifaceName = request.Interface?.Trim();
+        var parentInterface = request.ParentInterface?.Trim();
+        var vlanId = request.VlanId;
+
+        if (type == InterfaceAssignmentType.Physical)
+        {
+            if (string.IsNullOrWhiteSpace(ifaceName))
+            {
+                return (false, "Interface is required", null);
+            }
+
+            if (!PlatformValidators.IsValidInterfaceName(ifaceName))
+            {
+                return (false, "Invalid interface name", null);
+            }
+
+            if (!inventorySet.Contains(ifaceName))
+            {
+                return (false, "Interface not found", null);
+            }
+        }
+        else if (type == InterfaceAssignmentType.Vlan)
+        {
+            if (string.IsNullOrWhiteSpace(parentInterface))
+            {
+                return (false, "Parent interface is required", null);
+            }
+
+            if (!PlatformValidators.IsValidInterfaceName(parentInterface))
+            {
+                return (false, "Invalid parent interface", null);
+            }
+
+            if (!inventorySet.Contains(parentInterface))
+            {
+                return (false, "Parent interface not found", null);
+            }
+
+            if (!vlanId.HasValue || vlanId < 1 || vlanId > 4094)
+            {
+                return (false, "VLAN ID must be between 1 and 4094", null);
+            }
+
+            ifaceName = $"{parentInterface}.{vlanId.Value}";
+        }
+        else if (type == InterfaceAssignmentType.Bridge)
+        {
+            if (string.IsNullOrWhiteSpace(ifaceName))
+            {
+                return (false, "Bridge name is required", null);
+            }
+
+            if (!PlatformValidators.IsValidInterfaceName(ifaceName))
+            {
+                return (false, "Invalid bridge name", null);
+            }
+
+            var ports = request.BridgePorts?.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()).ToList() ?? new List<string>();
+            if (ports.Count == 0)
+            {
+                return (false, "Bridge ports are required", null);
+            }
+
+            foreach (var port in ports)
+            {
+                if (!PlatformValidators.IsValidInterfaceName(port))
+                {
+                    return (false, $"Invalid bridge port: {port}", null);
+                }
+
+                if (!inventorySet.Contains(port))
+                {
+                    return (false, $"Bridge port not found: {port}", null);
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(ifaceName))
+        {
+            return (false, "Interface name could not be resolved", null);
+        }
+
+        var ipMode = ParseIpMode(request.IpMode);
+        if (type == InterfaceAssignmentType.Physical && ipMode == InterfaceIpMode.None)
+        {
+            ipMode = InterfaceIpMode.Dhcp;
+        }
+        var (address, prefix, ipError) = ParseIp(request);
+        if (!string.IsNullOrWhiteSpace(ipError))
+        {
+            return (false, ipError, null);
+        }
+
+        if (ipMode == InterfaceIpMode.Static && string.IsNullOrWhiteSpace(address))
+        {
+            return (false, "Static IP requires an address and prefix", null);
+        }
+
+        if (ipMode != InterfaceIpMode.Static)
+        {
+            address = null;
+            prefix = null;
+        }
+        else if (!string.IsNullOrWhiteSpace(request.Gateway) && !PlatformValidators.IsValidIp(request.Gateway))
+        {
+            return (false, "Invalid gateway address", null);
+        }
+
+        var existingAssignment = await _store.GetAssignmentAsync(ifaceName);
+        if (existingAssignment != null && existingAssignment.Type != type.Value)
+        {
+            return (false, "Interface already assigned with a different type", null);
+        }
+
+        var assignment = existingAssignment ?? new InterfaceAssignmentEntity
+        {
+            InterfaceName = ifaceName
+        };
+
+        assignment.Type = type.Value;
+        var defaultName = ifaceName;
+        if (type == InterfaceAssignmentType.Vlan && vlanId.HasValue)
+        {
+            defaultName = $"VLAN {vlanId.Value}";
+        }
+        else if (type == InterfaceAssignmentType.Bridge)
+        {
+            defaultName = $"Bridge {ifaceName}";
+        }
+
+        assignment.Name = string.IsNullOrWhiteSpace(request.Name) ? defaultName : request.Name.Trim();
+        assignment.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+        assignment.IpMode = ipMode;
+        assignment.Role = ResolveRole(request.Role, existingAssignment?.Role);
+        assignment.IsManagement = request.IsManagement ?? existingAssignment?.IsManagement ?? false;
+        assignment.IpAddress = address;
+        assignment.PrefixLength = prefix;
+        assignment.Gateway = ipMode == InterfaceIpMode.Static && !string.IsNullOrWhiteSpace(request.Gateway)
+            ? request.Gateway.Trim()
+            : null;
+        assignment.ParentInterface = parentInterface;
+        assignment.VlanId = vlanId;
+        assignment.BridgePorts = request.BridgePorts != null
+            ? string.Join(',', request.BridgePorts.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()))
+            : null;
+        assignment.BridgeStp = request.BridgeStp ?? false;
+        assignment.BridgeForwardDelay = request.BridgeForwardDelay;
+        assignment.UpdatedAt = DateTime.UtcNow;
+
+        var saved = await _store.UpsertAsync(assignment);
+        if (!saved)
+        {
+            return (false, "Failed to save assignment", null);
+        }
+
+        await _loggingManager.LogSystemAsync(
+            "Network",
+            "info",
+            "InterfaceAssignmentManager",
+            $"Saved interface assignment {assignment.InterfaceName}",
+            new Dictionary<string, object>
+            {
+                ["interface"] = assignment.InterfaceName,
+                ["type"] = assignment.Type.ToString(),
+                ["role"] = assignment.Role.ToString()
+            });
+
+        return (true, null, assignment);
+    }
+
+    public async Task<(bool Success, string? Error)> DeleteAssignmentAsync(string iface, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(iface))
+        {
+            return (false, "Interface is required");
+        }
+
+        var assignment = await _store.GetAssignmentAsync(iface);
+        if (assignment == null)
+        {
+            return (true, null);
+        }
+
+        var exportResult = await _configManager.ExportAssignmentToUnmanagedAsync(assignment, cancellationToken);
+        if (!exportResult.Success)
+        {
+            return (false, exportResult.Error ?? "Failed to export assignment");
+        }
+
+        var deleted = await _store.DeleteAsync(iface);
+        if (!deleted)
+        {
+            return (false, "Failed to delete assignment");
+        }
+
+        await _loggingManager.LogSystemAsync(
+            "Network",
+            "warning",
+            "InterfaceAssignmentManager",
+            $"Removed interface assignment {iface}",
+            new Dictionary<string, object>
+            {
+                ["interface"] = iface,
+                ["exportedTo"] = _configManager.UnmanagedPath,
+                ["backup"] = exportResult.BackupFile ?? string.Empty
+            });
+
+        return (true, null);
+    }
+
+    public async Task<InterfaceConfigCheckResult> CheckConfigAsync(CancellationToken cancellationToken)
+    {
+        var assignments = await _store.GetAssignmentsAsync();
+        return await _configManager.CheckAsync(assignments, cancellationToken);
+    }
+
+    public async Task<InterfaceApplyResult> ApplyConfigAsync(CancellationToken cancellationToken)
+    {
+        var assignments = await _store.GetAssignmentsAsync();
+        var dnsServers = await _settingsManager.GetDnsServersAsync();
+        var applyResult = await _configManager.ApplyAsync(assignments, dnsServers, cancellationToken);
+        if (applyResult.Success)
+        {
+            var appliedAt = DateTime.UtcNow;
+            foreach (var assignment in assignments)
+            {
+                await _store.UpdateAppliedAsync(assignment.InterfaceName, appliedAt);
+            }
+
+            await UpdateWebUiBindingsAsync(assignments, cancellationToken);
+
+            await _loggingManager.LogSystemAsync(
+                "Network",
+                "info",
+                "InterfaceAssignmentManager",
+                "Applied interface configuration",
+                new Dictionary<string, object>
+                {
+                    ["count"] = assignments.Count,
+                    ["managedFile"] = applyResult.ManagedFile
+                });
+        }
+
+        return applyResult;
+    }
+
+    public async Task<InterfaceApplyNowResult> ApplyNowAsync(CancellationToken cancellationToken)
+    {
+        var commandPath = ResolveApplyCommand();
+        if (string.IsNullOrWhiteSpace(commandPath))
+        {
+            return new InterfaceApplyNowResult
+            {
+                Success = false,
+                Message = "ifreload is not available. Install ifupdown2 to apply interfaces."
+            };
+        }
+
+        var command = new PlatformCommand
+        {
+            FileName = commandPath,
+            Arguments = "-a",
+            UseSudo = true,
+            TimeoutMs = 20000
+        };
+
+        var result = await _commandRunner.RunAsync(command, cancellationToken);
+        if (IsIfupdownBusy(result))
+        {
+            try
+            {
+                await Task.Delay(1500, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Ignore cancellation here; follow the original result.
+            }
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                result = await _commandRunner.RunAsync(command, cancellationToken);
+            }
+        }
+        var success = !result.TimedOut && result.ExitCode == 0;
+        var message = success
+            ? "Interfaces reloaded via ifreload"
+            : BuildApplyNowError(result);
+
+        if (success)
+        {
+            await _loggingManager.LogSystemAsync(
+                "Network",
+                "info",
+                "InterfaceAssignmentManager",
+                "Applied interfaces with ifreload",
+                new Dictionary<string, object>
+                {
+                    ["command"] = $"{command.FileName} {command.Arguments}".Trim(),
+                    ["durationMs"] = result.DurationMs
+                });
+        }
+
+        return new InterfaceApplyNowResult
+        {
+            Success = success,
+            Message = message,
+            Command = $"{command.FileName} {command.Arguments}".Trim(),
+            ExitCode = result.ExitCode,
+            TimedOut = result.TimedOut,
+            StdOut = string.IsNullOrWhiteSpace(result.StdOut) ? null : result.StdOut.Trim(),
+            StdErr = string.IsNullOrWhiteSpace(result.StdErr) ? null : result.StdErr.Trim()
+        };
+    }
+
+    public async Task<InterfaceApplyResult> FixConfigAsync(CancellationToken cancellationToken)
+    {
+        var assignments = await _store.GetAssignmentsAsync();
+        var (removedStanzas, _) = await _configManager.RemoveConflictsAsync(assignments, cancellationToken);
+        var (changed, backup) = await _configManager.EnsureIncludeAsync(cancellationToken);
+        var movedBackups = await _configManager.MoveLegacyBackupsAsync(cancellationToken);
+        var applyResult = await ApplyConfigAsync(cancellationToken);
+        if (applyResult.Success)
+        {
+            if (changed)
+            {
+                applyResult.BackupFile = backup;
+            }
+
+            if (changed || removedStanzas > 0 || movedBackups > 0)
+            {
+                var parts = new List<string>();
+                if (removedStanzas > 0)
+                {
+                    parts.Add($"Removed {removedStanzas} conflicting stanza(s)");
+                }
+
+                if (changed)
+                {
+                    parts.Add("Fixed includes");
+                }
+
+                if (movedBackups > 0)
+                {
+                    parts.Add($"Moved {movedBackups} backup file(s)");
+                }
+
+                applyResult.Message = $"{string.Join(" and ", parts)} and wrote managed configuration";
+            }
+        }
+
+        return applyResult;
+    }
+
+    private static InterfaceAssignmentView BuildAssignmentView(
+        InterfaceAssignmentEntity assignment,
+        IReadOnlyDictionary<string, Monolith.FireWall.Platform.Models.InterfaceInfo> ifaceMap,
+        IReadOnlyDictionary<string, Monolith.FireWall.Platform.Models.AddressInfo> addressMap)
+    {
+        var status = "unknown";
+        if (ifaceMap.TryGetValue(assignment.InterfaceName, out var info))
+        {
+            status = info.IsUp ? "up" : "down";
+        }
+
+        var ip = addressMap.TryGetValue(assignment.InterfaceName, out var addr)
+            ? $"{addr.Address}/{addr.PrefixLength}"
+            : null;
+
+        var ports = assignment.BridgePorts != null
+            ? assignment.BridgePorts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
+            : null;
+
+        return new InterfaceAssignmentView
+        {
+            Interface = assignment.InterfaceName,
+            Name = assignment.Name,
+            Type = assignment.Type.ToString().ToLowerInvariant(),
+            Description = assignment.Description,
+            Status = status,
+            IpAddress = ip,
+            Managed = true,
+            SourceFile = "/etc/network/interfaces.d/monolith",
+            IpMode = assignment.IpMode,
+            Role = assignment.Role,
+            IsManagement = assignment.IsManagement,
+            ConfigAddress = assignment.IpAddress,
+            ConfigPrefixLength = assignment.PrefixLength,
+            Gateway = assignment.Gateway,
+            ParentInterface = assignment.ParentInterface,
+            VlanId = assignment.VlanId,
+            BridgePorts = ports,
+            BridgeStp = assignment.BridgeStp,
+            BridgeForwardDelay = assignment.BridgeForwardDelay
+        };
+    }
+
+    private static InterfaceAssignmentType? ParseType(string value)
+    {
+        if (Enum.TryParse<InterfaceAssignmentType>(value, true, out var parsed))
+        {
+            return parsed;
+        }
+
+        return value.ToLowerInvariant() switch
+        {
+            "physical" => InterfaceAssignmentType.Physical,
+            "vlan" => InterfaceAssignmentType.Vlan,
+            "bridge" => InterfaceAssignmentType.Bridge,
+            _ => null
+        };
+    }
+
+    private static InterfaceIpMode ParseIpMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return InterfaceIpMode.None;
+        }
+
+        if (Enum.TryParse<InterfaceIpMode>(value, true, out var parsed))
+        {
+            return parsed;
+        }
+
+        return value.ToLowerInvariant() switch
+        {
+            "dhcp" => InterfaceIpMode.Dhcp,
+            "static" => InterfaceIpMode.Static,
+            "manual" => InterfaceIpMode.None,
+            "none" => InterfaceIpMode.None,
+            _ => InterfaceIpMode.None
+        };
+    }
+
+    private static InterfaceRole ResolveRole(string? value, InterfaceRole? existing)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return existing ?? InterfaceRole.Opt;
+        }
+
+        if (Enum.TryParse<InterfaceRole>(value, true, out var parsed))
+        {
+            return parsed;
+        }
+
+        return value.ToLowerInvariant() switch
+        {
+            "lan" => InterfaceRole.Lan,
+            "wan" => InterfaceRole.Wan,
+            "opt" => InterfaceRole.Opt,
+            _ => existing ?? InterfaceRole.Opt
+        };
+    }
+
+    private static string? ResolveApplyCommand()
+    {
+        var candidates = new[]
+        {
+            "/usr/sbin/ifreload",
+            "/sbin/ifreload"
+        };
+
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
+    private static string BuildApplyNowError(Monolith.FireWall.Platform.Models.PlatformCommandResult result)
+    {
+        if (result.TimedOut)
+        {
+            return "Interface reload timed out";
+        }
+
+        if (IsIfupdownBusy(result))
+        {
+            return "ifupdown2 is already running. Try again in a few seconds.";
+        }
+
+        var error = string.IsNullOrWhiteSpace(result.StdErr) ? "Interface reload failed" : result.StdErr.Trim();
+        return $"{error} (exit {result.ExitCode})";
+    }
+
+    private static bool IsIfupdownBusy(Monolith.FireWall.Platform.Models.PlatformCommandResult result)
+    {
+        if (result.ExitCode == 89)
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(result.StdErr)
+               && result.StdErr.Contains("already running", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task UpdateWebUiBindingsAsync(
+        IReadOnlyCollection<InterfaceAssignmentEntity> assignments,
+        CancellationToken cancellationToken)
+    {
+        const string bindingsPath = "/etc/monolith-firewall/webui-bindings.json";
+        var managementInterfaces = assignments
+            .Where(a => a.IsManagement)
+            .Select(a => a.InterfaceName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (managementInterfaces.Count == 0)
+        {
+            if (File.Exists(bindingsPath))
+            {
+                File.Delete(bindingsPath);
+            }
+            return;
+        }
+
+        var addresses = await _inventory.ListAddressesAsync(null, cancellationToken);
+        var managementAddresses = addresses
+            .Where(a => managementInterfaces.Contains(a.Interface, StringComparer.OrdinalIgnoreCase))
+            .Where(a => string.Equals(a.Family, "inet", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(a.Family, "inet6", StringComparison.OrdinalIgnoreCase))
+            .Select(a => a.Address)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (managementAddresses.Count == 0)
+        {
+            if (File.Exists(bindingsPath))
+            {
+                File.Delete(bindingsPath);
+            }
+            return;
+        }
+
+        var payload = new WebUiBindings
+        {
+            Addresses = managementAddresses,
+            GeneratedAt = DateTime.UtcNow
+        };
+
+        var directory = Path.GetDirectoryName(bindingsPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(bindingsPath, json, cancellationToken);
+    }
+
+    private sealed class WebUiBindings
+    {
+        public List<string> Addresses { get; set; } = new();
+        public DateTime GeneratedAt { get; set; }
+    }
+
+    private static (string? Address, int? Prefix, string? Error) ParseIp(InterfaceAssignmentRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.AddressCidr))
+        {
+            if (!PlatformValidators.TryParseCidr(request.AddressCidr, out var addr, out var prefix))
+            {
+                return (null, null, "Invalid address CIDR");
+            }
+
+            return (addr.ToString(), prefix, null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Address))
+        {
+            if (!PlatformValidators.IsValidIp(request.Address))
+            {
+                return (null, null, "Invalid IP address");
+            }
+
+            if (!request.PrefixLength.HasValue)
+            {
+                return (null, null, "Prefix length is required for static IP");
+            }
+
+            return (request.Address, request.PrefixLength, null);
+        }
+
+        return (null, null, null);
+    }
+
+    private static bool IsPhysicalInterface(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        if (string.Equals(name, "lo", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (name.Contains('.', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (name.StartsWith("br", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("vlan", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("veth", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+}

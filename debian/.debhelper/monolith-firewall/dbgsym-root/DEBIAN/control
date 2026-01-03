@@ -1,0 +1,12 @@
+Package: monolith-firewall-dbgsym
+Source: monolith-firewall
+Version: 1.0.0-1
+Auto-Built-Package: debug-symbols
+Architecture: amd64
+Maintainer: Monolith FireWall Team <dev@monolithfirewall.org>
+Installed-Size: 131
+Depends: monolith-firewall (= 1.0.0-1)
+Section: debug
+Priority: optional
+Description: debug symbols for monolith-firewall
+Build-Ids: e698c10d5b2bba035e1ac2ae82cf9668179ab9cf

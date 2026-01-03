@@ -1,0 +1,43 @@
+.modules-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.modules-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.modules-toolbar {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 1rem;
+  align-items: center;
+}
+
+.modules-table {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.modules-table .table {
+  margin-bottom: 0;
+}
+
+.modules-table .badge {
+  font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .modules-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .modules-toolbar {
+    grid-template-columns: 1fr;
+  }
+}

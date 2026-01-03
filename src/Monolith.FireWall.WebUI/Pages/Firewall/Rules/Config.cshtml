@@ -1,0 +1,88 @@
+@page "/firewall/rules"
+@{
+    Layout = null;
+}
+
+<div class="package-page firewall-rules-page" data-module="rules" data-package="firewall">
+    <div class="container-fluid p-4">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2 class="page-title">
+                    <svg width="24" height="24" fill="currentColor" viewBox="0 0 16 16" class="me-2">
+                        <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7z"/>
+                    </svg>
+                    Firewall Rules
+                </h2>
+                <p class="text-muted">Define interface policies and packet filtering rules</p>
+            </div>
+        </div>
+
+        <div id="rulesStatusMessage" class="alert d-none"></div>
+
+        <div id="pendingChangesBanner" class="alert alert-warning d-none mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>Pending Changes</strong>
+                    <span class="ms-2">Apply or discard pending firewall rule updates.</span>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-sm btn-outline-primary me-2" id="btnPreviewChanges">Preview</button>
+                    <button type="button" class="btn btn-sm btn-success me-2" id="btnApplyChanges">Apply Changes</button>
+                    <button type="button" class="btn btn-sm btn-secondary" id="btnDiscardChanges">Discard</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Default Policies</h5>
+                <button type="button" class="btn btn-sm btn-primary" id="btnSaveDefaults">Save Defaults</button>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">LAN Default Action</label>
+                        <select class="form-select" id="defaultLanAction">
+                            <option value="pass">Pass</option>
+                            <option value="block">Block</option>
+                            <option value="reject">Reject</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">WAN Default Action</label>
+                        <select class="form-select" id="defaultWanAction">
+                            <option value="pass">Pass</option>
+                            <option value="block">Block</option>
+                            <option value="reject">Reject</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">OPT Default Action</label>
+                        <select class="form-select" id="defaultOptAction">
+                            <option value="pass">Pass</option>
+                            <option value="block">Block</option>
+                            <option value="reject">Reject</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="defaultBlockReserved">
+                            <label class="form-check-label" for="defaultBlockReserved">Block RFC1918 + reserved ranges on WAN</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="defaultAllowWebUi">
+                            <label class="form-check-label" for="defaultAllowWebUi">Allow WebUI on management interfaces</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-3" id="rulesTabs" role="tablist"></ul>
+        <div class="tab-content" id="rulesTabContent"></div>
+    </div>
+</div>

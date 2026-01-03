@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Monolith.FireWall.Common/Monolith.FireWall.Common.csproj" />
+    <Project Path="src/Monolith.FireWall.Platform/Monolith.FireWall.Platform.csproj" />
+    <Project Path="src/Monolith.FireWall.Core/Monolith.FireWall.Core.csproj" />
+    <Project Path="src/Monolith.FireWall.WebUI/Monolith.FireWall.WebUI.csproj" />
+  </Folder>
+</Solution>

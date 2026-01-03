@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Monolith.FireWall.Common/Monolith.FireWall.Common.csproj" />
+    <ProjectReference Include="../Monolith.FireWall.Platform/Monolith.FireWall.Platform.csproj" />
+    <ProjectReference Include="../Libs/CodeLogic3/src/CodeLogic.csproj" />
+    <ProjectReference Include="../Libs/CodeLogic3.Libs/CL.SQLite/CL.SQLite.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="2.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="Pages/Firewall/**">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

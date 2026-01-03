@@ -1,0 +1,23 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    purge)
+        # Remove configuration files on purge
+        if [ -d /etc/monolith-firewall ]; then
+            rm -rf /etc/monolith-firewall
+        fi
+        ;;
+    remove)
+        ;;
+    upgrade|failed-upgrade|abort-upgrade)
+        ;;
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0
