@@ -428,7 +428,11 @@
             Gets or sets the column name
             </summary>
         </member>
-        <!-- Badly formed XML comment ignored for member "P:CL.SQLite.Models.WhereCondition.Operator" -->
+        <member name="P:CL.SQLite.Models.WhereCondition.Operator">
+            <summary>
+            Gets or sets the comparison operator (=, !=, &gt;, &lt;, &gt;=, &lt;=, LIKE, IN, IS, IS NOT)
+            </summary>
+        </member>
         <member name="P:CL.SQLite.Models.WhereCondition.Value">
             <summary>
             Gets or sets the value to compare against

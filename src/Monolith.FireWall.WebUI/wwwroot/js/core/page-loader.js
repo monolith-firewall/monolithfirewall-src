@@ -18,7 +18,8 @@ Monolith.PageLoader = {
         '/system/settings': { module: 'settings', asset: 'settings' },
         '/system/advanced': { module: 'advanced-settings', asset: 'advanced-settings', css: ['advanced-settings'] },
         '/system/routing': { module: 'routing', asset: 'routing', css: ['routing'] },
-        '/system/logs': { module: 'system-logs', asset: 'system-logs', css: ['system-logs'] }
+        '/system/logs': { module: 'system-logs', asset: 'system-logs', css: ['system-logs'] },
+        '/about': { module: 'about', asset: 'about' }
     },
 
     load: async function(pageDef) {
@@ -51,6 +52,14 @@ Monolith.PageLoader = {
         }
 
         await this.loadScript('pages', info.module, info.asset, `page-${info.module}-${info.asset}`);
+        
+        // Load additional scripts for settings tabs
+        if (info.module === 'settings') {
+            await this.loadScript('pages', 'settings', 'settings-system', 'page-settings-system');
+            await this.loadScript('pages', 'settings', 'settings-webui', 'page-settings-webui');
+            await this.loadScript('pages', 'settings', 'settings-advanced', 'page-settings-advanced');
+        }
+        
         this.loadStyles('pages', info.module, info.css || [], `page-${info.module}`);
         this.initModuleByName(info.asset);
     },

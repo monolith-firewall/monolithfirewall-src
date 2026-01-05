@@ -1,0 +1,63 @@
+@page "/setup"
+@model Monolith.FireWall.WebUI.Pages.Setup.IndexModel
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Setup Wizard";
+}
+
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8 col-xl-7">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-gear-fill me-2"></i>
+                        Monolith FireWall - Setup Wizard
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <!-- Progress Bar -->
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted small">Setup Progress</span>
+                            <span class="text-muted small" id="progress-text">0%</span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" 
+                                 id="progress-bar" 
+                                 style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Setup Steps -->
+                    <div id="setup-steps-container">
+                        <!-- Steps will be loaded dynamically -->
+                    </div>
+
+                    <!-- Navigation Buttons -->
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-outline-secondary" id="btn-back" disabled>
+                            <i class="bi bi-arrow-left me-1"></i> Back
+                        </button>
+                        <div>
+                            <button type="button" class="btn btn-outline-warning me-2" id="btn-skip" style="display: none;">
+                                Skip
+                            </button>
+                            <button type="button" class="btn btn-primary" id="btn-next">
+                                Next <i class="bi bi-arrow-right ms-1"></i>
+                            </button>
+                            <button type="button" class="btn btn-success" id="btn-finish" style="display: none;">
+                                <i class="bi bi-check-circle me-1"></i> Finish Setup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/pages/setup.js"></script>
+}

@@ -1,5 +1,5 @@
 /**
- * User Profile Page - pfSense Style with Tabs
+ * User Profile Page with Tabs
  */
 var Monolith = window.Monolith || {};
 window.Monolith = Monolith;

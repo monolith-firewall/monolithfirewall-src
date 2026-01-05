@@ -10,8 +10,6 @@
       "Monolith.FireWall.Core/1.0.0": {
         "dependencies": {
           "BCrypt.Net-Next": "2.0.0",
-          "CL.SQLite": "2.0.0",
-          "CodeLogic": "3.0.0",
           "Monolith.FireWall.Common": "1.0.0",
           "Monolith.FireWall.Platform": "1.0.0",
           "runtimepack.Microsoft.NETCore.App.Runtime.linux-x64": "10.0.1",

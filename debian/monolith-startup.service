@@ -1,0 +1,15 @@
+[Unit]
+Description=Monolith FireWall Startup Manager
+After=monolith-firewall-core.service
+Wants=monolith-firewall-core.service
+Before=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/monolith-firewall/bin/monolith-startup
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

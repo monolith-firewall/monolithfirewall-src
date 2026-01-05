@@ -7,8 +7,8 @@ echo "==============================================================="
 echo ""
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKAGES_DIR="$ROOT_DIR/packages"
-BUILD_DIR="$ROOT_DIR/build/packages"
+PACKAGES_DIR="$ROOT_DIR/tmp/monolithfirewall-packages"
+BUILD_DIR="$ROOT_DIR/build-output/packages"
 PACKAGE_SCRIPT="$ROOT_DIR/build-scripts/package-mfwpkg.sh"
 
 # Create build directory

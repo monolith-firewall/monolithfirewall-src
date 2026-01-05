@@ -27,7 +27,8 @@ Depends: ${shlibs:Depends},
          isc-dhcp-server,
          unbound,
          tcpdump,
-         mtr
+         mtr,
+         socat
 Recommends: traceroute,
             iptables
 Description: Ultra-modular firewall system for Debian

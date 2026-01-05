@@ -16,6 +16,7 @@ public class UnixSocketListener
     private readonly ModuleRegistry _moduleRegistry;
     private readonly Services.Platform.PlatformExecutor _platformExecutor;
     private readonly PackageStateStore _packageStateStore;
+    private readonly SetupManager _setupManager;
     private readonly PackageInstaller _packageInstaller;
     private readonly InterfaceAssignmentManager _interfaceAssignments;
     private readonly RoutingManager _routingManager;
@@ -23,6 +24,9 @@ public class UnixSocketListener
     private readonly MonitoringManager _monitoringManager;
     private readonly SystemSettingsManager _settingsManager;
     private readonly FirewallManager _firewallManager;
+    private readonly StartupManager _startupManager;
+    private readonly WebUiSettingsManager _webUiSettingsManager;
+    private readonly WebUiServiceManager _webUiServiceManager;
     private readonly List<ICoreRequestHandler> _coreHandlers;
     private readonly string _socketPath;
     private readonly int _maxConcurrentConnections;
@@ -42,6 +46,10 @@ public class UnixSocketListener
         MonitoringManager monitoringManager,
         SystemSettingsManager settingsManager,
         FirewallManager firewallManager,
+        SetupManager setupManager,
+        StartupManager startupManager,
+        WebUiSettingsManager webUiSettingsManager,
+        WebUiServiceManager webUiServiceManager,
         string socketPath = "/var/lib/monolith-firewall/run/monolith-core.sock",
         int maxConcurrentConnections = 20)
     {
@@ -49,6 +57,7 @@ public class UnixSocketListener
         _moduleRegistry = moduleRegistry;
         _platformExecutor = platformExecutor;
         _packageStateStore = packageStateStore;
+        _setupManager = setupManager;
         _packageInstaller = packageInstaller;
         _interfaceAssignments = interfaceAssignments;
         _routingManager = routingManager;
@@ -56,6 +65,9 @@ public class UnixSocketListener
         _monitoringManager = monitoringManager;
         _settingsManager = settingsManager;
         _firewallManager = firewallManager;
+        _startupManager = startupManager;
+        _webUiSettingsManager = webUiSettingsManager;
+        _webUiServiceManager = webUiServiceManager;
         _socketPath = socketPath;
         _maxConcurrentConnections = maxConcurrentConnections;
         _cts = new CancellationTokenSource();
@@ -69,7 +81,10 @@ public class UnixSocketListener
             new SystemSettingsHandler(),
             new PackagesHandler(),
             new ModulesHandler(),
-            new FirewallHandler()
+            new FirewallHandler(),
+            new SetupHandler(_setupManager, _logger),
+            new StartupHandler(),
+            new WebUiSettingsHandler()
         };
     }
 
@@ -273,7 +288,10 @@ public class UnixSocketListener
                                 _tuneablesManager,
                                 _monitoringManager,
                                 _settingsManager,
-                                _firewallManager);
+                                _firewallManager,
+                                _startupManager,
+                                _webUiSettingsManager,
+                                _webUiServiceManager);
                             response = await handler.HandleAsync(context, request, cancellationToken);
                         }
                         else

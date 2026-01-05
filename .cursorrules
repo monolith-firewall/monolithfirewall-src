@@ -1,0 +1,277 @@
+# MonolithFireWall Project - Agent Configuration
+
+## Project Overview
+MonolithFireWall is a modular firewall management system built with C# .NET 10.0. It uses a plugin-based architecture where packages (modules) can be dynamically loaded to extend functionality. The system manages firewall rules, network interfaces, routing, monitoring, and system settings.
+
+## Project Structure
+
+### Core Projects (src/)
+- **Monolith.FireWall.Common**: Shared interfaces, models, and utilities used across all projects
+  - Interfaces: `IMonolithModule`, `IMonolithPackage`, `IMonolithModuleLifecycle`, `IPackageContext`, `IModuleContext`, `ILogger`
+  - Models: API models, route models, menu models, permission models, package models, etc.
+  - Services: LoggingManager
+
+- **Monolith.FireWall.Core**: Main executable and core services
+  - Entry point: `Program.cs` - Initializes CodeLogic framework, loads packages, starts Unix socket listener
+  - Services: PackageLoader, PackageScanner, PackageInstaller, ModuleRegistry, FirewallManager, RoutingManager, MonitoringManager, SystemSettingsManager
+  - Transport: UnixSocketListener, NamedPipeListener, request handlers
+  - Models: Firewall models, interface assignment models, routing models, monitoring models
+
+- **Monolith.FireWall.Platform**: Platform abstraction layer
+  - Models: NetworkModels, SystemModels, DiagnosticsModels, PlatformContracts
+  - PlatformClient: Interface to platform services
+  - Validation: PlatformValidators
+
+- **Monolith.FireWall.WebUI**: Web interface (ASP.NET Core)
+  - Razor pages for UI
+  - Services: CoreApiClient, PackageViewRouter, PackageViewsRegistry
+  - Middleware: AuthenticationMiddleware, NoCacheMiddleware
+  - Features: User management, user groups
+
+### Package System (monolithfirewall-packages/)
+Packages are modular extensions that provide specific functionality:
+- **monolith-network**: DHCP and DNS management
+- **monolith-vpn**: IPsec, OpenVPN, and WireGuard support
+- **monolith-diagnostics**: System diagnostics
+
+Each package contains:
+- `manifest.json`: Package metadata, dependencies, firewall intents
+- `Package.cs`: Implements `IMonolithPackage` interface
+- `Modules/`: Module implementations (implement `IMonolithModule`)
+- `Pages/`: Razor pages for UI
+- `wwwroot/`: Static assets (CSS, JS)
+
+### Dependencies (libs/)
+- **CodeLogic3**: Core framework for plugin management, logging, localization, configuration
+  - Path: `../Libs/CodeLogic3/src/CodeLogic.csproj`
+  - Provides: Plugin system, library management, localization, logging infrastructure
+- **CodeLogic3.Libs/CL.SQLite**: SQLite database library
+  - Path: `../Libs/CodeLogic3.Libs/CL.SQLite/CL.SQLite.csproj`
+  - Used for: Entity storage, table synchronization
+
+## Technology Stack
+- **.NET 10.0**: Target framework
+- **C#**: Primary language with nullable reference types enabled
+- **ASP.NET Core**: Web UI (Monolith.FireWall.WebUI)
+- **Razor Pages**: UI rendering
+- **Unix Domain Sockets**: IPC between Core and WebUI
+- **SQLite**: Data persistence via CL.SQLite library
+- **BCrypt.Net-Next**: Password hashing (v2.0.0)
+
+## Key Architecture Patterns
+
+### Package Loading Flow
+1. CodeLogic framework initialization (`CodeLogic.InitializeAsync`)
+2. Package discovery via `PackageScanner.ScanPackagesAsync`
+3. Package loading via `PackageLoader.LoadPackageAsync`
+   - Loads main assembly and optional Views assembly (RCL)
+   - Creates package instance implementing `IMonolithPackage`
+   - Registers localization
+   - Calls `OnLoadAsync` on package
+4. Module registration via `ModuleRegistry.RegisterPackage`
+5. Lifecycle-aware modules get `OnStartAsync` called
+
+### Module System
+- Modules implement `IMonolithModule` interface
+- Provide: Routes, menu items, pages, widgets, templates, services, permissions, cron jobs
+- Can implement `IMonolithModuleLifecycle` for startup/shutdown hooks
+- Modules are registered in `ModuleRegistry` and accessible via Unix socket API
+
+### Firewall Management
+- `FirewallManager` coordinates all firewall operations
+  - `Aliases`: Firewall alias management
+  - `Nat`: NAT rules
+  - `NatSettings`: NAT configuration
+  - `Defaults`: Default firewall policies
+  - `Rules`: Firewall rules (managed and manual)
+  - `ApplyManager`: Applies firewall configuration to system
+- Firewall intents in `manifest.json` are automatically applied on package load
+- Uses `PlatformCommandRunner` to execute system commands (iptables, etc.)
+
+### Transport Layer
+- Unix socket listener at `/var/lib/monolith-firewall/run/monolith-core.sock`
+- Request handlers implement `ICoreRequestHandler`
+- Handlers: SystemMetadataHandler, InterfacesHandler, RoutingHandler, MonitoringHandler, SystemTuneablesHandler, SystemSettingsHandler, PackagesHandler, ModulesHandler, FirewallHandler
+
+### Platform Abstraction
+- `PlatformExecutor`: Executes platform-specific operations with capability checks
+- `PlatformPolicyStore`: Manages platform policies
+- `PlatformCommandRunner`: Runs system commands safely
+- `NetworkInventoryService`: Discovers network interfaces
+- `InterfaceConfigManager`: Manages interface configuration
+
+## Important Interfaces
+
+### IMonolithPackage
+```csharp
+void RegisterLocalizations(ILocalizationManager localization);
+Task OnLoadAsync(IPackageContext context);
+Task OnUnloadAsync(IPackageContext context);
+```
+
+### IMonolithModule
+```csharp
+string Id { get; }
+string Name { get; }
+string PackageId { get; }
+IEnumerable<RouteDefinition> GetRoutes();
+IEnumerable<MenuDefinition> GetMenuItems();
+IEnumerable<PageDefinition> GetPages();
+IEnumerable<WidgetDefinition> GetWidgets();
+IEnumerable<TemplateDefinition> GetTemplates();
+IEnumerable<ServiceDefinition> GetServices();
+IEnumerable<AptDependency> GetAptDependencies();
+IEnumerable<PermissionDefinition> GetRequiredPermissions();
+IEnumerable<SystemPermissionDefinition> GetSystemPermissions();
+IEnumerable<CronJobDefinition> GetCronJobs();
+```
+
+### IMonolithModuleLifecycle
+```csharp
+Task OnStartAsync(IModuleContext context);
+Task OnStopAsync(IModuleContext context);
+```
+
+## File Locations
+
+### Configuration Files
+- Core config: `/var/lib/monolith-firewall/codelogic/core-config.json`
+- CodeLogic config: `/var/lib/monolith-firewall/codelogic/CodeLogic.json`
+- Packages directory: `/var/lib/monolith-firewall/codelogic/Packages/`
+- Plugins directory: `/var/lib/monolith-firewall/plugins`
+- Localization: `/var/lib/monolith-firewall/codelogic/localization/{packageId}/`
+- Logs: `/var/log/monolith-firewall/` (configurable via core-config.json LogDirectory)
+- Unix socket: `/var/lib/monolith-firewall/run/monolith-core.sock`
+
+### Build System
+- Solution file: `MonolithFireWall.slnx`
+- Build scripts: `build-scripts/` directory
+  - `build-all-packages.sh`: Build all packages
+  - `build-deb.sh`: Build Debian package
+  - `build-iso.sh`: Build ISO image
+  - `package-mfwpkg.sh`: Package creation script
+
+## Coding Conventions
+
+### Namespaces
+- Core: `Monolith.FireWall.Core.*`
+- Common: `Monolith.FireWall.Common.*`
+- Platform: `Monolith.FireWall.Platform.*`
+- WebUI: `Monolith.FireWall.WebUI.*`
+- CodeLogic: `CodeLogic.*`
+- CL.SQLite: `CL.SQLite.*`
+
+### Project References
+- All projects reference `Monolith.FireWall.Common`
+- Core and WebUI reference `Monolith.FireWall.Platform`
+- Projects reference libraries from `../Libs/CodeLogic3/` and `../Libs/CodeLogic3.Libs/`
+
+### Nullable Reference Types
+- Enabled in all projects (`<Nullable>enable</Nullable>`)
+- Always check for null when appropriate
+
+### Implicit Usings
+- Enabled in all projects (`<ImplicitUsings>enable</ImplicitUsings>`)
+
+## Database Entities
+Core uses SQLite with the following entities (via CL.SQLite):
+- `InterfaceAssignmentEntity`
+- `StaticRouteEntity`
+- `PackageInstallationEntity`
+- `ModuleStateEntity`
+- `LogEntryEntity`
+- `SystemTuneableEntity`
+- `SystemSettingsEntity`
+- `MonitorDefinitionEntity`
+- `MonitorStatusEntity`
+- `SystemNotificationEntity`
+- `FirewallAliasEntity`
+- `FirewallAliasEntryEntity`
+- `FirewallNatRuleEntity`
+- `FirewallNatSettingsEntity`
+- `FirewallRuleEntity`
+- `FirewallDefaultsEntity`
+
+## Package Manifest Structure
+```json
+{
+  "id": "package-id",
+  "name": "Package Name",
+  "version": "1.0.0",
+  "description": "Description",
+  "author": "Author",
+  "dependencies": [],
+  "firewallIntents": [
+    {
+      "moduleId": "module-id",
+      "interface": "eth0",  // or "interfaceRole": "lan"
+      "direction": "in|out",
+      "action": "pass|block|reject",
+      "addressFamily": "ipv4|ipv6",
+      "protocol": "tcp|udp|icmp|any",
+      "sourceType": "any|network|host|alias",
+      "sourceValue": "...",
+      "sourcePort": "...",
+      "destinationType": "any|network|host|alias",
+      "destinationValue": "...",
+      "destinationPort": "...",
+      "description": "Rule description",
+      "enabled": true
+    }
+  ]
+}
+```
+
+## Development Guidelines
+
+### Adding a New Package
+1. Create package directory in `monolithfirewall-packages/`
+2. Create `manifest.json` with package metadata
+3. Implement `Package.cs` with `IMonolithPackage`
+4. Create modules implementing `IMonolithModule` in `Modules/` directory
+5. Add Razor pages in `Pages/` if UI needed
+6. Add static assets in `wwwroot/` if needed
+7. Reference `Monolith.FireWall.Common` in `.csproj`
+
+### Adding a New Module
+1. Create module class implementing `IMonolithModule`
+2. Implement all required provider methods
+3. Optionally implement `IMonolithModuleLifecycle` for lifecycle hooks
+4. Register module in package's module discovery
+
+### Adding Core Functionality
+1. Add models in appropriate `Models/` directory
+2. Add services in `Services/` directory
+3. Add request handlers in `Transport/Handlers/` if API needed
+4. Register handlers in `UnixSocketListener` constructor
+5. Add database entities if persistence needed
+
+### Testing
+- Use Unix socket API for integration testing
+- Test package loading and module registration
+- Verify firewall intents are applied correctly
+- Test platform command execution
+
+## Important Notes
+- The system requires root/administrative privileges for network and firewall operations
+- Packages are loaded dynamically at runtime
+- Razor Class Libraries (RCL) are supported for package views
+- Localization is managed per-package via CodeLogic localization system
+- Platform capabilities are checked before executing privileged operations
+- Firewall rules can be managed (package-controlled) or manual (user-controlled)
+
+## Common Tasks
+
+### Building
+- Build solution: `dotnet build MonolithFireWall.slnx`
+- Build specific project: `dotnet build src/Monolith.FireWall.Core/Monolith.FireWall.Core.csproj`
+- Build packages: `./build-scripts/build-all-packages.sh`
+
+### Running
+- Core executable: `src/Monolith.FireWall.Core/bin/Debug/net10.0/Monolith.FireWall.Core`
+- WebUI: `src/Monolith.FireWall.WebUI/bin/Debug/net10.0/Monolith.FireWall.WebUI`
+
+### Debugging
+- Enable debug mode in core config: `"enableDebugMode": true`
+- Check logs in `/var/log/monolith-firewall/` (configurable via core-config.json)
+- Use Unix socket for API testing: `socat - UNIX-CONNECT:/var/lib/monolith-firewall/run/monolith-core.sock`

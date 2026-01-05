@@ -16,7 +16,10 @@ public sealed class CoreRequestContext
         SystemTuneablesManager tuneablesManager,
         MonitoringManager monitoringManager,
         SystemSettingsManager settingsManager,
-        FirewallManager firewallManager)
+        FirewallManager firewallManager,
+        StartupManager startupManager,
+        WebUiSettingsManager webUiSettingsManager,
+        WebUiServiceManager webUiServiceManager)
     {
         Logger = logger;
         ModuleRegistry = moduleRegistry;
@@ -28,6 +31,9 @@ public sealed class CoreRequestContext
         MonitoringManager = monitoringManager;
         SettingsManager = settingsManager;
         FirewallManager = firewallManager;
+        StartupManager = startupManager;
+        WebUiSettingsManager = webUiSettingsManager;
+        WebUiServiceManager = webUiServiceManager;
     }
 
     public ILogger Logger { get; }
@@ -40,4 +46,7 @@ public sealed class CoreRequestContext
     public MonitoringManager MonitoringManager { get; }
     public SystemSettingsManager SettingsManager { get; }
     public FirewallManager FirewallManager { get; }
+    public StartupManager StartupManager { get; }
+    public WebUiSettingsManager WebUiSettingsManager { get; }
+    public WebUiServiceManager WebUiServiceManager { get; }
 }

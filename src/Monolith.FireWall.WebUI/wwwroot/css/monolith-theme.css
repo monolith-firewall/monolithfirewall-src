@@ -1,4 +1,4 @@
-/* MonolithFireWall - Modern pfSense Theme */
+/* Monolith Firewall - Modern Theme */
 
 :root {
     /* Modern Color Palette */
@@ -105,8 +105,8 @@ body {
 }
 
 .top-navbar .brand-icon {
-    font-size: 1.75rem;
-    margin-right: 0.75rem;
+    font-size: 1.25rem;
+    margin-right: 0.5rem;
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
 }
 
@@ -115,6 +115,8 @@ body {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    font-size: 1rem;
+    font-weight: 600;
 }
 
 .top-navbar .navbar-nav {
@@ -130,8 +132,9 @@ body {
 
 .top-navbar .nav-link {
     color: #ffffff !important;
-    padding: 1rem 1.25rem;
+    padding: 0.75rem 1rem;
     font-weight: 500;
+    font-size: 0.875rem;
     transition: all 0.3s ease;
     border-bottom: 2px solid transparent;
     margin: 0;
@@ -165,8 +168,8 @@ body {
 }
 
 .top-navbar .nav-icon {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     fill: #ffffff !important;
     color: #ffffff !important;
     opacity: 1 !important;
@@ -234,10 +237,11 @@ body {
 
 .top-navbar .dropdown-item {
     color: #1e293b !important;
-    padding: 0.625rem 1.25rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
     display: flex;
     align-items: center;
-    gap: 0.625rem;
+    gap: 0.5rem;
     transition: all 0.2s ease;
 }
 
@@ -270,13 +274,15 @@ body {
 .top-navbar .dropdown-item:hover {
     background: linear-gradient(90deg, var(--light) 0%, #ffffff 100%);
     color: var(--primary);
-    padding-left: 1.5rem;
+    padding-left: 1.25rem;
 }
 
 .top-navbar .dropdown-icon {
     fill: var(--text) !important;
     color: var(--text) !important;
     opacity: 0.8;
+    width: 12px;
+    height: 12px;
 }
 
 .top-navbar .dropdown-item:hover .dropdown-icon {
@@ -1031,7 +1037,7 @@ body {
     to { opacity: 1; transform: translateX(0); }
 }
 
-/* pfSense-style Interface Indicators */
+/* Interface Indicators */
 .top-navbar .dropdown-item .badge {
     display: inline-block;
     width: 8px;
@@ -1058,7 +1064,7 @@ body {
     50% { opacity: 0.6; }
 }
 
-/* Interface menu items - pfSense style */
+/* Interface menu items */
 #interfaces-menu .dropdown-item {
     position: relative;
     padding-left: 2rem;

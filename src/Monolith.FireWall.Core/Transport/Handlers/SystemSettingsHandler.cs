@@ -9,7 +9,8 @@ public sealed class SystemSettingsHandler : ICoreRequestHandler
     private static readonly HashSet<string> Actions = new(StringComparer.OrdinalIgnoreCase)
     {
         "system.settings.get",
-        "system.settings.update"
+        "system.settings.update",
+        "system.settings.timezones"
     };
 
     public bool CanHandle(string action) => Actions.Contains(action);
@@ -38,6 +39,10 @@ public sealed class SystemSettingsHandler : ICoreRequestHandler
 
                 var updatedSettings = await context.SettingsManager.GetSettingsAsync();
                 return new ApiResponse(true, updatedSettings, null);
+
+            case "system.settings.timezones":
+                var timezones = await context.SettingsManager.GetTimezonesAsync();
+                return new ApiResponse(true, new { timezones }, null);
         }
 
         return new ApiResponse(false, null, $"Unhandled action: {action}");

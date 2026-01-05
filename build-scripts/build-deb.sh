@@ -12,6 +12,11 @@ if [ ! -f "debian/control" ]; then
     exit 1
 fi
 
+# Set build output directory
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_OUTPUT_DIR="$ROOT_DIR/build-output"
+mkdir -p "$BUILD_OUTPUT_DIR"
+
 # WSL/NTFS permission caveat (dpkg-deb rejects 777 on /mnt)
 if grep -qi microsoft /proc/version 2>/dev/null; then
     case "$PWD" in
@@ -63,14 +68,30 @@ chmod +x debian/postrm
 # Build the package
 dpkg-buildpackage -us -uc -b
 
+# Move .deb files to build-output directory
+echo ""
+echo "→ Moving package files to build-output/..."
+mv ../monolith-firewall_*.deb "$BUILD_OUTPUT_DIR/" 2>/dev/null || true
+mv ../monolith-firewall_*.changes "$BUILD_OUTPUT_DIR/" 2>/dev/null || true
+mv ../monolith-firewall_*.buildinfo "$BUILD_OUTPUT_DIR/" 2>/dev/null || true
+
+DEB_FILE=$(ls "$BUILD_OUTPUT_DIR"/monolith-firewall_*.deb 2>/dev/null | head -1)
+
 echo ""
 echo "═══════════════════════════════════════════════════════════════"
 echo "  Build Complete!"
 echo "═══════════════════════════════════════════════════════════════"
 echo ""
-echo "Package created: ../monolith-firewall_1.0.0-1_amd64.deb"
-echo ""
-echo "To install:"
-echo "  sudo dpkg -i ../monolith-firewall_1.0.0-1_amd64.deb"
-echo "  sudo apt-get -f install  # Fix any dependencies"
+if [ -n "$DEB_FILE" ]; then
+    echo "Package created: $DEB_FILE"
+    echo ""
+    echo "To install:"
+    echo "  sudo dpkg -i $DEB_FILE"
+    echo "  sudo apt-get -f install  # Fix any dependencies"
+else
+    echo "Package created: $BUILD_OUTPUT_DIR/monolith-firewall_*.deb"
+    echo ""
+    echo "To install:"
+    echo "  sudo dpkg -i $BUILD_OUTPUT_DIR/monolith-firewall_*.deb"
+fi
 echo ""

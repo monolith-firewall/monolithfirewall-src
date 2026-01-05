@@ -1,0 +1,15 @@
+{
+  "packages": [
+    {
+      "id": "monolith-network",
+      "name": "Monolith Network",
+      "version": "0.0.0-dev",
+      "description": "Development feed example",
+      "downloadUrl": "http://localhost:8081/monolith-network-0.0.0-dev.mfwpkg",
+      "sha256": "PUT_SHA256_OF_MFWPKG_HERE",
+      "requiresRestart": false,
+      "minCoreVersion": "1.0.0"
+    }
+  ]
+}
+

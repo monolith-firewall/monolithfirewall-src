@@ -39,6 +39,13 @@ override_dh_auto_install:
 		cp -r src/Monolith.FireWall.WebUI/Pages/Firewall $(CURDIR)/debian/tmp/opt/monolith-firewall/webui/Pages/; \
 	fi
 
+	# Build CLI tool
+	dotnet publish src/Monolith.FireWall.CLI/Monolith.FireWall.CLI.csproj \
+		-c Release \
+		-r linux-x64 \
+		--self-contained true \
+		-o $(CURDIR)/debian/tmp/opt/monolith-firewall/cli
+
 	# Build PackageManager (if exists)
 	if [ -f "src/Monolith.FireWall.PackageManager/Monolith.FireWall.PackageManager.csproj" ]; then \
 		dotnet publish src/Monolith.FireWall.PackageManager/Monolith.FireWall.PackageManager.csproj \
@@ -53,6 +60,18 @@ override_dh_auto_install:
 		$(CURDIR)/debian/tmp/lib/systemd/system/monolith-firewall-core.service
 	install -D -m 644 debian/systemd/monolith-firewall-webui.service \
 		$(CURDIR)/debian/tmp/lib/systemd/system/monolith-firewall-webui.service
+	# Install first boot service
+	install -D -m 644 debian/monolith-firstboot.service \
+		$(CURDIR)/debian/tmp/lib/systemd/system/monolith-firstboot.service
+	# Install first boot script
+	install -D -m 755 debian/monolith-firstboot.sh \
+		$(CURDIR)/debian/tmp/opt/monolith-firewall/bin/monolith-firstboot.sh
+	# Install startup service
+	install -D -m 644 debian/monolith-startup.service \
+		$(CURDIR)/debian/tmp/lib/systemd/system/monolith-startup.service
+	# Install startup script
+	install -D -m 755 debian/monolith-startup.sh \
+		$(CURDIR)/debian/tmp/opt/monolith-firewall/bin/monolith-startup
 
 	# Install ifupdown2 policy overrides
 	install -D -m 644 debian/ifupdown2-policy/monolith.json \
@@ -65,14 +84,22 @@ override_dh_auto_install:
 	install -d $(CURDIR)/debian/tmp/usr/bin
 
 	# Copy Monolith.System package if it exists
-	if [ -f "build/packages/monolith-system.mfwpkg" ]; then \
-		install -m 644 build/packages/monolith-system.mfwpkg $(CURDIR)/debian/tmp/var/lib/monolith-firewall/packages/; \
+	if [ -f "build-output/packages/monolith-system.mfwpkg" ]; then \
+		install -m 644 build-output/packages/monolith-system.mfwpkg $(CURDIR)/debian/tmp/var/lib/monolith-firewall/packages/; \
 	fi
 
-	# Create symlink for package manager (if exists)
+	# Create symlink for CLI tool
+	if [ -f "$(CURDIR)/debian/tmp/opt/monolith-firewall/cli/Monolith.FireWall.CLI" ]; then \
+		ln -sf /opt/monolith-firewall/cli/Monolith.FireWall.CLI \
+			$(CURDIR)/debian/tmp/usr/bin/monolith; \
+		ln -sf /opt/monolith-firewall/cli/Monolith.FireWall.CLI \
+			$(CURDIR)/debian/tmp/usr/bin/monolith-pkgmgr; \
+	fi
+
+	# Create symlink for package manager (if exists - legacy)
 	if [ -f "$(CURDIR)/debian/tmp/opt/monolith-firewall/pkgmgr/Monolith.FireWall.PackageManager" ]; then \
 		ln -sf /opt/monolith-firewall/pkgmgr/Monolith.FireWall.PackageManager \
-			$(CURDIR)/debian/tmp/usr/bin/monolith-pkgmgr; \
+			$(CURDIR)/debian/tmp/usr/bin/monolith-pkgmgr-legacy; \
 	fi
 
 override_dh_install:

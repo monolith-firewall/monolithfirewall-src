@@ -12,7 +12,7 @@ public record PackageManifest(
     string[]? AptDependencies = null,
     string? MinCoreVersion = null,
     string? MaxCoreVersion = null,
-    bool RequiresRestart = true,
+    bool RequiresRestart = false,
     FirewallIntentDefinition[]? FirewallIntents = null
 );
 

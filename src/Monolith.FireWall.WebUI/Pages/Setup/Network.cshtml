@@ -1,0 +1,230 @@
+@page "/setup/network"
+@model Monolith.FireWall.WebUI.Pages.Setup.NetworkModel
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Network Setup";
+}
+
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8 col-xl-7">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-router me-2"></i>
+                        Network Configuration
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-4">
+                        Configure your WAN and LAN interfaces. The network package must be installed for this step.
+                    </p>
+
+                    <div id="network-setup-container">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3 text-muted">Loading network interfaces...</p>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning mt-3" id="network-package-warning" style="display: none;">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Network package not installed.</strong> Please install the network package to configure interfaces.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            loadNetworkInterfaces();
+        });
+
+        function loadNetworkInterfaces() {
+            // Check if network package is installed
+            Monolith.API.get('/api/setup/packages')
+                .then(data => {
+                    const hasNetworkPackage = data.packages.some(p => p.packageId === 'monolith-network');
+                    
+                    if (!hasNetworkPackage) {
+                        $('#network-package-warning').show();
+                        $('#network-setup-container').html(`
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle me-2"></i>
+                                The network package will be available after installation. You can configure interfaces later in the Network settings.
+                            </div>
+                        `);
+                        return;
+                    }
+
+                    // Load interfaces
+                    Monolith.API.get('/api/interfaces/list')
+                        .then(data => {
+                            renderNetworkSetup(data.interfaces || []);
+                        })
+                        .catch(err => {
+                            console.error('Failed to load interfaces:', err);
+                            $('#network-setup-container').html(`
+                                <div class="alert alert-danger">
+                                    <i class="bi bi-exclamation-circle me-2"></i>
+                                    Failed to load network interfaces. Please try again later.
+                                </div>
+                            `);
+                        });
+                })
+                .catch(err => {
+                    console.error('Failed to check packages:', err);
+                    $('#network-setup-container').html(`
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            Unable to verify network package. You can configure interfaces later in Network settings.
+                        </div>
+                    `);
+                });
+        }
+
+        function renderNetworkSetup(interfaces) {
+            const html = `
+                <form id="network-setup-form">
+                    <div class="mb-4">
+                        <h6>WAN Interface</h6>
+                        <select class="form-select" id="wan-interface">
+                            <option value="">Select WAN interface...</option>
+                            ${interfaces.map(iface => 
+                                `<option value="${iface.name}">${iface.name} ${iface.description ? `(${iface.description})` : ''}</option>`
+                            ).join('')}
+                        </select>
+                        <div class="form-text">External/Internet-facing interface</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h6>LAN Interface</h6>
+                        <select class="form-select" id="lan-interface">
+                            <option value="">Select LAN interface...</option>
+                            ${interfaces.map(iface => 
+                                `<option value="${iface.name}">${iface.name} ${iface.description ? `(${iface.description})` : ''}</option>`
+                            ).join('')}
+                        </select>
+                        <div class="form-text">Internal/Local network interface</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <h6>LAN IP Configuration</h6>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="lan-config" id="lan-dhcp" value="dhcp" checked>
+                            <label class="form-check-label" for="lan-dhcp">
+                                DHCP (Automatic)
+                            </label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="radio" name="lan-config" id="lan-static" value="static">
+                            <label class="form-check-label" for="lan-static">
+                                Static IP
+                            </label>
+                        </div>
+
+                        <div id="lan-static-config" style="display: none;">
+                            <div class="mb-2">
+                                <label for="lan-ip" class="form-label">IP Address</label>
+                                <input type="text" class="form-control" id="lan-ip" placeholder="192.168.1.1">
+                            </div>
+                            <div class="mb-2">
+                                <label for="lan-netmask" class="form-label">Netmask</label>
+                                <input type="text" class="form-control" id="lan-netmask" placeholder="255.255.255.0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="gateway" class="form-label">Default Gateway</label>
+                        <input type="text" class="form-control" id="gateway" placeholder="192.168.1.1">
+                        <div class="form-text">Gateway IP address (usually your router)</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">DNS Servers</label>
+                        <div id="dns-servers-list" class="d-grid gap-2 mb-2"></div>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="add-dns-server">
+                            <i class="bi bi-plus-circle me-1"></i> Add DNS Server
+                        </button>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Note:</strong> These settings can be configured in detail later in Network Settings.
+                    </div>
+                </form>
+            `;
+
+            $('#network-setup-container').html(html);
+
+            // Setup event handlers
+            $('input[name="lan-config"]').on('change', function() {
+                $('#lan-static-config').toggle($(this).val() === 'static');
+            });
+
+            $('#add-dns-server').on('click', function() {
+                addDnsServer('');
+            });
+
+            // Load current DNS settings
+            Monolith.API.get('/api/system/settings')
+                .then(data => {
+                    if (data.dnsServers && data.dnsServers.length > 0) {
+                        data.dnsServers.forEach(server => addDnsServer(server));
+                    } else {
+                        addDnsServer('8.8.8.8');
+                        addDnsServer('8.8.4.4');
+                    }
+                });
+        }
+
+        function addDnsServer(value = '') {
+            const container = $('#dns-servers-list');
+            const id = 'dns-' + Date.now();
+            const html = `
+                <div class="input-group" data-dns-id="${id}">
+                    <input type="text" class="form-control" value="${value}" 
+                           placeholder="e.g., 8.8.8.8">
+                    <button type="button" class="btn btn-outline-danger" onclick="removeDnsServer('${id}')">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            `;
+            container.append(html);
+        }
+
+        function removeDnsServer(id) {
+            $(`[data-dns-id="${id}"]`).remove();
+        }
+
+        // Export for setup.js
+        window.getNetworkSetupData = function() {
+            const dnsServers = [];
+            $('#dns-servers-list input').each(function() {
+                const val = $(this).val().trim();
+                if (val) dnsServers.push(val);
+            });
+
+            return {
+                wanInterface: $('#wan-interface').val(),
+                lanInterface: $('#lan-interface').val(),
+                lanConfig: $('input[name="lan-config"]:checked').val(),
+                lanIp: $('#lan-ip').val(),
+                lanNetmask: $('#lan-netmask').val(),
+                gateway: $('#gateway').val(),
+                dnsServers: dnsServers
+            };
+        };
+
+        window.validateNetworkSetup = function() {
+            // Network setup is optional - can be skipped
+            return true;
+        };
+    </script>
+}

@@ -1,4 +1,4 @@
-// Interfaces Page - pfSense Style
+// Interfaces Page
 var Interfaces = {
     assignments: [],
     vlans: [],

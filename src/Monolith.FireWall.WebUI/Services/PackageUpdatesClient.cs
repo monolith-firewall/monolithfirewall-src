@@ -70,11 +70,31 @@ public sealed class PackageUpdatesClient
 
         foreach (var pkg in packagesEl.EnumerateArray())
         {
-            var id = GetString(pkg, "id") ?? GetString(pkg, "packageId") ?? "";
+            var id =
+                GetString(pkg, "id") ??
+                GetString(pkg, "packageId") ??
+                GetString(pkg, "package_id") ??
+                "";
             var name = GetString(pkg, "name") ?? id;
             var version = GetString(pkg, "version") ?? "";
             var description = GetString(pkg, "description") ?? "";
-            var downloadUrl = GetString(pkg, "downloadUrl") ?? GetString(pkg, "url") ?? "";
+            var downloadUrl =
+                GetString(pkg, "downloadUrl") ??
+                GetString(pkg, "download_url") ??
+                GetString(pkg, "url") ??
+                "";
+            var sha256 =
+                GetString(pkg, "sha256") ??
+                GetString(pkg, "sha_256") ??
+                GetString(pkg, "checksum") ??
+                GetString(pkg, "hash") ??
+                null;
+            var category =
+                GetString(pkg, "category") ??
+                GetString(pkg, "Category") ??
+                GetString(pkg, "group") ??
+                GetString(pkg, "Group") ??
+                null;
 
             results.Add(new AvailablePackage
             {
@@ -83,6 +103,8 @@ public sealed class PackageUpdatesClient
                 Version = version,
                 Description = description,
                 DownloadUrl = downloadUrl,
+                Sha256 = sha256,
+                Category = category,
                 Author = GetString(pkg, "author"),
                 Homepage = GetString(pkg, "homepage"),
                 ReleaseNotes = GetString(pkg, "releaseNotes")
@@ -108,4 +130,6 @@ public sealed class AvailablePackage
     public string? Homepage { get; set; }
     public string? ReleaseNotes { get; set; }
     public string DownloadUrl { get; set; } = string.Empty;
+    public string? Sha256 { get; set; }
+    public string? Category { get; set; }
 }

@@ -15,12 +15,11 @@ StandardError=journal
 
 # Security settings
 NoNewPrivileges=false
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
+PrivateTmp=false
+ProtectSystem=false
+ProtectHome=false
 RuntimeDirectory=monolith-firewall
 RuntimeDirectoryMode=0755
-ReadWritePaths=/var/lib/monolith-firewall /etc/monolith-firewall /etc/network /run/monolith-firewall /run/network /opt/monolith-firewall/packages
 
 [Install]
 WantedBy=multi-user.target

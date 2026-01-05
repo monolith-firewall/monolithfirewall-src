@@ -193,7 +193,7 @@ Monolith.Menu = {
             // Don't navigate - just toggle submenu
         });
 
-        // Hover support for submenus (pfSense style) - manual positioning
+        // Hover support for submenus - manual positioning
         $(document).off('mouseenter', '#packages-menu .dropend');
         $(document).on('mouseenter', '#packages-menu .dropend', function(e) {
             const $dropend = $(this);

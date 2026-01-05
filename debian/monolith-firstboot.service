@@ -1,0 +1,15 @@
+[Unit]
+Description=Monolith FireWall First Boot Package Installer
+After=monolith-firewall-core.service
+Wants=monolith-firewall-core.service
+ConditionPathExists=/var/lib/monolith-firewall/.firstboot
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/monolith-firewall/bin/monolith-firstboot.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

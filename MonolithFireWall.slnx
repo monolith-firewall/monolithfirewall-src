@@ -4,5 +4,6 @@
     <Project Path="src/Monolith.FireWall.Platform/Monolith.FireWall.Platform.csproj" />
     <Project Path="src/Monolith.FireWall.Core/Monolith.FireWall.Core.csproj" />
     <Project Path="src/Monolith.FireWall.WebUI/Monolith.FireWall.WebUI.csproj" />
+    <Project Path="src/Monolith.FireWall.CLI/Monolith.FireWall.CLI.csproj" />
   </Folder>
 </Solution>

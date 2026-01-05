@@ -5,6 +5,8 @@ using Monolith.FireWall.Common.Models;
 using Monolith.FireWall.Common.Services;
 using Monolith.FireWall.Core.Configuration;
 using Monolith.FireWall.Core.Models;
+using Monolith.FireWall.Core.Services.Platform;
+using Monolith.FireWall.Platform.Models;
 
 namespace Monolith.FireWall.Core.Services;
 
@@ -17,6 +19,13 @@ public sealed class PackageInstaller
     private readonly PackageStateStore _stateStore;
     private readonly LoggingManager _loggingManager;
     private readonly CoreConfiguration _config;
+    private readonly PlatformCommandRunner _commandRunner;
+
+    private static readonly string[] RestartUnits =
+    {
+        "monolith-firewall-core.service",
+        "monolith-firewall-webui.service"
+    };
 
     public PackageInstaller(
         ILogger logger,
@@ -24,6 +33,7 @@ public sealed class PackageInstaller
         PackageLoader loader,
         ModuleRegistry registry,
         PackageStateStore stateStore,
+        PlatformCommandRunner commandRunner,
         CoreConfiguration config)
     {
         _logger = logger;
@@ -32,6 +42,7 @@ public sealed class PackageInstaller
         _registry = registry;
         _stateStore = stateStore;
         _config = config;
+        _commandRunner = commandRunner;
         _loggingManager = LoggingManager.Instance;
     }
 
@@ -142,6 +153,84 @@ public sealed class PackageInstaller
                 // Best effort cleanup.
             }
         }
+    }
+
+    public void ScheduleRestartIfNeeded(bool restartServices, bool requiresRestart, string packageId)
+    {
+        if (!restartServices || !requiresRestart)
+        {
+            return;
+        }
+
+        // Return success to caller first, then restart in background.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(1500));
+
+                if (!_commandRunner.CommandExists("systemctl") && !_commandRunner.CommandExists("/bin/systemctl") && !_commandRunner.CommandExists("/usr/bin/systemctl"))
+                {
+                    await _loggingManager.LogMonolithAsync(
+                        "Package",
+                        "warning",
+                        "PackageInstaller",
+                        "Restart requested but systemctl not found",
+                        null,
+                        null,
+                        new Dictionary<string, object>
+                        {
+                            ["packageId"] = packageId
+                        });
+                    return;
+                }
+
+                var cmd = new PlatformCommand
+                {
+                    FileName = "systemctl",
+                    Arguments = $"restart {string.Join(" ", RestartUnits)}",
+                    TimeoutMs = 60_000,
+                    UseSudo = false
+                };
+
+                var result = await _commandRunner.RunAsync(cmd, CancellationToken.None);
+                if (result.ExitCode != 0)
+                {
+                    await _loggingManager.LogMonolithAsync(
+                        "Package",
+                        "error",
+                        "PackageInstaller",
+                        "Service restart failed after package install",
+                        null,
+                        null,
+                        new Dictionary<string, object>
+                        {
+                            ["packageId"] = packageId,
+                            ["exitCode"] = result.ExitCode,
+                            ["stderr"] = result.StdErr ?? string.Empty
+                        });
+                }
+                else
+                {
+                    await _loggingManager.LogMonolithAsync(
+                        "Package",
+                        "info",
+                        "PackageInstaller",
+                        "Services restarted after package install",
+                        null,
+                        null,
+                        new Dictionary<string, object>
+                        {
+                            ["packageId"] = packageId,
+                            ["units"] = string.Join(",", RestartUnits)
+                        });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to restart services after package install");
+            }
+        });
     }
 
     public async Task<PackageInstallResult> RemoveAsync(string packageId, CancellationToken cancellationToken)

@@ -32,6 +32,14 @@ public sealed class PackagesHandler : ICoreRequestHandler
                     installRequest.PackageId,
                     cancellationToken);
 
+                if (installResult.Success)
+                {
+                    context.PackageInstaller.ScheduleRestartIfNeeded(
+                        installRequest.RestartServices,
+                        installResult.RequiresRestart,
+                        installRequest.PackageId);
+                }
+
                 return installResult.Success
                     ? new ApiResponse(true, new
                     {

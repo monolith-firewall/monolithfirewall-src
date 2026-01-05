@@ -27,4 +27,10 @@ public interface IMonolithModule
     IEnumerable<PermissionDefinition> GetRequiredPermissions();
     IEnumerable<SystemPermissionDefinition> GetSystemPermissions();
     IEnumerable<CronJobDefinition> GetCronJobs();
+    
+    /// <summary>
+    /// Get setup wizard pages provided by this module.
+    /// Returns empty enumerable if module doesn't provide setup pages.
+    /// </summary>
+    IEnumerable<ISetupWizardPage> GetSetupWizardPages();
 }

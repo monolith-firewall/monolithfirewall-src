@@ -1,22 +1,57 @@
 #!/bin/bash
 set -e
 
+# Optional debug controls (used by build-iso-debug.sh)
+# - MONOLITH_ISO_WORKDIR: override work directory
+# - MONOLITH_ISO_KEEP_WORKDIR=1: don't delete workdir
+# - MONOLITH_ISO_DEBUG_LOG: write full build log to this file (also prints to console)
+# - MONOLITH_ISO_DEBUG_TRACE=1: enable shell tracing (set -x)
+# - MONOLITH_PRESEED_FILE: use an alternate preseed cfg
+# - MONOLITH_ISO_LATE_SCRIPT: copy a helper script onto ISO root for late_command use
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ISO_WORKDIR="${MONOLITH_ISO_WORKDIR:-/tmp/monolith-iso}"
+KEEP_WORKDIR="${MONOLITH_ISO_KEEP_WORKDIR:-0}"
+DEBUG_LOG="${MONOLITH_ISO_DEBUG_LOG:-}"
+DEBUG_TRACE="${MONOLITH_ISO_DEBUG_TRACE:-0}"
+
+if [ -n "$DEBUG_LOG" ]; then
+    mkdir -p "$(dirname "$DEBUG_LOG")"
+    exec > >(tee -a "$DEBUG_LOG") 2>&1
+fi
+
+if [ "$DEBUG_TRACE" = "1" ]; then
+    set -x
+fi
+
+trap 'rc=$?; echo "ERROR: build-iso.sh failed (exit=$rc) at line $LINENO"; echo "Workdir: '"$ISO_WORKDIR"'"; exit $rc' ERR
+
 echo "═══════════════════════════════════════════════════════════════"
 echo "  Monolith FireWall - ISO Builder"
 echo "═══════════════════════════════════════════════════════════════"
 echo ""
 
 # Configuration
-ISO_WORKDIR="/tmp/monolith-iso"
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="${1:-1.0.0}"
-ISO_OUTPUT="${ROOT_DIR}/monolith-firewall-${VERSION}-amd64.iso"
+BUILD_OUTPUT_DIR="${ROOT_DIR}/build-output"
+mkdir -p "$BUILD_OUTPUT_DIR"
+ISO_OUTPUT="${BUILD_OUTPUT_DIR}/monolith-firewall-${VERSION}-amd64.iso"
 DEBIAN_VERSION="13.2.0"
 
 # Check dependencies
 echo "→ Checking dependencies..."
 MISSING_DEPS=()
-for cmd in wget 7z genisoimage isohybrid apt-ftparchive; do
+# Use xorriso for EFI boot support (preferred) or genisoimage as fallback
+if command -v xorriso &> /dev/null; then
+    ISO_TOOL="xorriso"
+elif command -v genisoimage &> /dev/null; then
+    ISO_TOOL="genisoimage"
+    echo "WARNING: Using genisoimage (limited EFI support). Consider installing xorriso for full EFI support."
+else
+    MISSING_DEPS+=("xorriso or genisoimage")
+fi
+
+for cmd in wget 7z isohybrid apt-ftparchive; do
     if ! command -v "$cmd" &> /dev/null; then
         MISSING_DEPS+=("$cmd")
     fi
@@ -29,14 +64,14 @@ if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     done
     echo ""
     echo "Install with:"
-    echo "  sudo apt-get install -y p7zip-full genisoimage syslinux-utils apt-utils"
+    echo "  sudo apt-get install -y p7zip-full xorriso syslinux-utils apt-utils"
     exit 1
 fi
 
 # Check if .deb package exists
-DEB_FILE=$(find "$ROOT_DIR/.." -maxdepth 1 -name "monolith-firewall_*.deb" -type f | head -1)
+DEB_FILE=$(find "$ROOT_DIR/build-output" -maxdepth 1 -name "monolith-firewall_*.deb" -type f | head -1)
 if [ -z "$DEB_FILE" ]; then
-    echo "ERROR: Debian package not found. Build it first with:"
+    echo "ERROR: Debian package not found in build-output/. Build it first with:"
     echo "  ./build-scripts/build-deb.sh"
     exit 1
 fi
@@ -44,9 +79,35 @@ fi
 echo "Using Debian package: $(basename "$DEB_FILE")"
 echo ""
 
+# Build all monolith packages before creating ISO
+echo "→ Building all monolith packages..."
+PACKAGES_BUILD_DIR="$ROOT_DIR/build-output/packages"
+if [ ! -d "$PACKAGES_BUILD_DIR" ] || [ -z "$(ls -A "$PACKAGES_BUILD_DIR"/*.mfwpkg 2>/dev/null)" ]; then
+    echo "  No packages found in $PACKAGES_BUILD_DIR"
+    echo "  Building all packages from tmp/monolithfirewall-packages/..."
+    
+    if [ ! -f "$ROOT_DIR/build-scripts/build-all-packages.sh" ]; then
+        echo "ERROR: build-all-packages.sh not found"
+        exit 1
+    fi
+    
+    chmod +x "$ROOT_DIR/build-scripts/build-all-packages.sh"
+    if ! "$ROOT_DIR/build-scripts/build-all-packages.sh"; then
+        echo "WARNING: Some packages failed to build, but continuing with ISO creation..."
+    fi
+else
+    echo "  Found existing packages in $PACKAGES_BUILD_DIR"
+    echo "  Using: $(ls -1 "$PACKAGES_BUILD_DIR"/*.mfwpkg 2>/dev/null | wc -l) package(s)"
+fi
+echo ""
+
 # Clean workspace
 echo "→ Cleaning workspace..."
-rm -rf "$ISO_WORKDIR"
+if [ "$KEEP_WORKDIR" != "1" ]; then
+    rm -rf "$ISO_WORKDIR"
+else
+    echo "  DEBUG: Keeping workdir, using: $ISO_WORKDIR"
+fi
 mkdir -p "$ISO_WORKDIR"
 
 # Download Debian netinst ISO
@@ -68,58 +129,398 @@ mkdir -p "$ISO_WORKDIR/iso_extract"
 7z x -o"$ISO_WORKDIR/iso_extract" "$ISO_WORKDIR/debian-netinst.iso" > /dev/null
 
 # Add custom preseed configuration
-if [ -f "$ROOT_DIR/iso-build/preseed.cfg" ]; then
-    echo "→ Adding preseed configuration..."
+PRESEED_SOURCE="${MONOLITH_PRESEED_FILE:-$ROOT_DIR/iso-build/preseed.cfg}"
+if [ -f "$PRESEED_SOURCE" ]; then
+    echo "→ Adding preseed configuration for automated installation..."
     mkdir -p "$ISO_WORKDIR/iso_extract/preseed"
-    cp "$ROOT_DIR/iso-build/preseed.cfg" "$ISO_WORKDIR/iso_extract/preseed/"
+    cp "$PRESEED_SOURCE" "$ISO_WORKDIR/iso_extract/preseed/preseed.cfg"
+
+    if [ -n "${MONOLITH_ISO_LATE_SCRIPT:-}" ] && [ -f "${MONOLITH_ISO_LATE_SCRIPT:-}" ]; then
+        echo "→ Adding debug late_command helper script..."
+        cp "${MONOLITH_ISO_LATE_SCRIPT}" "$ISO_WORKDIR/iso_extract/monolith-late-debug.sh"
+        chmod +x "$ISO_WORKDIR/iso_extract/monolith-late-debug.sh" 2>/dev/null || true
+        echo "  ✓ Added /cdrom/monolith-late-debug.sh"
+    fi
+    
+    # Modify boot configuration to use preseed for automated installation
+    echo "  → Configuring boot parameters for automated installation..."
+    
+    # Create custom boot menu for BIOS (isolinux)
+    echo "  → Creating custom boot menu for BIOS..."
+    
+    # Create custom menu configuration
+    cat > "$ISO_WORKDIR/iso_extract/isolinux/menu.cfg" <<'EOF'
+menu hshift 4
+menu width 70
+menu title Monolith FireWall Installer
+menu color title	* #FFFFFFFF *
+menu color border	* #00000000 #00000000 none
+menu color sel		* #ffffffff #76a1d0ff *
+menu color hotsel	1;7;37;40 #ffffffff #76a1d0ff *
+menu color tabmsg	* #ffffffff #00000000 *
+menu color help		37;40 #ffdddd00 #00000000 none
+
+default autoinstall
+label autoinstall
+	menu label ^Automated Install
+	menu default
+	kernel /install.amd/vmlinuz
+	append vga=788 initrd=/install.amd/gtk/initrd.gz auto=true priority=critical preseed/file=/cdrom/preseed/preseed.cfg --- quiet
+
+label install
+	menu label ^Manual Install
+	kernel /install.amd/vmlinuz
+	append vga=788 initrd=/install.amd/gtk/initrd.gz --- quiet
+
+label help
+	menu label ^Help
+	text help
+   Press ENTER to start automated installation.
+   Select 'Manual Install' for interactive installation.
+	endtext
+	config prompt.cfg
+EOF
+    
+    # Modify isolinux.cfg to use our custom menu and set timeout
+    if [ -f "$ISO_WORKDIR/iso_extract/isolinux/isolinux.cfg" ]; then
+        cp "$ISO_WORKDIR/iso_extract/isolinux/isolinux.cfg" "$ISO_WORKDIR/iso_extract/isolinux/isolinux.cfg.bak"
+        # Set timeout to 5 seconds (50 = 5 seconds in deciseconds)
+        sed -i 's|^timeout.*|timeout 50|g' "$ISO_WORKDIR/iso_extract/isolinux/isolinux.cfg" 2>/dev/null || true
+    fi
+    
+    echo "    ✓ Created custom BIOS boot menu"
+    
+    # Create custom grub menu for EFI boot
+    echo "  → Creating custom boot menu for EFI..."
+    
+    # Create custom grub.cfg for EFI
+    if [ -d "$ISO_WORKDIR/iso_extract/boot/grub" ]; then
+        cat > "$ISO_WORKDIR/iso_extract/boot/grub/grub.cfg" <<'EOF'
+set default=0
+set timeout=5
+
+menuentry 'Automated Install' {
+    set background_color=black
+    linux    /install.amd/vmlinuz vga=788 auto=true priority=critical preseed/file=/cdrom/preseed/preseed.cfg --- quiet
+    initrd   /install.amd/gtk/initrd.gz
+}
+
+menuentry 'Manual Install' {
+    set background_color=black
+    linux    /install.amd/vmlinuz vga=788 --- quiet
+    initrd   /install.amd/gtk/initrd.gz
+}
+EOF
+        echo "    ✓ Created custom GRUB menu (boot/grub/grub.cfg)"
+    fi
+    
+    # Create custom grub.cfg for EFI/boot
+    if [ -d "$ISO_WORKDIR/iso_extract/EFI/boot" ]; then
+        cat > "$ISO_WORKDIR/iso_extract/EFI/boot/grub.cfg" <<'EOF'
+set default=0
+set timeout=5
+
+menuentry 'Automated Install' {
+    set background_color=black
+    linux    /install.amd/vmlinuz vga=788 auto=true priority=critical preseed/file=/cdrom/preseed/preseed.cfg --- quiet
+    initrd   /install.amd/gtk/initrd.gz
+}
+
+menuentry 'Manual Install' {
+    set background_color=black
+    linux    /install.amd/vmlinuz vga=788 --- quiet
+    initrd   /install.amd/gtk/initrd.gz
+}
+EOF
+        echo "    ✓ Created custom GRUB menu (EFI/boot/grub.cfg)"
+    fi
+    
+    echo "  ✓ Automated installation configured (BIOS + EFI)"
+    echo "    Note: Users can still interrupt by pressing a key during boot"
 else
     echo "WARNING: preseed.cfg not found at iso-build/preseed.cfg"
-    echo "  ISO will use default Debian installer configuration"
+    echo "  ISO will use default Debian installer configuration (interactive)"
 fi
 
-# Add monolith-firewall .deb to ISO
-echo "→ Adding monolith-firewall package to ISO..."
-mkdir -p "$ISO_WORKDIR/iso_extract/pool/main/m/monolith-firewall"
-cp "$DEB_FILE" "$ISO_WORKDIR/iso_extract/pool/main/m/monolith-firewall/"
+# Create a separate flat APT repo for Monolith (do NOT modify Debian repo metadata)
+echo "→ Creating monolith offline APT repo (flat)..."
+MONOLITH_DEBS_DIR="$ISO_WORKDIR/iso_extract/monolith-debs"
+mkdir -p "$MONOLITH_DEBS_DIR"
+cp "$DEB_FILE" "$MONOLITH_DEBS_DIR/"
 
-# Add monolith packages (.mfwpkg) if they exist
-PACKAGES_DIR="$ROOT_DIR/build/packages"
-if [ -d "$PACKAGES_DIR" ] && [ -n "$(ls -A "$PACKAGES_DIR"/*.mfwpkg 2>/dev/null)" ]; then
-    echo "→ Adding monolith packages (.mfwpkg) to ISO..."
-    mkdir -p "$ISO_WORKDIR/iso_extract/monolith-packages"
-    cp "$PACKAGES_DIR"/*.mfwpkg "$ISO_WORKDIR/iso_extract/monolith-packages/"
-    echo "  Added $(ls -1 "$PACKAGES_DIR"/*.mfwpkg 2>/dev/null | wc -l) package(s)"
-else
-    echo "→ No .mfwpkg packages found (skipping)"
-fi
+# Download and include ALL dependency packages for offline installation
+echo "→ Downloading ALL dependency packages for offline installation..."
+DEPS_DIR="$ISO_WORKDIR/deps"
+mkdir -p "$DEPS_DIR"
 
-# Update package indices
-echo "→ Updating package indices..."
-cd "$ISO_WORKDIR/iso_extract"
-if [ -d "dists/stable/main/binary-amd64" ]; then
-    apt-ftparchive packages pool/main > dists/stable/main/binary-amd64/Packages 2>/dev/null || true
-    if [ -f "dists/stable/main/binary-amd64/Packages" ]; then
-        gzip -k -f dists/stable/main/binary-amd64/Packages
+# Extract dependencies from the .deb package (including transitive dependencies)
+echo "  Analyzing dependencies (including transitive)..."
+DEB_DEPENDS=$(dpkg-deb -f "$DEB_FILE" Depends | sed 's/,/\n/g' | sed 's/|/\n/g' | sed 's/([^)]*)//g' | awk '{print $1}' | grep -v '^\$' | sort -u)
+
+# Required packages from debian/control + SSH
+REQUIRED_PACKAGES="openssh-server openssh-client nftables iproute2 systemd sqlite3 sudo procps iputils-ping bridge-utils vlan ifupdown2 isc-dhcp-client isc-dhcp-server unbound tcpdump mtr traceroute iptables"
+
+# Combine all required packages
+ALL_PACKAGES="$REQUIRED_PACKAGES"
+for pkg in $DEB_DEPENDS; do
+    if [ -n "$pkg" ] && [ "$pkg" != "Depends:" ]; then
+        ALL_PACKAGES="$ALL_PACKAGES $pkg"
     fi
+done
+
+# Download packages using apt-get download with dependency resolution
+echo "  Downloading packages with all dependencies..."
+cd "$DEPS_DIR"
+
+# Create a temporary apt sources list pointing to Debian repositories
+APT_SOURCES="$DEPS_DIR/sources.list"
+APT_PREFS="$DEPS_DIR/preferences"
+APT_STATE="$DEPS_DIR/apt-state"
+mkdir -p "$APT_STATE/lists/partial"
+mkdir -p "$APT_STATE/archives/partial"
+
+cat > "$APT_SOURCES" <<EOF
+deb http://deb.debian.org/debian/ stable main
+deb http://deb.debian.org/debian/ stable-updates main
+deb http://security.debian.org/debian-security stable-security main
+EOF
+
+# Update apt cache
+echo "  Updating package lists..."
+apt-get update -o Dir::Etc::SourceList="$APT_SOURCES" \
+    -o Dir::State="$APT_STATE" \
+    -o Dir::Cache="$DEPS_DIR" \
+    -o Dir::Etc::SourceParts="" \
+    2>&1 | grep -v "^Get:" | grep -v "^Hit:" | grep -v "^Ign:" || true
+
+# Download packages with ALL dependencies recursively
+echo "  Downloading packages and ALL dependencies..."
+DOWNLOADED=0
+DOWNLOADED_PKGS=""
+
+# Function to download package and all its dependencies
+download_with_deps() {
+    local pkg="$1"
+    pkg=$(echo "$pkg" | tr -d ' ')
+    
+    if [ -z "$pkg" ] || [ "$pkg" = "Depends:" ]; then
+        return
+    fi
+    
+    # Skip if already downloaded
+    if echo "$DOWNLOADED_PKGS" | grep -q "^${pkg}$"; then
+        return
+    fi
+    
+    # Helper: extract deps from a .deb and recurse
+    extract_deps_and_recurse() {
+        local deb_path="$1"
+        if [ ! -f "$deb_path" ]; then
+            return
+        fi
+
+        # Include both Depends and Pre-Depends (version constraints removed, alternatives split)
+        local deps
+        deps=$(
+            {
+                dpkg-deb -f "$deb_path" Pre-Depends 2>/dev/null || true
+                dpkg-deb -f "$deb_path" Depends 2>/dev/null || true
+            } \
+            | sed 's/,/\n/g' \
+            | sed 's/|/\n/g' \
+            | sed 's/([^)]*)//g' \
+            | awk 'NF {print $1}' \
+            | grep -v '^\$' \
+            || true
+        )
+
+        for dep in $deps; do
+            download_with_deps "$dep"
+        done
+    }
+
+    # Check if package is already in ISO (but STILL resolve its dependencies!)
+    ISO_DEB=$(find "$ISO_WORKDIR/iso_extract/pool" -name "${pkg}_*.deb" -type f 2>/dev/null | head -1)
+    if [ -n "$ISO_DEB" ] && [ -f "$ISO_DEB" ]; then
+        echo "    ✓ $pkg (already in ISO)"
+        DOWNLOADED_PKGS="$DOWNLOADED_PKGS
+$pkg"
+        extract_deps_and_recurse "$ISO_DEB"
+        return
+    fi
+    
+    # Try to download the package
+    if apt-get download -o Dir::Etc::SourceList="$APT_SOURCES" \
+        -o Dir::State="$APT_STATE" \
+        -o Dir::Cache="$DEPS_DIR" \
+        "$pkg" 2>/dev/null; then
+        echo "    ✓ Downloaded: $pkg"
+        DOWNLOADED=$((DOWNLOADED + 1))
+        DOWNLOADED_PKGS="$DOWNLOADED_PKGS
+$pkg"
+        
+        # Resolve dependencies from the downloaded .deb (most recent match)
+        DOWNLOADED_DEB=$(find "$DEPS_DIR" -maxdepth 1 -name "${pkg}_*.deb" -type f 2>/dev/null | head -1)
+        if [ -n "$DOWNLOADED_DEB" ] && [ -f "$DOWNLOADED_DEB" ]; then
+            extract_deps_and_recurse "$DOWNLOADED_DEB"
+        fi
+    else
+        echo "    ⚠ Could not download: $pkg (may be in base system or virtual package)"
+    fi
+}
+
+# Download all packages with their dependencies
+for pkg in $ALL_PACKAGES; do
+    download_with_deps "$pkg"
+done
+
+# Copy downloaded packages to monolith offline APT repo (flat)
+if [ $DOWNLOADED -gt 0 ]; then
+    echo "  → Adding $DOWNLOADED downloaded package(s) to monolith offline repo..."
+    for deb_file in "$DEPS_DIR"/*.deb; do
+        if [ -f "$deb_file" ]; then
+            cp "$deb_file" "$MONOLITH_DEBS_DIR/"
+        fi
+    done
+    echo "  ✓ Added dependency packages to monolith offline repo"
 else
-    echo "WARNING: Could not update package indices (directory structure may differ)"
+    echo "  → No additional packages needed (all dependencies in base ISO)"
 fi
 
-# Rebuild ISO
-echo "→ Rebuilding ISO..."
-cd "$ISO_WORKDIR/iso_extract"
-genisoimage -r -J -b isolinux/isolinux.bin -c isolinux/boot.cat \
-    -no-emul-boot -boot-load-size 4 -boot-info-table \
-    -o "$ISO_OUTPUT" . 2>&1 | grep -v "genisoimage:" || {
-    echo "ERROR: Failed to build ISO"
-    exit 1
-}
+# Also copy any dependencies that were already present in the Debian ISO pool
+# (because our late_command installs from monolith-debs only)
+echo "  → Adding ISO-provided packages to monolith offline repo..."
+echo "$DOWNLOADED_PKGS" | while read -r pkg; do
+    pkg=$(echo "$pkg" | tr -d ' ')
+    if [ -z "$pkg" ]; then
+        continue
+    fi
 
-# Make bootable
-echo "→ Making ISO bootable..."
-isohybrid "$ISO_OUTPUT" 2>&1 | grep -v "isohybrid:" || {
-    echo "WARNING: isohybrid failed (ISO may still be bootable)"
-}
+    # Copy any matching debs from ISO pool
+    for deb in $(find "$ISO_WORKDIR/iso_extract/pool" -name "${pkg}_*.deb" -type f 2>/dev/null); do
+        cp -n "$deb" "$MONOLITH_DEBS_DIR/" 2>/dev/null || true
+    done
+done
+echo "  ✓ ISO-provided packages added (if needed)"
+
+# Generate Packages index for the monolith flat repo (installer will not use Debian's dists/ for this)
+echo "→ Generating monolith offline repo index..."
+cd "$ISO_WORKDIR/iso_extract"
+apt-ftparchive packages monolith-debs > monolith-debs/Packages 2>/dev/null || true
+gzip -9 -f -k monolith-debs/Packages 2>/dev/null || true
+echo "  ✓ Created monolith offline repo index (monolith-debs/Packages.gz)"
+
+# Add ALL monolith packages (.mfwpkg) to ISO
+PACKAGES_DIR="$ROOT_DIR/build-output/packages"
+if [ -d "$PACKAGES_DIR" ] && [ -n "$(ls -A "$PACKAGES_DIR"/*.mfwpkg 2>/dev/null)" ]; then
+    echo "→ Adding ALL monolith packages (.mfwpkg) to ISO..."
+    mkdir -p "$ISO_WORKDIR/iso_extract/monolith-packages"
+    
+    PACKAGE_COUNT=0
+    for pkg in "$PACKAGES_DIR"/*.mfwpkg; do
+        if [ -f "$pkg" ]; then
+            cp "$pkg" "$ISO_WORKDIR/iso_extract/monolith-packages/"
+            PACKAGE_COUNT=$((PACKAGE_COUNT + 1))
+            echo "  ✓ Added: $(basename "$pkg")"
+        fi
+    done
+    
+    echo "  → Total: $PACKAGE_COUNT package(s) added to ISO"
+    echo "  These will be automatically installed on first boot"
+else
+    echo "→ WARNING: No .mfwpkg packages found in $PACKAGES_DIR"
+    echo "  Run ./build-scripts/build-all-packages.sh first to build default packages"
+    echo "  ISO will be created without monolith packages"
+fi
+
+# NOTE:
+# We intentionally DO NOT modify Debian's dists/ metadata (Packages/Release/InRelease).
+# The base installer must remain stock. Monolith is installed later from /monolith-debs/.
+
+# Rebuild ISO with EFI support
+echo "→ Rebuilding ISO with EFI boot support..."
+cd "$ISO_WORKDIR/iso_extract"
+
+# Check if EFI boot files exist
+HAS_EFI=false
+if [ -d "EFI" ] && [ -f "EFI/boot/bootx64.efi" ]; then
+    HAS_EFI=true
+    echo "  Found EFI boot files"
+fi
+
+if [ "$ISO_TOOL" = "xorriso" ]; then
+    # Use xorriso for full EFI support
+    XORRISO_CMD="xorriso -as mkisofs"
+    XORRISO_CMD="$XORRISO_CMD -r -J"
+    XORRISO_CMD="$XORRISO_CMD -b isolinux/isolinux.bin -c isolinux/boot.cat"
+    XORRISO_CMD="$XORRISO_CMD -no-emul-boot -boot-load-size 4 -boot-info-table"
+    
+    if [ "$HAS_EFI" = "true" ]; then
+        # EFI boot configuration
+        XORRISO_CMD="$XORRISO_CMD -eltorito-alt-boot"
+        XORRISO_CMD="$XORRISO_CMD -e EFI/boot/bootx64.efi"
+        XORRISO_CMD="$XORRISO_CMD -no-emul-boot"
+        # Create hybrid ISO (BIOS + EFI) - GPT partition table for EFI, MBR for BIOS
+        XORRISO_CMD="$XORRISO_CMD -isohybrid-gpt-basdat"
+        # Find isohdpfx.bin for MBR boot sector
+        ISOHDPFX=""
+        for path in /usr/lib/ISOLINUX/isohdpfx.bin /usr/lib/syslinux/isohdpfx.bin /usr/share/syslinux/isohdpfx.bin; do
+            if [ -f "$path" ]; then
+                ISOHDPFX="$path"
+                break
+            fi
+        done
+        if [ -n "$ISOHDPFX" ]; then
+            XORRISO_CMD="$XORRISO_CMD -isohybrid-mbr $ISOHDPFX"
+        else
+            echo "  WARNING: isohdpfx.bin not found, BIOS boot may not work"
+        fi
+    fi
+    
+    XORRISO_CMD="$XORRISO_CMD -o \"$ISO_OUTPUT\" ."
+    
+    eval "$XORRISO_CMD" 2>&1 | grep -v "^xorriso" | grep -v "^libisofs" || {
+        echo "ERROR: Failed to build ISO with xorriso"
+        exit 1
+    }
+    
+    echo "  ISO built with xorriso (EFI support: $HAS_EFI)"
+    
+    # Note: xorriso with -isohybrid-gpt-basdat and -isohybrid-mbr should create a hybrid ISO
+    # No need for additional isohybrid step when using xorriso with these options
+else
+    # Fallback to genisoimage (limited EFI support)
+    genisoimage -r -J -b isolinux/isolinux.bin -c isolinux/boot.cat \
+        -no-emul-boot -boot-load-size 4 -boot-info-table \
+        -o "$ISO_OUTPUT" . 2>&1 | grep -v "genisoimage:" || {
+        echo "ERROR: Failed to build ISO"
+        exit 1
+    }
+    
+    if [ "$HAS_EFI" = "true" ]; then
+        echo "  WARNING: genisoimage has limited EFI support. EFI boot may not work."
+        echo "  Consider installing xorriso for full EFI support."
+    fi
+fi
+
+# Make bootable (BIOS and EFI) - only if not already done by xorriso
+if [ "$ISO_TOOL" != "xorriso" ] || [ "$HAS_EFI" != "true" ]; then
+    echo "→ Making ISO bootable..."
+    if [ "$HAS_EFI" = "true" ]; then
+        # Use isohybrid with EFI support
+        isohybrid --uefi "$ISO_OUTPUT" 2>&1 | grep -v "isohybrid:" || {
+            # Fallback to regular isohybrid if --uefi not supported
+            isohybrid "$ISO_OUTPUT" 2>&1 | grep -v "isohybrid:" || {
+                echo "WARNING: isohybrid failed (ISO may still be bootable)"
+            }
+        }
+    else
+        # BIOS only
+        isohybrid "$ISO_OUTPUT" 2>&1 | grep -v "isohybrid:" || {
+            echo "WARNING: isohybrid failed (ISO may still be bootable)"
+        }
+    fi
+fi
 
 echo ""
 echo "═══════════════════════════════════════════════════════════════"

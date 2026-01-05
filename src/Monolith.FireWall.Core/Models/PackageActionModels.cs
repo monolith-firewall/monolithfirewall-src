@@ -5,6 +5,7 @@ public sealed class PackageInstallRequest
     public string PackageId { get; set; } = string.Empty;
     public string SourcePath { get; set; } = string.Empty;
     public bool Overwrite { get; set; } = true;
+    public bool RestartServices { get; set; } = true;
 }
 
 public sealed class PackageUninstallRequest

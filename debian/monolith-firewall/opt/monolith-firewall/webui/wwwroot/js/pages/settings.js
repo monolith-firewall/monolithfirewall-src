@@ -1,280 +1,102 @@
-// General Settings Page
+// Settings Page with Tabbed Interface
 var Settings = {
-    settings: {},
+    currentTab: 'system',
+    tabs: {},
 
     init: function() {
-        console.log('Initializing General Settings...');
+        console.log('Initializing Settings...');
         this.render();
-        this.loadSettings();
+        this.loadTab('system');
     },
 
     render: function() {
         const container = $('#settings-container');
         container.html(`
             <div class="container-fluid">
-                <h1 class="mb-4">General Settings</h1>
+                <h1 class="mb-4">Settings</h1>
 
-                <form id="settings-form">
-                    <div class="row">
-                        <div class="col-md-8">
-                            <div class="card mb-4">
-                                <div class="card-header">
-                                    <h5 class="mb-0">System Information</h5>
-                                </div>
-                                <div class="card-body">
-                                    <div class="mb-3">
-                                        <label for="hostname" class="form-label">Hostname</label>
-                                        <input type="text" class="form-control" id="hostname" placeholder="monolith-fw">
-                                        <div class="form-text">The hostname of this firewall</div>
-                                    </div>
+                <!-- Tab Navigation -->
+                <ul class="nav nav-tabs mb-4" id="settings-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="system-tab" data-bs-toggle="tab" data-bs-target="#system-pane" 
+                                type="button" role="tab" aria-controls="system-pane" aria-selected="true">
+                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                                <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                                <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+                            </svg>
+                            System
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="webui-tab" data-bs-toggle="tab" data-bs-target="#webui-pane" 
+                                type="button" role="tab" aria-controls="webui-pane" aria-selected="false">
+                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                                <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm15 2h-4V0H9v4H7V0H5v4H3V0H1v4h1.5L1 5.5v9L2.5 16h11l1.5-1.5v-9L14.5 4H15V2zM1 5.5l1.5-1.5H5v1H3v8H2V5.5zm13 9H3V6h11v8.5z"/>
+                            </svg>
+                            Web UI
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced-pane" 
+                                type="button" role="tab" aria-controls="advanced-pane" aria-selected="false">
+                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                                <path d="M8 1a1 1 0 0 1 1 1v1.05a5.5 5.5 0 0 1 2.243.93l.743-.743a1 1 0 0 1 1.414 1.414l-.743.743a5.5 5.5 0 0 1 .93 2.243H14a1 1 0 1 1 0 2h-1.05a5.5 5.5 0 0 1-.93 2.243l.743.743a1 1 0 0 1-1.414 1.414l-.743-.743a5.5 5.5 0 0 1-2.243.93V14a1 1 0 1 1-2 0v-1.05a5.5 5.5 0 0 1-2.243-.93l-.743.743a1 1 0 1 1-1.414-1.414l.743-.743a5.5 5.5 0 0 1-.93-2.243H2a1 1 0 1 1 0-2h1.05a5.5 5.5 0 0 1 .93-2.243l-.743-.743a1 1 0 1 1 1.414-1.414l.743.743A5.5 5.5 0 0 1 7 3.05V2a1 1 0 0 1 1-1zm0 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+                            </svg>
+                            Advanced
+                        </button>
+                    </li>
+                </ul>
 
-                                    <div class="mb-3">
-                                        <label for="domain" class="form-label">Domain</label>
-                                        <input type="text" class="form-control" id="domain" placeholder="local">
-                                        <div class="form-text">The domain name for this system</div>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label for="timezone" class="form-label">Timezone</label>
-                                        <select class="form-select" id="timezone">
-                                            <option value="UTC">UTC</option>
-                                            <option value="America/New_York">America/New_York</option>
-                                            <option value="America/Chicago">America/Chicago</option>
-                                            <option value="America/Los_Angeles">America/Los_Angeles</option>
-                                            <option value="Europe/London">Europe/London</option>
-                                            <option value="Europe/Paris">Europe/Paris</option>
-                                            <option value="Asia/Tokyo">Asia/Tokyo</option>
-                                        </select>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label">DNS Servers</label>
-                                        <div id="dns-servers-list" class="d-grid gap-2"></div>
-                                        <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="add-dns-server">
-                                            Add DNS Server
-                                        </button>
-                                        <div class="form-text">Default resolvers for managed interfaces.</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="card mb-4">
-                                <div class="card-header">
-                                    <h5 class="mb-0">Interface Preferences</h5>
-                                </div>
-                                <div class="card-body">
-                                    <div class="mb-3">
-                                        <label for="language" class="form-label">Language</label>
-                                        <select class="form-select" id="language">
-                                            <option value="en">English</option>
-                                            <option value="es">Español</option>
-                                            <option value="fr">Français</option>
-                                            <option value="de">Deutsch</option>
-                                        </select>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label for="theme" class="form-label">Theme</label>
-                                        <select class="form-select" id="theme">
-                                            <option value="light">Light</option>
-                                            <option value="dark">Dark</option>
-                                            <option value="auto">Auto (System)</option>
-                                        </select>
-                                    </div>
-
-                                    <div class="form-check mb-3">
-                                        <input class="form-check-input" type="checkbox" id="show-tooltips">
-                                        <label class="form-check-label" for="show-tooltips">
-                                            Show helpful tooltips
-                                        </label>
-                                    </div>
-
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="confirm-actions">
-                                        <label class="form-check-label" for="confirm-actions">
-                                            Confirm destructive actions
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex gap-2">
-                                <button type="submit" class="btn btn-primary">Save Settings</button>
-                                <button type="button" class="btn btn-outline-secondary" id="reset-settings-btn">Reset to Defaults</button>
-                            </div>
-                        </div>
-
-                        <div class="col-md-4">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h5 class="mb-0">Quick Actions</h5>
-                                </div>
-                                <div class="card-body">
-                                    <div class="d-grid gap-2">
-                                        <button type="button" class="btn btn-outline-primary">
-                                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
-                                                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
-                                                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
-                                            </svg>
-                                            Restart WebUI
-                                        </button>
-                                        <button type="button" class="btn btn-outline-warning">
-                                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
-                                                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
-                                                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
-                                            </svg>
-                                            Reboot System
-                                        </button>
-                                        <button type="button" class="btn btn-outline-danger">
-                                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
-                                                <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
-                                                <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
-                                            </svg>
-                                            Shutdown
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="card mt-3">
-                                <div class="card-header">
-                                    <h5 class="mb-0">System Info</h5>
-                                </div>
-                                <div class="card-body">
-                                    <dl class="row mb-0">
-                                        <dt class="col-sm-6">Version:</dt>
-                                        <dd class="col-sm-6">1.0.0</dd>
-                                        
-                                        <dt class="col-sm-6">Build:</dt>
-                                        <dd class="col-sm-6">2026.01.01</dd>
-                                        
-                                        <dt class="col-sm-6">Platform:</dt>
-                                        <dd class="col-sm-6">Linux x64</dd>
-                                    </dl>
-                                </div>
-                            </div>
-                        </div>
+                <!-- Tab Content -->
+                <div class="tab-content" id="settings-tab-content">
+                    <div class="tab-pane fade show active" id="system-pane" role="tabpanel" aria-labelledby="system-tab">
+                        <div id="system-tab-content"></div>
                     </div>
-                </form>
+                    <div class="tab-pane fade" id="webui-pane" role="tabpanel" aria-labelledby="webui-tab">
+                        <div id="webui-tab-content"></div>
+                    </div>
+                    <div class="tab-pane fade" id="advanced-pane" role="tabpanel" aria-labelledby="advanced-tab">
+                        <div id="advanced-tab-content"></div>
+                    </div>
+                </div>
             </div>
         `);
 
-        $('#settings-form').on('submit', (e) => {
-            e.preventDefault();
-            this.saveSettings();
-        });
-
-        $('#reset-settings-btn').on('click', () => this.resetSettings());
-
-        $(document).off('click', '#add-dns-server');
-        $(document).on('click', '#add-dns-server', () => this.addDnsServer());
-
-        $(document).off('click', '.dns-remove-btn');
-        $(document).on('click', '.dns-remove-btn', (e) => {
-            $(e.currentTarget).closest('.dns-server-row').remove();
-        });
-    },
-
-    loadSettings: async function() {
-        try {
-            const response = await Monolith.API.get('/system/settings');
-            const data = response.Data || response.data || {};
-            this.settings = {
-                hostname: data.Hostname || data.hostname || '',
-                domain: data.Domain || data.domain || '',
-                timezone: data.Timezone || data.timezone || 'UTC',
-                dnsServers: data.DnsServers || data.dnsServers || [],
-                language: 'en',
-                theme: 'light',
-                showTooltips: true,
-                confirmActions: true
-            };
-        } catch (error) {
-            console.error('Failed to load settings:', error);
-            this.settings = {
-                hostname: '',
-                domain: '',
-                timezone: 'UTC',
-                dnsServers: [],
-                language: 'en',
-                theme: 'light',
-                showTooltips: true,
-                confirmActions: true
-            };
-            Monolith.UI.toast('Failed to load system settings', 'error');
-        }
-
-        $('#hostname').val(this.settings.hostname);
-        $('#domain').val(this.settings.domain);
-        $('#timezone').val(this.settings.timezone);
-        $('#language').val(this.settings.language);
-        $('#theme').val(this.settings.theme);
-        $('#show-tooltips').prop('checked', this.settings.showTooltips);
-        $('#confirm-actions').prop('checked', this.settings.confirmActions);
-        this.renderDnsServers(this.settings.dnsServers);
-    },
-
-    saveSettings: async function() {
-        const payload = {
-            hostname: $('#hostname').val(),
-            domain: $('#domain').val(),
-            timezone: $('#timezone').val(),
-            dnsServers: this.getDnsServers()
-        };
-
-        try {
-            const response = await Monolith.API.post('/system/settings', payload);
-            if (!(response.Success || response.success)) {
-                throw new Error(response.Error || response.error || 'Failed to save settings');
-            }
-
-            Monolith.UI.toast('Settings saved successfully', 'success');
-            await this.loadSettings();
-        } catch (error) {
-            console.error('Failed to save settings:', error);
-            Monolith.UI.toast('Failed to save settings', 'error');
-        }
-    },
-
-    resetSettings: function() {
-        if (confirm('Reset all settings to defaults?')) {
-            this.loadSettings();
-            Monolith.UI.toast('Settings reset to defaults', 'info');
-        }
-    },
-
-    renderDnsServers: function(servers) {
-        const container = $('#dns-servers-list');
-        const entries = Array.isArray(servers) ? servers.filter(s => s) : [];
-        const initial = entries.length > 0 ? entries : ['', ''];
-        const rows = initial.map(value => this.buildDnsRow(value)).join('');
-        container.html(rows);
-    },
-
-    buildDnsRow: function(value) {
-        const safeValue = value ? value.toString() : '';
-        return `
-            <div class="input-group dns-server-row">
-                <input type="text" class="form-control dns-server-input" value="${safeValue}" placeholder="1.1.1.1">
-                <button class="btn btn-outline-danger dns-remove-btn" type="button">Remove</button>
-            </div>
-        `;
-    },
-
-    addDnsServer: function() {
-        const container = $('#dns-servers-list');
-        container.append(this.buildDnsRow(''));
-    },
-
-    getDnsServers: function() {
-        const values = [];
-        $('#dns-servers-list .dns-server-input').each((_, el) => {
-            const value = $(el).val();
-            if (value) {
-                values.push(value.toString().trim());
+        // Handle tab switching
+        $('#settings-tabs button[data-bs-toggle="tab"]').on('shown.bs.tab', (e) => {
+            const target = $(e.target).data('bsTarget');
+            if (target === '#system-pane') {
+                this.loadTab('system');
+            } else if (target === '#webui-pane') {
+                this.loadTab('webui');
+            } else if (target === '#advanced-pane') {
+                this.loadTab('advanced');
             }
         });
-        return values.filter(value => value.length > 0);
+    },
+
+    loadTab: function(tabName) {
+        if (this.currentTab === tabName && this.tabs[tabName]) {
+            return; // Already loaded
+        }
+
+        this.currentTab = tabName;
+
+        // Load tab module if not already loaded
+        if (!this.tabs[tabName]) {
+            if (tabName === 'system') {
+                this.tabs[tabName] = SettingsSystem;
+            } else if (tabName === 'webui') {
+                this.tabs[tabName] = SettingsWebUI;
+            } else if (tabName === 'advanced') {
+                this.tabs[tabName] = SettingsAdvanced;
+            }
+        }
+
+        // Initialize tab
+        if (this.tabs[tabName] && typeof this.tabs[tabName].init === 'function') {
+            this.tabs[tabName].init();
+        }
     }
 };
 

@@ -26,6 +26,12 @@ public class CoreConfiguration : ConfigModelBase
 
     public bool EnableDebugMode { get; set; } = false;
 
+    /// <summary>
+    /// Directory where log files are stored
+    /// Default: /var/log/monolith-firewall
+    /// </summary>
+    public string LogDirectory { get; set; } = "/var/log/monolith-firewall";
+
     public DatabaseConfig Database { get; set; } = new();
 }
 

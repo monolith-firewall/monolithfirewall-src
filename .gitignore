@@ -10,8 +10,16 @@ obj/
 
 # Build outputs
 artifacts/
+build-output/
+build/
 *.deb
 *.mfwpkg
+*.iso
+*.buildinfo
+*.changes
+*.dsc
+*.tar.*
+*.zip
 
 # IDE
 .vs/
@@ -40,6 +48,22 @@ coverage/
 # Temporary
 tmp/
 temp/
+*.tmp
+*.temp
 AGENTS.md
 .editorconfig
 /net/network/interfaces.d
+var/
+packages/
+
+# Debian build artifacts
+debian/tmp/
+debian/.debhelper/
+debian/*.substvars
+debian/*.debhelper
+debian/*.postinst.debhelper
+debian/*.postrm.debhelper
+debian/*.prerm.debhelper
+debian/debhelper-build-stamp
+debian/files
+debian/monolith-firewall/

@@ -10,8 +10,8 @@
   <ItemGroup>
     <ProjectReference Include="../Monolith.FireWall.Common/Monolith.FireWall.Common.csproj" />
     <ProjectReference Include="../Monolith.FireWall.Platform/Monolith.FireWall.Platform.csproj" />
-    <ProjectReference Include="../Libs/CodeLogic3/src/CodeLogic.csproj" />
-    <ProjectReference Include="../Libs/CodeLogic3.Libs/CL.SQLite/CL.SQLite.csproj" />
+    <ProjectReference Include="../tmp/CodeLogic3/src/CodeLogic.csproj" />
+    <ProjectReference Include="../tmp/CodeLogic3.Libs/CL.SQLite/CL.SQLite.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -41,9 +41,9 @@ class Program
             Console.WriteLine($"  /var/lib/monolith-firewall/codelogic/CodeLogic.json");
             Console.WriteLine($"\nPackages directory created at:");
             Console.WriteLine($"  /var/lib/monolith-firewall/codelogic/Packages/");
-            Console.WriteLine($"\nPlease configure the system and restart.");
+            Console.WriteLine($"\nContinuing with startup (first run complete)...");
             Console.WriteLine("════════════════════════════════════════════════════\n");
-            return;
+            // Continue instead of returning - first run is just config generation
         }
 
         Console.WriteLine("✓ CodeLogic initialized");
@@ -63,10 +63,13 @@ class Program
 
         // Load Core configuration
         var config = LoadCoreConfiguration();
-        Console.WriteLine($"  ✓ Loaded configuration (Packages: {config.PackagesDirectory})");
+        Console.WriteLine($"  ✓ Loaded configuration (Packages: {config.PackagesDirectory}, Logs: {config.LogDirectory})");
+
+        // Ensure log directory exists
+        Directory.CreateDirectory(config.LogDirectory);
 
         // Create CodeLogic logger
-        var coreLogger = new Logger("CORE", "/var/lib/monolith-firewall/codelogic/Framework/logs", LogLevel.Info, new LoggingOptions
+        var coreLogger = new Logger("CORE", config.LogDirectory, LogLevel.Info, new LoggingOptions
         {
             EnableConsoleOutput = true,
             EnableDebugMode = config.EnableDebugMode
@@ -106,6 +109,7 @@ class Program
                 await sqlite.TableSyncService.SyncTableAsync<FirewallNatSettingsEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<FirewallRuleEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<FirewallDefaultsEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<WebUiSettingsEntity>();
                 Console.WriteLine("  ✓ Core database tables synchronized");
             }
         }
@@ -119,13 +123,15 @@ class Program
         var packageLoader = new PackageLoader(logger);
         var packageStateStore = new PackageStateStore();
         var moduleRegistry = new ModuleRegistry(logger, packageStateStore);
+        var setupManager = new SetupManager(logger, moduleRegistry);
         var platformPolicy = new Services.Platform.PlatformPolicyStore(config.PlatformPolicyPath);
         var platformExecutor = new Services.Platform.PlatformExecutor(moduleRegistry, platformPolicy);
         var interfaceAssignmentStore = new InterfaceAssignmentStore();
         var commandRunner = new Services.Platform.PlatformCommandRunner();
         var networkInventory = new NetworkInventoryService(commandRunner);
         var interfaceConfigManager = new InterfaceConfigManager();
-        var settingsManager = new SystemSettingsManager(new SystemSettingsStore());
+        var settingsCommandRunner = new Services.Platform.PlatformCommandRunner();
+        var settingsManager = new SystemSettingsManager(new SystemSettingsStore(), settingsCommandRunner);
         var firewallManager = new Services.Firewall.FirewallManager(commandRunner, interfaceAssignmentStore);
         var interfaceAssignmentManager = new InterfaceAssignmentManager(
             interfaceAssignmentStore,
@@ -145,18 +151,49 @@ class Program
             monitoringStore,
             commandRunner,
             routingManager);
+        
+        // Create StartupManager for boot initialization
+        var interfaceConfigApplier = new InterfaceConfigApplier(
+            logger,
+            interfaceAssignmentStore,
+            interfaceConfigManager,
+            settingsManager);
+        var moduleConfigGenerator = new ModuleConfigGenerator(
+            logger,
+            moduleRegistry,
+            platformExecutor);
+        var moduleServiceManager = new ModuleServiceManager(
+            logger,
+            moduleRegistry,
+            commandRunner);
+        var startupManager = new StartupManager(
+            logger,
+            settingsManager,
+            interfaceConfigApplier,
+            firewallManager.ApplyManager,
+            moduleConfigGenerator,
+            moduleServiceManager);
+        
+        // Create WebUI services
+        var webUiSettingsManager = new WebUiSettingsManager(logger);
+        var webUiServiceManager = new WebUiServiceManager(logger, commandRunner);
+        
         var socketListener = new UnixSocketListener(
             logger,
             moduleRegistry,
             platformExecutor,
             packageStateStore,
-            new PackageInstaller(logger, packageScanner, packageLoader, moduleRegistry, packageStateStore, config),
+            new PackageInstaller(logger, packageScanner, packageLoader, moduleRegistry, packageStateStore, commandRunner, config),
             interfaceAssignmentManager,
             routingManager,
             tuneablesManager,
             monitoringManager,
             settingsManager,
             firewallManager,
+            setupManager,
+            startupManager,
+            webUiSettingsManager,
+            webUiServiceManager,
             config.SocketPath,
             config.MaxConcurrentConnections
         );

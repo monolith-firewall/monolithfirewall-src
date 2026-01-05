@@ -5,7 +5,9 @@
 set -e
 
 PACKAGE_NAME=${1:-monolith-network}
-PROJECT_ROOT="/home/mlf/monolith-firewall"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
+PACKAGES_DIR="$PROJECT_ROOT/tmp/monolithfirewall-packages"
 
 echo "════════════════════════════════════════════════════════════════"
 echo "  MonolithFireWall - Package Update Script"
@@ -15,14 +17,15 @@ echo "Package: $PACKAGE_NAME"
 echo ""
 
 # Check if package exists
-if [ ! -d "$PROJECT_ROOT/packages/$PACKAGE_NAME" ]; then
+if [ ! -d "$PACKAGES_DIR/$PACKAGE_NAME" ]; then
     echo "✗ ERROR: Package not found: $PACKAGE_NAME"
+    echo "  Expected location: $PACKAGES_DIR/$PACKAGE_NAME"
     exit 1
 fi
 
 # Clean old build artifacts for this package
 echo "▶ Step 1: Cleaning old build artifacts..."
-cd "$PROJECT_ROOT/packages/$PACKAGE_NAME"
+cd "$PACKAGES_DIR/$PACKAGE_NAME"
 rm -rf bin obj
 echo "✓ Build artifacts cleaned"
 echo ""
@@ -39,7 +42,7 @@ echo ""
 
 # Copy updated files to deployment
 echo "▶ Step 3: Updating deployment files..."
-PUBLISH_DIR="$PROJECT_ROOT/packages/$PACKAGE_NAME/bin/Release/net10.0/linux-x64/publish"
+PUBLISH_DIR="$PACKAGES_DIR/$PACKAGE_NAME/bin/Release/net10.0/linux-x64/publish"
 DEPLOY_DIR="/opt/monolith-firewall/packages/$PACKAGE_NAME"
 
 if [ ! -d "$PUBLISH_DIR" ]; then
@@ -65,8 +68,8 @@ sudo cp *.so "$DEPLOY_DIR/backend/" 2>/dev/null || true
 
 # Update manifest
 echo "  → Updating manifest..."
-if [ -f "$PROJECT_ROOT/packages/$PACKAGE_NAME/manifest.json" ]; then
-    sudo cp "$PROJECT_ROOT/packages/$PACKAGE_NAME/manifest.json" "$DEPLOY_DIR/" 2>/dev/null || true
+if [ -f "$PACKAGES_DIR/$PACKAGE_NAME/manifest.json" ]; then
+    sudo cp "$PACKAGES_DIR/$PACKAGE_NAME/manifest.json" "$DEPLOY_DIR/" 2>/dev/null || true
 else
     sudo cp manifest.json "$DEPLOY_DIR/" 2>/dev/null || true
 fi
@@ -80,9 +83,9 @@ fi
 
 # Update Pages if they exist
 echo "  → Updating Pages..."
-if [ -d "$PROJECT_ROOT/packages/$PACKAGE_NAME/Pages" ]; then
+if [ -d "$PACKAGES_DIR/$PACKAGE_NAME/Pages" ]; then
     sudo mkdir -p "$DEPLOY_DIR/Pages"
-    sudo cp -r "$PROJECT_ROOT/packages/$PACKAGE_NAME/Pages"/* "$DEPLOY_DIR/Pages/" 2>/dev/null || true
+    sudo cp -r "$PACKAGES_DIR/$PACKAGE_NAME/Pages"/* "$DEPLOY_DIR/Pages/" 2>/dev/null || true
 fi
 
 echo "✓ Deployment files updated"

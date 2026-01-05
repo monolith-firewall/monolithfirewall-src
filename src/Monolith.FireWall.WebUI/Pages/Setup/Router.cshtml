@@ -1,0 +1,195 @@
+@page "/setup/router"
+@model Monolith.FireWall.WebUI.Pages.Setup.RouterModel
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Router Setup";
+}
+
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8 col-xl-7">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-router me-2"></i>
+                        Router & System Configuration
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-4">
+                        Configure basic system settings including hostname, timezone, and time synchronization.
+                    </p>
+
+                    <form id="router-setup-form">
+                        <!-- Hostname -->
+                        <div class="mb-3">
+                            <label for="hostname" class="form-label">Hostname <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="hostname" required 
+                                   pattern="[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+                                   placeholder="monolith-firewall">
+                            <div class="form-text">System hostname (e.g., monolith-firewall)</div>
+                        </div>
+
+                        <!-- Domain -->
+                        <div class="mb-3">
+                            <label for="domain" class="form-label">Domain</label>
+                            <input type="text" class="form-control" id="domain" 
+                                   placeholder="local">
+                            <div class="form-text">Optional domain name</div>
+                        </div>
+
+                        <!-- Timezone -->
+                        <div class="mb-3">
+                            <label for="timezone" class="form-label">Timezone <span class="text-danger">*</span></label>
+                            <select class="form-select" id="timezone" required>
+                                <option value="">Loading timezones...</option>
+                            </select>
+                            <div class="form-text">System timezone</div>
+                        </div>
+
+                        <!-- Current Date/Time -->
+                        <div class="mb-3">
+                            <label for="datetime" class="form-label">Current Date & Time</label>
+                            <input type="datetime-local" class="form-control" id="datetime">
+                            <div class="form-text">Set current system date and time (optional)</div>
+                        </div>
+
+                        <!-- NTP Servers -->
+                        <div class="mb-3">
+                            <label class="form-label">NTP Servers</label>
+                            <div id="ntp-servers-list" class="d-grid gap-2 mb-2"></div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="add-ntp-server">
+                                <i class="bi bi-plus-circle me-1"></i> Add NTP Server
+                            </button>
+                            <div class="form-text">Network Time Protocol servers for time synchronization</div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>Note:</strong> These settings can be changed later in System Settings.
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Load timezones on page load
+        $(document).ready(function() {
+            loadTimezones();
+            loadCurrentSettings();
+            setupNtpServers();
+        });
+
+        function loadTimezones() {
+            Monolith.API.get('/api/system/settings/timezones')
+                .then(data => {
+                    const select = $('#timezone');
+                    select.empty();
+                    select.append('<option value="">Select timezone...</option>');
+                    data.timezones.forEach(tz => {
+                        select.append(`<option value="${tz}">${tz}</option>`);
+                    });
+                })
+                .catch(err => {
+                    console.error('Failed to load timezones:', err);
+                    // Fallback to common timezones
+                    const fallback = ['UTC', 'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo'];
+                    const select = $('#timezone');
+                    select.empty();
+                    select.append('<option value="">Select timezone...</option>');
+                    fallback.forEach(tz => {
+                        select.append(`<option value="${tz}">${tz}</option>`);
+                    });
+                });
+        }
+
+        function loadCurrentSettings() {
+            Monolith.API.get('/api/system/settings')
+                .then(data => {
+                    if (data.hostname) $('#hostname').val(data.hostname);
+                    if (data.domain) $('#domain').val(data.domain);
+                    if (data.timezone) $('#timezone').val(data.timezone);
+                    if (data.currentDateTime) {
+                        const dt = new Date(data.currentDateTime);
+                        $('#datetime').val(dt.toISOString().slice(0, 16));
+                    }
+                    if (data.ntpServers && data.ntpServers.length > 0) {
+                        data.ntpServers.forEach(server => addNtpServer(server));
+                    } else {
+                        // Default NTP servers
+                        addNtpServer('0.debian.pool.ntp.org');
+                        addNtpServer('1.debian.pool.ntp.org');
+                    }
+                })
+                .catch(err => {
+                    console.error('Failed to load settings:', err);
+                    // Set defaults
+                    addNtpServer('0.debian.pool.ntp.org');
+                    addNtpServer('1.debian.pool.ntp.org');
+                });
+        }
+
+        function setupNtpServers() {
+            $('#add-ntp-server').on('click', function() {
+                addNtpServer('');
+            });
+        }
+
+        function addNtpServer(value = '') {
+            const container = $('#ntp-servers-list');
+            const id = 'ntp-' + Date.now();
+            const html = `
+                <div class="input-group" data-ntp-id="${id}">
+                    <input type="text" class="form-control" value="${value}" 
+                           placeholder="e.g., 0.debian.pool.ntp.org">
+                    <button type="button" class="btn btn-outline-danger" onclick="removeNtpServer('${id}')">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            `;
+            container.append(html);
+        }
+
+        function removeNtpServer(id) {
+            $(`[data-ntp-id="${id}"]`).remove();
+        }
+
+        // Export for setup.js
+        window.getRouterSetupData = function() {
+            const ntpServers = [];
+            $('#ntp-servers-list input').each(function() {
+                const val = $(this).val().trim();
+                if (val) ntpServers.push(val);
+            });
+
+            return {
+                hostname: $('#hostname').val(),
+                domain: $('#domain').val(),
+                timezone: $('#timezone').val(),
+                datetime: $('#datetime').val() ? new Date($('#datetime').val()).toISOString() : null,
+                ntpServers: ntpServers
+            };
+        };
+
+        window.validateRouterSetup = function() {
+            const hostname = $('#hostname').val();
+            const timezone = $('#timezone').val();
+            
+            if (!hostname || !hostname.trim()) {
+                Monolith.UI.showError('Hostname is required');
+                return false;
+            }
+            
+            if (!timezone || !timezone.trim()) {
+                Monolith.UI.showError('Timezone is required');
+                return false;
+            }
+
+            return true;
+        };
+    </script>
+}

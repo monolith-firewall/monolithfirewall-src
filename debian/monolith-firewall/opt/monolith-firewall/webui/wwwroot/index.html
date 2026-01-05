@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MonolithFireWall</title>
+    <title>Monolith Firewall</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     
     <!-- Bootstrap 5.3.8 CSS -->
@@ -12,19 +12,19 @@
     <!-- jQuery UI for drag-drop -->
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css" />
     
-    <!-- pfSense Theme CSS -->
-    <link href="/css/pfsense-theme.css?v=20260111" rel="stylesheet" />
+    <!-- Monolith Theme CSS -->
+    <link href="/css/monolith-theme.css?v=20260111" rel="stylesheet" />
     
     <!-- Custom CSS -->
     <link href="/css/app.css?v=20260103" rel="stylesheet" />
 </head>
 <body>
-    <!-- Top Navigation Bar (Modern pfSense Style) -->
-    <nav class="navbar navbar-expand-lg top-navbar" id="top-navbar" style="display: none;">
-        <div class="container-fluid">
+    <!-- Top Navigation Bar (Modern Style) -->
+    <nav class="navbar navbar-expand-lg top-navbar sticky-top" id="top-navbar" style="display: none;">
+        <div class="container-fluid navbar-container">
             <a class="navbar-brand" href="#/dashboard" data-route="/dashboard">
                 <span class="brand-icon">🛡️</span>
-                <span class="brand-text">MonolithFireWall</span>
+                <span class="brand-text">Monolith Firewall</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -103,7 +103,7 @@
                             </a></li>
                         </ul>
                     </li>
-                    <!-- Interfaces Menu (pfSense Style) -->
+                    <!-- Interfaces Menu -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                             <svg class="nav-icon" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -123,7 +123,7 @@
                             <li id="interfaces-list-placeholder"><span class="dropdown-item-text text-muted small">Loading interfaces...</span></li>
                         </ul>
                     </li>
-                    <!-- Firewall Menu (pfSense Style) -->
+                    <!-- Firewall Menu -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                             <svg class="nav-icon" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -182,7 +182,7 @@
                             <li><span class="dropdown-item-text text-muted small">Loading packages...</span></li>
                         </ul>
                     </li>
-                    <!-- Status Menu (pfSense Style) -->
+                    <!-- Status Menu -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                             <svg class="nav-icon" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -278,7 +278,7 @@
 
     <!-- Main Content Area -->
     <div class="main-content" id="page-content">
-        <div class="container-fluid">
+        <div class="container-fluid content-container">
             <div class="row justify-content-center">
                 <div class="col-md-6">
                     <div class="card">

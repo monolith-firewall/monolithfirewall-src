@@ -17,24 +17,36 @@ using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var bindingConfig = LoadWebUiBindings("/etc/monolith-firewall/webui-bindings.json");
-var bindingAddresses = ResolveBindingAddresses(bindingConfig);
+// Load WebUI settings from database via Core API (with file fallback)
+var webUiSettings = await LoadWebUiSettingsAsync();
 var certificate = LoadOrCreateCertificate();
 
-// Configure Kestrel to listen on ports 80 and 443
+// Configure Kestrel to listen on configured ports and addresses
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    if (bindingAddresses.Count == 0)
-    {
-        serverOptions.ListenAnyIP(80);
-        serverOptions.ListenAnyIP(443, listenOptions => listenOptions.UseHttps(certificate));
-        return;
-    }
+    var httpPort = webUiSettings.HttpPort;
+    var httpsPort = webUiSettings.HttpsPort;
+    var bindingAddresses = webUiSettings.BindingAddresses;
 
-    foreach (var address in bindingAddresses)
+    if (bindingAddresses.Count == 0 || webUiSettings.BindToAllInterfaces)
     {
-        serverOptions.Listen(address, 80);
-        serverOptions.Listen(address, 443, listenOptions => listenOptions.UseHttps(certificate));
+        // Bind to all interfaces
+        serverOptions.ListenAnyIP(httpPort);
+        serverOptions.ListenAnyIP(httpsPort, listenOptions => listenOptions.UseHttps(certificate));
+        Console.WriteLine($"WebUI configured: HTTP={httpPort}, HTTPS={httpsPort} (all interfaces)");
+    }
+    else
+    {
+        // Bind to specific addresses
+        foreach (var address in bindingAddresses)
+        {
+            if (IPAddress.TryParse(address, out var ip))
+            {
+                serverOptions.Listen(ip, httpPort);
+                serverOptions.Listen(ip, httpsPort, listenOptions => listenOptions.UseHttps(certificate));
+            }
+        }
+        Console.WriteLine($"WebUI configured: HTTP={httpPort}, HTTPS={httpsPort} on {bindingAddresses.Count} interface(s)");
     }
 });
 
@@ -44,6 +56,14 @@ builder.Services.AddSingleton<PackageViewRouter>();
 builder.Services.AddSingleton<PackageViewsRegistry>();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<PackageUpdatesClient>();
+
+// Frontend expects camelCase JSON for WebUI endpoints
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    options.SerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+    options.SerializerOptions.PropertyNameCaseInsensitive = true;
+});
 
 // Register CL.SQLite and UserRepository
 CL.SQLite.SQLiteLibrary? sqliteForDI = null;
@@ -344,7 +364,7 @@ static string? FindModuleFolder(string basePagesPath, string module)
     return null;
 }
 
-static async Task<string> DownloadPackageAsync(string packageId, string downloadUrl, CancellationToken cancellationToken)
+static async Task<string> DownloadPackageAsync(string packageId, string downloadUrl, string? expectedSha256, bool allowInsecureHttp, CancellationToken cancellationToken)
 {
     if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri))
     {
@@ -353,7 +373,15 @@ static async Task<string> DownloadPackageAsync(string packageId, string download
 
     if (!string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase))
     {
-        throw new Exception("Only HTTPS downloads are allowed");
+        var isLocalhost =
+            string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(uri.Host, "::1", StringComparison.OrdinalIgnoreCase);
+
+        if (!allowInsecureHttp && !isLocalhost)
+        {
+            throw new Exception("Only HTTPS downloads are allowed");
+        }
     }
 
     var cacheDir = "/var/lib/monolith-firewall/packages-cache";
@@ -370,6 +398,24 @@ static async Task<string> DownloadPackageAsync(string packageId, string download
 
     await using var fs = File.Create(targetPath);
     await response.Content.CopyToAsync(fs, cancellationToken);
+
+    if (!string.IsNullOrWhiteSpace(expectedSha256))
+    {
+        var expected = expectedSha256.Trim().ToLowerInvariant();
+        expected = expected.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
+            ? expected["sha256:".Length..]
+            : expected;
+
+        await using var verifyStream = File.OpenRead(targetPath);
+        var hash = await SHA256.HashDataAsync(verifyStream, cancellationToken);
+        var actual = Convert.ToHexString(hash).ToLowerInvariant();
+
+        if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
+        {
+            try { File.Delete(targetPath); } catch { /* best effort */ }
+            throw new Exception("Package checksum verification failed");
+        }
+    }
 
     return targetPath;
 }
@@ -602,7 +648,7 @@ app.MapGet("/p/{package}/{module}", async (HttpContext context, string package, 
 <head>
     <title>Page Not Found</title>
     <link href=""/css/bootstrap.min.css"" rel=""stylesheet"" />
-    <link href=""/css/pfsense-theme.css"" rel=""stylesheet"" />
+    <link href=""/css/monolith-theme.css"" rel=""stylesheet"" />
 </head>
 <body>
     <div class=""container mt-5"">
@@ -651,7 +697,7 @@ app.MapGet("/p/{package}/{module}/{page}", async (HttpContext context, string pa
 <head>
     <title>Page Not Found</title>
     <link href=""/css/bootstrap.min.css"" rel=""stylesheet"" />
-    <link href=""/css/pfsense-theme.css"" rel=""stylesheet"" />
+    <link href=""/css/monolith-theme.css"" rel=""stylesheet"" />
 </head>
 <body>
     <div class=""container mt-5"">
@@ -1076,6 +1122,144 @@ app.MapPost("/api/system/settings", async (HttpContext context, CoreApiClient co
     }
 });
 
+// Setup wizard API routes
+app.MapGet("/api/setup/status", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        var coreRequest = new { action = "setup.status" };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPost("/api/setup/complete-step", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        using var doc = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+        var coreRequest = new
+        {
+            action = "setup.complete-step",
+            stepId = doc.RootElement.GetProperty("stepId").GetString(),
+            data = doc.RootElement.TryGetProperty("data", out var dataEl) ? dataEl : (JsonElement?)null
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapGet("/api/setup/packages", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        var coreRequest = new { action = "setup.packages" };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPost("/api/setup/finish", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        using var doc = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+        var coreRequest = new
+        {
+            action = "setup.finish",
+            skipRemaining = doc.RootElement.TryGetProperty("skipRemaining", out var skipEl) && skipEl.GetBoolean()
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapGet("/api/system/settings/timezones", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        var coreRequest = new { action = "system.settings.timezones" };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+// WebUI settings API routes
+app.MapGet("/api/webui/settings", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        var coreRequest = new { action = "webui.settings.get" };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPost("/api/webui/settings", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        using var doc = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+        var coreRequest = new
+        {
+            action = "webui.settings.update",
+            payload = doc.RootElement
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPost("/api/webui/service/restart", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        var coreRequest = new { action = "webui.service.restart" };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
 // Firewall API routes are now handled by FirewallController via app.MapControllers()
 
 // Firewall pages route - serve Razor pages as SPA partials
@@ -1198,8 +1382,12 @@ app.MapPost("/api/packages/install", async (HttpContext context, CoreApiClient c
         var root = doc.RootElement;
         var packageId = root.TryGetProperty("packageId", out var packageIdEl) ? packageIdEl.GetString() : null;
         var downloadUrl = root.TryGetProperty("downloadUrl", out var urlEl) ? urlEl.GetString() : null;
+        var sha256 = root.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() : null;
         var sourcePath = root.TryGetProperty("sourcePath", out var pathEl) ? pathEl.GetString() : null;
         var overwrite = !root.TryGetProperty("overwrite", out var overwriteEl) || overwriteEl.GetBoolean();
+        var restartServices = !root.TryGetProperty("restartServices", out var restartEl) || restartEl.GetBoolean();
+        var allowInsecureHttp = context.RequestServices.GetRequiredService<IConfiguration>()
+            .GetValue<bool>("PackageUpdates:AllowInsecureHttp");
 
         if (string.IsNullOrWhiteSpace(packageId))
         {
@@ -1213,7 +1401,7 @@ app.MapPost("/api/packages/install", async (HttpContext context, CoreApiClient c
                 return Results.Json(new { Success = false, Data = (object?)null, Error = "downloadUrl or sourcePath is required" }, statusCode: 400);
             }
 
-            sourcePath = await DownloadPackageAsync(packageId, downloadUrl, context.RequestAborted);
+            sourcePath = await DownloadPackageAsync(packageId, downloadUrl, sha256, allowInsecureHttp, context.RequestAborted);
         }
 
         var coreRequest = new
@@ -1223,7 +1411,8 @@ app.MapPost("/api/packages/install", async (HttpContext context, CoreApiClient c
             {
                 packageId,
                 sourcePath,
-                overwrite
+                overwrite,
+                restartServices
             }
         };
 
@@ -1463,42 +1652,119 @@ static X509Certificate2 LoadOrCreateCertificate()
     return certificate;
 }
 
-static WebUiBindings LoadWebUiBindings(string path)
+/// <summary>
+/// Load WebUI settings from database via Core API, with file fallback for compatibility.
+/// </summary>
+static async Task<WebUiSettings> LoadWebUiSettingsAsync()
 {
+    var defaultSettings = new WebUiSettings
+    {
+        HttpPort = 80,
+        HttpsPort = 443,
+        BindToAllInterfaces = true,
+        BindingAddresses = new List<string>()
+    };
+
+    // Try to load from Core API (database)
     try
     {
-        if (!File.Exists(path))
+        var socketPath = "/var/lib/monolith-firewall/run/monolith-core.sock";
+        if (File.Exists(socketPath))
         {
-            return new WebUiBindings();
-        }
+            // Wait a moment for Core to be ready
+            await Task.Delay(500);
+            
+            var request = JsonSerializer.Serialize(new { action = "webui.settings.get" });
+            var response = await SendCoreRequestAsync(socketPath, request);
+            
+            if (response != null && response.Contains("\"Success\":true", StringComparison.OrdinalIgnoreCase))
+            {
+                using var doc = JsonDocument.Parse(response);
+                if (doc.RootElement.TryGetProperty("Data", out var data))
+                {
+                    var httpPort = data.TryGetProperty("httpPort", out var http) ? http.GetInt32() : 80;
+                    var httpsPort = data.TryGetProperty("httpsPort", out var https) ? https.GetInt32() : 443;
+                    var bindToAll = data.TryGetProperty("bindToAllInterfaces", out var all) && all.GetBoolean();
+                    var addresses = new List<string>();
+                    
+                    if (data.TryGetProperty("bindingAddresses", out var addrs) && addrs.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var addr in addrs.EnumerateArray())
+                        {
+                            if (addr.ValueKind == JsonValueKind.String)
+                            {
+                                addresses.Add(addr.GetString() ?? "");
+                            }
+                        }
+                    }
 
-        var json = File.ReadAllText(path);
-        var config = JsonSerializer.Deserialize<WebUiBindings>(json);
-        return config ?? new WebUiBindings();
+                    Console.WriteLine($"✓ Loaded WebUI settings from database: HTTP={httpPort}, HTTPS={httpsPort}");
+                    return new WebUiSettings
+                    {
+                        HttpPort = httpPort,
+                        HttpsPort = httpsPort,
+                        BindToAllInterfaces = bindToAll,
+                        BindingAddresses = addresses
+                    };
+                }
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"⚠ Could not load WebUI settings from Core API: {ex.Message}");
+    }
+
+    // Fallback: Try to load from file (for compatibility)
+    try
+    {
+        var filePath = "/etc/monolith-firewall/webui-bindings.json";
+        if (File.Exists(filePath))
+        {
+            var json = await File.ReadAllTextAsync(filePath);
+            var config = JsonSerializer.Deserialize<WebUiBindings>(json);
+            if (config != null && config.Addresses != null && config.Addresses.Count > 0)
+            {
+                Console.WriteLine($"✓ Loaded WebUI settings from file (legacy)");
+                return new WebUiSettings
+                {
+                    HttpPort = 80,
+                    HttpsPort = 443,
+                    BindToAllInterfaces = false,
+                    BindingAddresses = config.Addresses
+                };
+            }
+        }
     }
     catch
     {
-        return new WebUiBindings();
+        // Ignore file errors
+    }
+
+    Console.WriteLine($"✓ Using default WebUI settings: HTTP=80, HTTPS=443 (all interfaces)");
+    return defaultSettings;
+}
+
+static async Task<string?> SendCoreRequestAsync(string socketPath, string request)
+{
+    try
+    {
+        // Use CoreApiClient approach - create a temporary client
+        var client = new CoreApiClient();
+        return await client.SendRequestAsync(request);
+    }
+    catch
+    {
+        return null;
     }
 }
 
-static List<IPAddress> ResolveBindingAddresses(WebUiBindings config)
+sealed class WebUiSettings
 {
-    var addresses = new List<IPAddress>();
-    if (config.Addresses == null || config.Addresses.Count == 0)
-    {
-        return addresses;
-    }
-
-    foreach (var entry in config.Addresses)
-    {
-        if (IPAddress.TryParse(entry, out var address))
-        {
-            addresses.Add(address);
-        }
-    }
-
-    return addresses;
+    public int HttpPort { get; set; }
+    public int HttpsPort { get; set; }
+    public bool BindToAllInterfaces { get; set; }
+    public List<string> BindingAddresses { get; set; } = new();
 }
 
 sealed class WebUiBindings

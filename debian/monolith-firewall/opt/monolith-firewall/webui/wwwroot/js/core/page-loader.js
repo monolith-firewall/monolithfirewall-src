@@ -51,6 +51,14 @@ Monolith.PageLoader = {
         }
 
         await this.loadScript('pages', info.module, info.asset, `page-${info.module}-${info.asset}`);
+        
+        // Load additional scripts for settings tabs
+        if (info.module === 'settings') {
+            await this.loadScript('pages', 'settings', 'settings-system', 'page-settings-system');
+            await this.loadScript('pages', 'settings', 'settings-webui', 'page-settings-webui');
+            await this.loadScript('pages', 'settings', 'settings-advanced', 'page-settings-advanced');
+        }
+        
         this.loadStyles('pages', info.module, info.css || [], `page-${info.module}`);
         this.initModuleByName(info.asset);
     },

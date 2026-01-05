@@ -58,10 +58,17 @@ case "$1" in
 
         # Ensure directories exist
         mkdir -p /var/lib/monolith-firewall
+        mkdir -p /var/lib/monolith-firewall/packages
         mkdir -p /var/log/monolith-firewall
         mkdir -p /etc/monolith-firewall
         mkdir -p /etc/network/interfaces.d
         mkdir -p /var/lib/monolith-firewall/backups/interfaces
+        
+        # Create first boot flag (will be removed after packages are installed)
+        if [ ! -f /var/lib/monolith-firewall/.firstboot ]; then
+            touch /var/lib/monolith-firewall/.firstboot
+            chown root:root /var/lib/monolith-firewall/.firstboot
+        fi
 
         # Set ownership and permissions
         chown -R root:root /var/lib/monolith-firewall
@@ -70,6 +77,10 @@ case "$1" in
         chmod 755 /var/log/monolith-firewall
         chmod 755 /var/lib/monolith-firewall/backups
         chmod 755 /var/lib/monolith-firewall/backups/interfaces
+        
+        # Ensure log directory is writable by the service
+        # Logs will be written by the monolith-firewall-core service (running as root)
+        chmod 755 /var/log/monolith-firewall
 
         # Create configuration directory
         chown root:root /etc/monolith-firewall
@@ -115,6 +126,7 @@ EOF
             # Enable services
             systemctl enable monolith-firewall-core.service
             systemctl enable monolith-firewall-webui.service
+            systemctl enable monolith-firstboot.service
         fi
 
         # Check if this is first install
@@ -164,53 +176,26 @@ EOF
         ;;
 esac
 
-# Automatically added by dh_installsystemd/13.24.2
+# Automatically added by dh_installsystemd
+# Handle systemd service management more gracefully
 if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
-	# The following line should be removed in trixie or trixie+1
-	deb-systemd-helper unmask 'monolith-firewall-core.service' >/dev/null || true
-
-	# was-enabled defaults to true, so new installations run enable.
-	if deb-systemd-helper --quiet was-enabled 'monolith-firewall-core.service'; then
-		# Enables the unit on first installation, creates new
-		# symlinks on upgrades if the unit file has changed.
-		deb-systemd-helper enable 'monolith-firewall-core.service' >/dev/null || true
-	else
-		# Update the statefile to add new symlinks (if any), which need to be
-		# cleaned up on purge. Also remove old symlinks.
-		deb-systemd-helper update-state 'monolith-firewall-core.service' >/dev/null || true
-	fi
+    if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null 2>&1 || true
+        if [ -n "$2" ]; then
+            _dh_action=restart
+        else
+            _dh_action=start
+        fi
+        # Try to start/restart services, but don't fail if it doesn't work
+        deb-systemd-invoke $_dh_action 'monolith-firewall-core.service' 'monolith-firewall-webui.service' 'monolith-firstboot.service' 'monolith-startup.service' >/dev/null 2>&1 || {
+            # If deb-systemd-invoke fails, try direct systemctl calls as fallback
+            systemctl $_dh_action monolith-firewall-core.service >/dev/null 2>&1 || true
+            systemctl $_dh_action monolith-firewall-webui.service >/dev/null 2>&1 || true
+            systemctl $_dh_action monolith-firstboot.service >/dev/null 2>&1 || true
+            systemctl $_dh_action monolith-startup.service >/dev/null 2>&1 || true
+        }
+    fi
 fi
 # End automatically added section
-# Automatically added by dh_installsystemd/13.24.2
-if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
-	# The following line should be removed in trixie or trixie+1
-	deb-systemd-helper unmask 'monolith-firewall-webui.service' >/dev/null || true
-
-	# was-enabled defaults to true, so new installations run enable.
-	if deb-systemd-helper --quiet was-enabled 'monolith-firewall-webui.service'; then
-		# Enables the unit on first installation, creates new
-		# symlinks on upgrades if the unit file has changed.
-		deb-systemd-helper enable 'monolith-firewall-webui.service' >/dev/null || true
-	else
-		# Update the statefile to add new symlinks (if any), which need to be
-		# cleaned up on purge. Also remove old symlinks.
-		deb-systemd-helper update-state 'monolith-firewall-webui.service' >/dev/null || true
-	fi
-fi
-# End automatically added section
-# Automatically added by dh_installsystemd/13.24.2
-if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
-	if [ -d /run/systemd/system ]; then
-		systemctl --system daemon-reload >/dev/null || true
-		if [ -n "$2" ]; then
-			_dh_action=restart
-		else
-			_dh_action=start
-		fi
-		deb-systemd-invoke $_dh_action 'monolith-firewall-core.service' 'monolith-firewall-webui.service' >/dev/null || true
-	fi
-fi
-# End automatically added section
-
 
 exit 0

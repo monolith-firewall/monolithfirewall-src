@@ -20,6 +20,7 @@ Monolith.Router = {
         this.routes['/groups'] = { route: '/groups', title: 'User Groups', package: 'system', module: 'groups' };
         this.routes['/permissions'] = { route: '/permissions', title: 'Permissions', package: 'system', module: 'permissions' };
         this.routes['/login'] = { route: '/login', title: 'Login' };
+        this.routes['/about'] = { route: '/about', title: 'About Monolith Firewall', package: 'system', module: 'about' };
         this.routes['/system/advanced'] = { route: '/system/advanced', title: 'Advanced Settings', package: 'system', module: 'advanced-settings' };
         
         // Load routes from Core (async, won't block)
@@ -92,6 +93,7 @@ Monolith.Router = {
             if (!this.routes['/status/services']) this.routes['/status/services'] = { route: '/status/services', title: 'Services Status', package: 'system', module: 'status' };
             if (!this.routes['/status/logs']) this.routes['/status/logs'] = { route: '/status/logs', title: 'System Logs', package: 'system', module: 'status' };
             if (!this.routes['/login']) this.routes['/login'] = { route: '/login', title: 'Login' };
+            if (!this.routes['/about']) this.routes['/about'] = { route: '/about', title: 'About Monolith Firewall', package: 'system', module: 'about' };
         } catch (error) {
             console.error('Error loading routes:', error);
         }
@@ -241,6 +243,8 @@ Monolith.Router = {
             
             // Insert content into page-content
             $('#page-content').html(html);
+            // Ensure container-fluid has content-container class for centering
+            $('#page-content').find('.container-fluid').addClass('content-container');
             $('#page-content').find('link[data-module-css], script[data-module-js]').remove();
 
             if (Monolith.PageLoader && typeof Monolith.PageLoader.load === 'function') {
@@ -250,7 +254,7 @@ Monolith.Router = {
         } catch (error) {
             console.error('Error loading package page:', error);
             $('#page-content').html(`
-                <div class="container-fluid p-4">
+                <div class="container-fluid content-container p-4">
                     <div class="alert alert-danger">
                         <h4>Page Load Error</h4>
                         <p>The page at <code>${pageDef.route}</code> could not be loaded.</p>
@@ -279,6 +283,8 @@ Monolith.Router = {
 
             // Insert content into page-content
             $('#page-content').html(html);
+            // Ensure container-fluid has content-container class for centering
+            $('#page-content').find('.container-fluid').addClass('content-container');
             $('#page-content').find('link[data-module-css], script[data-module-js]').remove();
 
             if (Monolith.PageLoader && typeof Monolith.PageLoader.load === 'function') {
@@ -288,7 +294,7 @@ Monolith.Router = {
         } catch (error) {
             console.error('Error loading firewall page:', error);
             $('#page-content').html(`
-                <div class="container-fluid p-4">
+                <div class="container-fluid content-container p-4">
                     <div class="alert alert-danger">
                         <h4>Page Load Error</h4>
                         <p>The page at <code>${pageDef.route}</code> could not be loaded.</p>

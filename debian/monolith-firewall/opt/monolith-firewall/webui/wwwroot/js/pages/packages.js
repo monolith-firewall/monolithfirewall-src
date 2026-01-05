@@ -14,6 +14,41 @@ var Packages = {
         this.loadActivity();
     },
 
+    normalizeId: function(value) {
+        return (value || '').toString().trim().toLowerCase();
+    },
+
+    getCategory: function(pkg) {
+        const c = (pkg && (pkg.category || pkg.Category)) ? (pkg.category || pkg.Category) : '';
+        const category = (c || '').toString().trim();
+        return category ? category : 'Other';
+    },
+
+    compareVersions: function(a, b) {
+        // Simple numeric dotted version compare (e.g. 1.2.10 > 1.2.3).
+        // Falls back to string compare if parsing fails.
+        const as = (a || '').toString().trim();
+        const bs = (b || '').toString().trim();
+        if (!as && !bs) return 0;
+        if (!as) return -1;
+        if (!bs) return 1;
+
+        const ap = as.split('.').map(x => parseInt(x, 10));
+        const bp = bs.split('.').map(x => parseInt(x, 10));
+        if (ap.some(Number.isNaN) || bp.some(Number.isNaN)) {
+            return as.localeCompare(bs);
+        }
+
+        const len = Math.max(ap.length, bp.length);
+        for (let i = 0; i < len; i++) {
+            const av = ap[i] || 0;
+            const bv = bp[i] || 0;
+            if (av > bv) return 1;
+            if (av < bv) return -1;
+        }
+        return 0;
+    },
+
     render: function() {
         const container = $('#packages-container');
         container.html(`
@@ -163,7 +198,7 @@ var Packages = {
     renderInstalled: function() {
         const query = ($('#packages-search').val() || '').toString().toLowerCase();
         const list = $('#packages-installed-list');
-        const filtered = this.installed.filter(pkg => {
+        const filtered = (this.installed || []).filter(pkg => {
             const name = (pkg.name || pkg.Name || '').toLowerCase();
             return !query || name.includes(query);
         });
@@ -173,14 +208,36 @@ var Packages = {
             return;
         }
 
-        let html = '';
+        const availableById = {};
+        (this.available || []).forEach(p => {
+            availableById[this.normalizeId(p.id || p.Id)] = p;
+        });
+
+        const updates = [];
+        const installed = [];
         filtered.forEach(pkg => {
+            const pkgId = this.normalizeId(pkg.id || pkg.Id);
+            const avail = availableById[pkgId];
+            const installedVersion = pkg.version || pkg.Version || '';
+            const availableVersion = avail ? (avail.version || avail.Version || '') : '';
+            const hasUpdate = avail && availableVersion && this.compareVersions(availableVersion, installedVersion) > 0;
+            if (hasUpdate) updates.push({ pkg, avail });
+            else installed.push({ pkg, avail });
+        });
+
+        let html = '';
+        const renderCard = (pkg, available, badgeHtml) => {
             const moduleCount = (pkg.modules || []).length;
             const installMeta = pkg.installedAt
                 ? `Installed ${Monolith.UI.formatDate(pkg.installedAt)}`
                 : 'Installed';
-
-            html += `
+            const pkgIdRaw = pkg.id || pkg.Id;
+            const pkgId = this.normalizeId(pkgIdRaw);
+            const pkgName = (pkg.name || pkg.Name || '').replace(/'/g, "\\'");
+            const currentVersion = (pkg.version || pkg.Version || 'n/a').replace(/'/g, "\\'");
+            const newVersion = available ? ((available.version || available.Version || 'n/a').replace(/'/g, "\\'")) : 'n/a';
+            const hasUpdate = available && available.downloadUrl && this.compareVersions(newVersion, currentVersion) > 0;
+            return `
                 <div class="card package-card">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-2">
@@ -188,7 +245,7 @@ var Packages = {
                                 <h5 class="card-title mb-1">${pkg.name || pkg.Name}</h5>
                                 <div class="text-muted small">${pkg.description || pkg.Description || 'No description'}</div>
                             </div>
-                            <span class="badge bg-success">Installed</span>
+                            ${badgeHtml}
                         </div>
                         <div class="package-meta">
                             <div><strong>Version:</strong> ${pkg.version || pkg.Version || 'n/a'}</div>
@@ -197,16 +254,50 @@ var Packages = {
                         </div>
                         ${this.renderPermissionSummary(pkg)}
                         <div class="package-actions mt-3">
-                            <button class="btn btn-sm btn-outline-primary" onclick="Packages.showDetails('${pkg.id || pkg.Id}')">
+                            ${hasUpdate
+                                ? `<button class="btn btn-sm btn-primary" onclick="Packages.update('${available.id || available.Id}', '${available.downloadUrl}', '${pkgName}', '${currentVersion}', '${newVersion}')">Update</button>`
+                                : ''}
+                            <button class="btn btn-sm btn-outline-primary" onclick="Packages.showDetails('${pkgIdRaw}')">
                                 Details
                             </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="Packages.uninstall('${pkg.id || pkg.Id}')">
+                            <button class="btn btn-sm btn-outline-warning" ${available ? '' : 'disabled'} onclick="Packages.forceReinstall('${pkgId}')">
+                                Force reinstall
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="Packages.uninstall('${pkgIdRaw}')">
                                 Uninstall
                             </button>
                         </div>
                     </div>
                 </div>
             `;
+        };
+
+        html += `
+            <div class="w-100 mb-2 d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">Updates <span class="badge bg-warning text-dark ms-1">${updates.length}</span></div>
+                <div class="text-muted small">Packages with a newer version available</div>
+            </div>
+        `;
+        if (updates.length === 0) {
+            html += `<div class="alert alert-light border w-100">No package updates available.</div>`;
+        } else {
+            updates.forEach(entry => {
+                const installedVersion = entry.pkg.version || entry.pkg.Version || 'n/a';
+                const availableVersion = entry.avail.version || entry.avail.Version || 'n/a';
+                const badge = `<span class="badge bg-warning text-dark">Update: ${installedVersion} → ${availableVersion}</span>`;
+                html += renderCard(entry.pkg, entry.avail, badge);
+            });
+        }
+
+        html += `
+            <div class="w-100 mt-4 mb-2 d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">Installed</div>
+                <div class="text-muted small">${installed.length} package(s)</div>
+            </div>
+        `;
+        installed.forEach(entry => {
+            const badge = `<span class="badge bg-success">Installed</span>`;
+            html += renderCard(entry.pkg, entry.avail, badge);
         });
 
         list.html(html);
@@ -223,46 +314,172 @@ var Packages = {
             return;
         }
 
-        const installedMap = {};
-        this.installed.forEach(pkg => {
-            installedMap[(pkg.id || pkg.Id)] = pkg;
+        const installedIds = {};
+        (this.installed || []).forEach(pkg => {
+            installedIds[this.normalizeId(pkg.id || pkg.Id)] = true;
+        });
+
+        const groups = {};
+        (this.available || []).forEach(pkg => {
+            // Hide already-installed packages from the Available tab.
+            if (installedIds[this.normalizeId(pkg.id || pkg.Id)]) {
+                return;
+            }
+
+            const category = this.getCategory(pkg);
+            if (!groups[category]) groups[category] = [];
+            groups[category].push(pkg);
+        });
+
+        const totalAvailable = Object.values(groups).reduce((sum, items) => sum + items.length, 0);
+        if (totalAvailable === 0) {
+            list.html('<div class="alert alert-info">No packages available</div>');
+            return;
+        }
+
+        const preferredOrder = ['Network', 'VPN', 'Diagnostics', 'System', 'Other'];
+        const categories = Object.keys(groups).sort((a, b) => {
+            const ai = preferredOrder.indexOf(a);
+            const bi = preferredOrder.indexOf(b);
+            if (ai !== -1 || bi !== -1) {
+                return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+            }
+            return a.localeCompare(b);
         });
 
         let html = '';
-        this.available.forEach(pkg => {
-            const installed = installedMap[pkg.Id] || installedMap[pkg.id];
-            const status = installed ? 'Installed' : 'Available';
-            const badge = installed ? '<span class="badge bg-secondary">Installed</span>' : '<span class="badge bg-primary">Available</span>';
-            const action = installed
-                ? `<button class="btn btn-sm btn-outline-secondary" disabled>Installed</button>`
-                : `<button class="btn btn-sm btn-primary" onclick="Packages.install('${pkg.id}', '${pkg.downloadUrl}')">Install</button>`;
-
+        categories.forEach(category => {
             html += `
-                <div class="card package-card">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <div>
-                                <h5 class="card-title mb-1">${pkg.name}</h5>
-                                <div class="text-muted small">${pkg.description || 'No description'}</div>
-                            </div>
-                            ${badge}
-                        </div>
-                        <div class="package-meta">
-                            <div><strong>Version:</strong> ${pkg.version || 'n/a'}</div>
-                            <div><strong>Status:</strong> ${status}</div>
-                        </div>
-                        <div class="package-actions mt-3">
-                            ${action}
-                            <button class="btn btn-sm btn-outline-primary" onclick="Packages.showAvailableDetails('${pkg.id}')">
-                                Details
-                            </button>
-                        </div>
-                    </div>
+                <div class="w-100 mt-1 mb-2 d-flex justify-content-between align-items-center">
+                    <div class="fw-semibold">${category}</div>
+                    <div class="text-muted small">${groups[category].length} package(s)</div>
                 </div>
             `;
+
+            groups[category].forEach(pkg => {
+                const status = 'Available';
+                const badge = '<span class="badge bg-primary">Available</span>';
+                const action = `<button class="btn btn-sm btn-primary" onclick="Packages.install('${pkg.id}', '${pkg.downloadUrl}')">Install</button>`;
+
+                html += `
+                    <div class="card package-card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <h5 class="card-title mb-1">${pkg.name}</h5>
+                                    <div class="text-muted small">${pkg.description || 'No description'}</div>
+                                </div>
+                                ${badge}
+                            </div>
+                            <div class="package-meta">
+                                <div><strong>Version:</strong> ${pkg.version || 'n/a'}</div>
+                                <div><strong>Status:</strong> ${status}</div>
+                            </div>
+                            <div class="package-actions mt-3">
+                                ${action}
+                                <button class="btn btn-sm btn-outline-primary" onclick="Packages.showAvailableDetails('${pkg.id}')">
+                                    Details
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
         });
 
         list.html(html);
+    },
+
+    update: function(packageId, downloadUrl, packageName, currentVersion, newVersion) {
+        const pkg = this.available.find(p => (p.id || p.Id) === packageId);
+        if (!pkg) {
+            Monolith.UI.toast('Package not found in updates feed', 'error');
+            return;
+        }
+
+        const modalBody = `
+            <div class="install-summary">
+                <h5 class="mb-2">${packageName}</h5>
+                <div class="text-muted small mb-3">${pkg.description || 'No description'}</div>
+                <div class="package-meta">
+                    <div><strong>Current Version:</strong> ${currentVersion}</div>
+                    <div><strong>New Version:</strong> ${newVersion}</div>
+                    <div><strong>Source:</strong> updates.monolithfirewall.com</div>
+                </div>
+                <div class="install-status mt-3 text-muted">Ready to update.</div>
+            </div>
+        `;
+
+        const footer = `
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="update-confirm-btn">Update</button>
+        `;
+
+        const modal = Monolith.UI.showModal('Update Package', modalBody, {
+            size: 'lg',
+            footerHtml: footer,
+            staticBackdrop: true
+        });
+
+        modal.element.find('#update-confirm-btn').on('click', async () => {
+            const statusEl = modal.element.find('.install-status');
+            const btnEl = modal.element.find('#update-confirm-btn');
+            statusEl.html('<div class="spinner-border spinner-border-sm me-2" role="status"></div>Downloading and updating...');
+            btnEl.prop('disabled', true);
+
+            try {
+                const response = await Monolith.API.post('/packages/install', {
+                    packageId: pkg.id,
+                    downloadUrl: downloadUrl,
+                    sha256: pkg.sha256 || pkg.Sha256 || null,
+                    overwrite: true
+                });
+
+                if (!response) {
+                    throw new Error('No response from server');
+                }
+
+                const success = response.Success || response.success;
+                const error = response.Error || response.error;
+                
+                if (!success) {
+                    const errorMsg = error || 'Update failed';
+                    throw new Error(errorMsg);
+                }
+
+                const data = response.Data || response.data || {};
+                const requiresRestart = data.requiresRestart || false;
+                
+                if (requiresRestart) {
+                    statusEl.html('<div class="text-warning"><strong>✓ Updated successfully.</strong><br><small>Services will restart automatically in a few seconds.</small></div>');
+                    Monolith.UI.toast('Package updated - services restarting', 'success');
+                } else {
+                    statusEl.html('<div class="text-success"><strong>✓ Updated successfully.</strong></div>');
+                    Monolith.UI.toast('Package updated successfully', 'success');
+                }
+                
+                this.loadInstalled();
+                this.loadAvailable();
+                this.loadActivity();
+                setTimeout(() => modal.instance.hide(), 2000);
+            } catch (error) {
+                console.error('Update failed:', error);
+                const errorMsg = error.message || error.toString() || 'Update failed';
+                statusEl.html(`<div class="text-danger"><strong>✗ Update failed</strong><br><small>${errorMsg}</small></div>`);
+                Monolith.UI.toast(`Update failed: ${errorMsg}`, 'error');
+                btnEl.prop('disabled', false);
+            }
+        });
+    },
+
+    forceReinstall: function(packageId) {
+        const pkg = (this.available || []).find(p => (p.id || p.Id) === packageId);
+        if (!pkg || !pkg.downloadUrl) {
+            Monolith.UI.toast('No download URL available for this package (refresh updates feed)', 'error');
+            return;
+        }
+
+        this.install(pkg.id || pkg.Id, pkg.downloadUrl);
     },
 
     renderAvailableError: function(message) {
@@ -414,31 +631,52 @@ var Packages = {
 
         modal.element.find('#install-confirm-btn').on('click', async () => {
             const statusEl = modal.element.find('.install-status');
-            statusEl.text('Downloading and installing...');
-            modal.element.find('#install-confirm-btn').prop('disabled', true);
+            const btnEl = modal.element.find('#install-confirm-btn');
+            statusEl.html('<div class="spinner-border spinner-border-sm me-2" role="status"></div>Downloading and installing...');
+            btnEl.prop('disabled', true);
 
             try {
                 const response = await Monolith.API.post('/packages/install', {
                     packageId: pkg.id,
                     downloadUrl: downloadUrl,
+                    sha256: pkg.sha256 || pkg.Sha256 || null,
                     overwrite: true
                 });
 
-                if (!(response.Success || response.success)) {
-                    throw new Error(response.Error || response.error || 'Install failed');
+                if (!response) {
+                    throw new Error('No response from server');
+                }
+
+                const success = response.Success || response.success;
+                const error = response.Error || response.error;
+                
+                if (!success) {
+                    const errorMsg = error || 'Install failed';
+                    throw new Error(errorMsg);
                 }
 
                 const data = response.Data || response.data || {};
-                statusEl.text(data.requiresRestart ? 'Installed. Restart required.' : 'Installed successfully.');
-                Monolith.UI.toast('Package installed', 'success');
+                const requiresRestart = data.requiresRestart || false;
+                const isUpdate = data.isUpdate || false;
+                
+                if (requiresRestart) {
+                    statusEl.html('<div class="text-warning"><strong>✓ Installed successfully.</strong><br><small>Services will restart automatically in a few seconds.</small></div>');
+                    Monolith.UI.toast(isUpdate ? 'Package updated - services restarting' : 'Package installed - services restarting', 'success');
+                } else {
+                    statusEl.html('<div class="text-success"><strong>✓ Installed successfully.</strong></div>');
+                    Monolith.UI.toast(isUpdate ? 'Package updated successfully' : 'Package installed successfully', 'success');
+                }
+                
                 this.loadInstalled();
+                this.loadAvailable();
                 this.loadActivity();
-                setTimeout(() => modal.instance.hide(), 1500);
+                setTimeout(() => modal.instance.hide(), 2000);
             } catch (error) {
                 console.error('Install failed:', error);
-                statusEl.text('Installation failed. Check logs.');
-                Monolith.UI.toast('Install failed', 'error');
-                modal.element.find('#install-confirm-btn').prop('disabled', false);
+                const errorMsg = error.message || error.toString() || 'Installation failed';
+                statusEl.html(`<div class="text-danger"><strong>✗ Installation failed</strong><br><small>${errorMsg}</small></div>`);
+                Monolith.UI.toast(`Install failed: ${errorMsg}`, 'error');
+                btnEl.prop('disabled', false);
             }
         });
     },
@@ -486,6 +724,7 @@ var Packages = {
                 statusEl.text('Package removed.');
                 Monolith.UI.toast('Package removed', 'success');
                 this.loadInstalled();
+                this.loadAvailable();
                 this.loadActivity();
                 setTimeout(() => modal.instance.hide(), 1500);
             } catch (error) {

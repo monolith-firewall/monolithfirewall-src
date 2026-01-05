@@ -1,15 +1,29 @@
 /**
- * MonolithFireWall Main Application
+ * Monolith Firewall Main Application
  */
 $(document).ready(function() {
     // Initialize router first (needed for login page)
     Monolith.Router.init();
     
     // Initialize authentication
-    Monolith.Auth.init().then(isAuthenticated => {
+    Monolith.Auth.init().then(async isAuthenticated => {
         if (!isAuthenticated) {
             window.location.hash = '#/login';
         } else {
+            // Check if setup is needed (skip if already on setup page)
+            if (!window.location.pathname.startsWith('/setup')) {
+                try {
+                    const setupStatus = await Monolith.API.get('/setup/status');
+                    if (setupStatus.needsSetup) {
+                        window.location.href = '/setup';
+                        return;
+                    }
+                } catch (err) {
+                    console.error('Failed to check setup status:', err);
+                    // Continue normally if check fails
+                }
+            }
+
             // Update user info in navbar
             updateUserInfo();
             // Navigate to dashboard if no hash is set
