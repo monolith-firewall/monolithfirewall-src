@@ -12,6 +12,7 @@ public sealed class StartupManager
 {
     private readonly ILogger _logger;
     private readonly SystemSettingsManager _systemSettingsManager;
+    private readonly SystemTuneablesManager _tuneablesManager;
     private readonly InterfaceConfigApplier _interfaceConfigApplier;
     private readonly FirewallApplyManager _firewallApplyManager;
     private readonly ModuleConfigGenerator _moduleConfigGenerator;
@@ -20,6 +21,7 @@ public sealed class StartupManager
     public StartupManager(
         ILogger logger,
         SystemSettingsManager systemSettingsManager,
+        SystemTuneablesManager tuneablesManager,
         InterfaceConfigApplier interfaceConfigApplier,
         FirewallApplyManager firewallApplyManager,
         ModuleConfigGenerator moduleConfigGenerator,
@@ -27,6 +29,7 @@ public sealed class StartupManager
     {
         _logger = logger;
         _systemSettingsManager = systemSettingsManager;
+        _tuneablesManager = tuneablesManager;
         _interfaceConfigApplier = interfaceConfigApplier;
         _firewallApplyManager = firewallApplyManager;
         _moduleConfigGenerator = moduleConfigGenerator;
@@ -58,6 +61,26 @@ public sealed class StartupManager
             else
             {
                 _logger.LogWarning($"⚠ System settings partially applied: {systemResult.Error}");
+            }
+
+            // Step 1.5: Apply system tuneables (including IPv4 forwarding)
+            _logger.LogInformation("Applying system tuneables...");
+            var tuneablesResult = await ApplySystemTuneablesAsync(cancellationToken);
+            result.Tuneables = tuneablesResult;
+            if (tuneablesResult.Success)
+            {
+                _logger.LogInformation($"✓ System tuneables applied ({tuneablesResult.AppliedCount}/{tuneablesResult.TotalCount} tuneable(s))");
+                if (tuneablesResult.Warnings.Count > 0)
+                {
+                    foreach (var warning in tuneablesResult.Warnings)
+                    {
+                        _logger.LogWarning($"  → {warning}");
+                    }
+                }
+            }
+            else
+            {
+                _logger.LogWarning($"⚠ System tuneables partially applied: {tuneablesResult.Error}");
             }
 
             // Step 2: Generate and apply interface configurations
@@ -158,6 +181,81 @@ public sealed class StartupManager
                 Error = ex.Message
             };
         }
+    }
+
+    /// <summary>
+    /// Apply stored system tuneables from database.
+    /// Used during startup initialization to enable features like IPv4 forwarding.
+    /// </summary>
+    public async Task<TuneablesStartupResult> ApplySystemTuneablesAsync(CancellationToken cancellationToken = default)
+    {
+        var result = new TuneablesStartupResult();
+        
+        try
+        {
+            // Get all tuneables (includes stored desired values and current system values)
+            var allTuneables = await _tuneablesManager.GetTuneablesAsync(cancellationToken);
+            result.TotalCount = allTuneables.Count;
+            
+            // Find tuneables that need to be applied (desired value differs from current)
+            var toApply = allTuneables
+                .Where(t => 
+                    !string.IsNullOrWhiteSpace(t.DesiredValue) && 
+                    t.DesiredValue != t.CurrentValue)
+                .ToList();
+            
+            if (toApply.Count == 0)
+            {
+                result.Success = true;
+                result.AppliedCount = 0;
+                return result;
+            }
+            
+            // Build apply request
+            var request = new TuneableApplyRequest
+            {
+                Items = toApply.Select(t => new TuneableUpdate
+                {
+                    Key = t.Key,
+                    Value = t.DesiredValue
+                }).ToList()
+            };
+            
+            // Apply tuneables
+            var applyResult = await _tuneablesManager.ApplyAsync(request, cancellationToken);
+            
+            result.Success = applyResult.Success;
+            result.AppliedCount = applyResult.Results?.Count(r => r.Success) ?? 0;
+            result.Error = applyResult.Error;
+            result.Warnings = applyResult.Results?
+                .Where(r => !r.Success && !string.IsNullOrWhiteSpace(r.Error))
+                .Select(r => $"{r.Key}: {r.Error}")
+                .ToList() ?? new List<string>();
+            
+            // Log critical tuneables
+            var ipForward = toApply.FirstOrDefault(t => t.Key == "net.ipv4.ip_forward");
+            if (ipForward != null)
+            {
+                var ipForwardResult = applyResult.Results?.FirstOrDefault(r => r.Key == "net.ipv4.ip_forward");
+                if (ipForwardResult?.Success == true)
+                {
+                    _logger.LogInformation($"  → IPv4 forwarding enabled: {ipForwardResult.AppliedValue}");
+                }
+                else
+                {
+                    _logger.LogWarning($"  → IPv4 forwarding failed to apply: {ipForwardResult?.Error ?? "unknown error"}");
+                    result.Warnings.Add("IPv4 forwarding not applied - routing may not work");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to apply system tuneables");
+            result.Success = false;
+            result.Error = ex.Message;
+        }
+        
+        return result;
     }
 
     /// <summary>

@@ -28,7 +28,9 @@ Depends: ${shlibs:Depends},
          unbound,
          tcpdump,
          mtr,
-         socat
+         socat,
+         ethtool,
+         pciutils
 Recommends: traceroute,
             iptables
 Description: Ultra-modular firewall system for Debian

@@ -7,6 +7,7 @@ using Monolith.FireWall.Core.Services.Platform;
 using Monolith.FireWall.Common.Models;
 using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Firewall;
+using System.Reflection;
 
 namespace Monolith.FireWall.Core;
 
@@ -110,6 +111,48 @@ class Program
                 await sqlite.TableSyncService.SyncTableAsync<FirewallRuleEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<FirewallDefaultsEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<WebUiSettingsEntity>();
+                
+                // Sync DHCP tables (from monolith-network package)
+                // Note: These are in a package, but we sync them here to ensure tables exist
+                try
+                {
+                    // Use reflection to sync DHCP entities if the package is loaded
+                    var dhcpInterfaceType = Type.GetType("Monolith.Network.Modules.Dhcp.DhcpInterfaceEntity, Monolith.Network");
+                    var dhcpSettingsType = Type.GetType("Monolith.Network.Modules.Dhcp.DhcpSettingsEntity, Monolith.Network");
+                    var dhcpLeaseType = Type.GetType("Monolith.Network.Modules.Dhcp.DhcpLeaseEntity, Monolith.Network");
+                    
+                    if (dhcpInterfaceType != null)
+                    {
+                        var syncMethod = typeof(CL.SQLite.Services.TableSyncService).GetMethod("SyncTableAsync", new[] { typeof(CancellationToken) });
+                        if (syncMethod != null)
+                        {
+                            var genericMethod = syncMethod.MakeGenericMethod(dhcpInterfaceType);
+                            await (Task)genericMethod.Invoke(sqlite.TableSyncService, new object[] { CancellationToken.None })!;
+                        }
+                    }
+                    if (dhcpSettingsType != null)
+                    {
+                        var syncMethod = typeof(CL.SQLite.Services.TableSyncService).GetMethod("SyncTableAsync", new[] { typeof(CancellationToken) });
+                        if (syncMethod != null)
+                        {
+                            var genericMethod = syncMethod.MakeGenericMethod(dhcpSettingsType);
+                            await (Task)genericMethod.Invoke(sqlite.TableSyncService, new object[] { CancellationToken.None })!;
+                        }
+                    }
+                    if (dhcpLeaseType != null)
+                    {
+                        var syncMethod = typeof(CL.SQLite.Services.TableSyncService).GetMethod("SyncTableAsync", new[] { typeof(CancellationToken) });
+                        if (syncMethod != null)
+                        {
+                            var genericMethod = syncMethod.MakeGenericMethod(dhcpLeaseType);
+                            await (Task)genericMethod.Invoke(sqlite.TableSyncService, new object[] { CancellationToken.None })!;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    coreLogger.Info($"Could not sync DHCP tables (package may not be loaded yet): {ex.Message}");
+                }
                 Console.WriteLine("  ✓ Core database tables synchronized");
             }
         }
@@ -133,19 +176,20 @@ class Program
         var settingsCommandRunner = new Services.Platform.PlatformCommandRunner();
         var settingsManager = new SystemSettingsManager(new SystemSettingsStore(), settingsCommandRunner);
         var firewallManager = new Services.Firewall.FirewallManager(commandRunner, interfaceAssignmentStore);
+        var tuneablesManager = new SystemTuneablesManager(
+            new SystemTuneablesStore(),
+            commandRunner);
         var interfaceAssignmentManager = new InterfaceAssignmentManager(
             interfaceAssignmentStore,
             networkInventory,
             interfaceConfigManager,
             commandRunner,
-            settingsManager);
+            settingsManager,
+            tuneablesManager);
         var routingManager = new RoutingManager(
             new RoutingStore(),
             commandRunner,
             networkInventory);
-        var tuneablesManager = new SystemTuneablesManager(
-            new SystemTuneablesStore(),
-            commandRunner);
         var monitoringStore = new MonitoringStore();
         var monitoringManager = new MonitoringManager(
             monitoringStore,
@@ -169,6 +213,7 @@ class Program
         var startupManager = new StartupManager(
             logger,
             settingsManager,
+            tuneablesManager,
             interfaceConfigApplier,
             firewallManager.ApplyManager,
             moduleConfigGenerator,
@@ -177,6 +222,9 @@ class Program
         // Create WebUI services
         var webUiSettingsManager = new WebUiSettingsManager(logger);
         var webUiServiceManager = new WebUiServiceManager(logger, commandRunner);
+        
+        // Create Backup manager
+        var backupManager = new Services.BackupManager(logger, commandRunner);
         
         var socketListener = new UnixSocketListener(
             logger,
@@ -194,6 +242,8 @@ class Program
             startupManager,
             webUiSettingsManager,
             webUiServiceManager,
+            backupManager,
+            commandRunner,
             config.SocketPath,
             config.MaxConcurrentConnections
         );
@@ -244,6 +294,9 @@ class Program
 
                     // Register modules
                     moduleRegistry.RegisterPackage(packageInfo);
+
+                    // Sync database tables for this package (if not already done during installation)
+                    await SyncPackageTablesAsync(packageInfo, sqlite, logger);
 
                     // Apply firewall intents (managed rules)
                     await ApplyFirewallIntentsAsync(discoveryInfo.Manifest, firewallManager, interfaceAssignmentStore, logger);
@@ -424,6 +477,84 @@ class Program
             "opt" => InterfaceRole.Opt,
             _ => InterfaceRole.Opt
         };
+    }
+
+    /// <summary>
+    /// Syncs database tables for all modules in a package by scanning for SQLite entity types.
+    /// This is called during package loading at startup as a fallback if tables weren't synced during installation.
+    /// </summary>
+    private static async Task SyncPackageTablesAsync(
+        PackageInfo packageInfo,
+        CL.SQLite.SQLiteLibrary? sqlite,
+        Monolith.FireWall.Common.Interfaces.ILogger logger)
+    {
+        logger.LogInformation($"[SYNC] METHOD CALLED for package: {packageInfo.Definition.Id}");
+        try
+        {
+            logger.LogInformation($"[SYNC] Starting table sync for package: {packageInfo.Definition.Id}");
+            
+            if (sqlite?.TableSyncService == null)
+            {
+                logger.LogWarning($"[SYNC] SQLite or TableSyncService not available for package: {packageInfo.Definition.Id}");
+                return;
+            }
+
+            // Get the main assembly
+            var mainAssembly = packageInfo.MainAssembly;
+            if (mainAssembly == null)
+            {
+                logger.LogWarning($"[SYNC] Main assembly not found for package: {packageInfo.Definition.Id}");
+                return;
+            }
+
+            logger.LogInformation($"[SYNC] Scanning assembly: {mainAssembly.FullName}");
+
+            // Find all types that have SQLiteTable attribute
+            var entityTypes = mainAssembly.GetTypes()
+                .Where(t => t.GetCustomAttribute<CL.SQLite.Models.SQLiteTableAttribute>() != null)
+                .ToList();
+
+            logger.LogInformation($"[SYNC] Found {entityTypes.Count} SQLite entity type(s) in package {packageInfo.Definition.Id}");
+
+            if (entityTypes.Count == 0)
+            {
+                logger.LogInformation($"[SYNC] No SQLite entities found in package: {packageInfo.Definition.Id}");
+                return;
+            }
+
+            logger.LogInformation($"[SYNC] Syncing database tables for package: {packageInfo.Definition.Id}");
+
+            // Sync each entity type
+            foreach (var entityType in entityTypes)
+            {
+                try
+                {
+                    var tableAttr = entityType.GetCustomAttribute<CL.SQLite.Models.SQLiteTableAttribute>();
+                    var tableName = tableAttr?.TableName ?? entityType.Name;
+                    
+                    // Use reflection to call SyncTableAsync<T> with the entity type
+                    var syncMethod = typeof(CL.SQLite.Services.TableSyncService).GetMethod("SyncTableAsync", new[] { typeof(CancellationToken) });
+                    if (syncMethod != null)
+                    {
+                        var genericMethod = syncMethod.MakeGenericMethod(entityType);
+                        var task = (Task)genericMethod.Invoke(sqlite.TableSyncService, new object[] { CancellationToken.None })!;
+                        await task;
+                        logger.LogInformation($"  ✓ Table {tableName} synced");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning($"  ✗ Failed to sync table for {entityType.Name}: {ex.Message}");
+                }
+            }
+
+            logger.LogInformation($"✓ Database tables synced for package: {packageInfo.Definition.Id}");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning($"Failed to sync database tables for package {packageInfo.Definition.Id}: {ex.Message}");
+            // Don't fail package loading if table sync fails
+        }
     }
 }
 

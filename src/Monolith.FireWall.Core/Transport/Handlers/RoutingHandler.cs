@@ -11,7 +11,8 @@ public sealed class RoutingHandler : ICoreRequestHandler
         "routing.gateways.list",
         "routing.routes.list",
         "routing.routes.add",
-        "routing.routes.remove"
+        "routing.routes.remove",
+        "routing.status"
     };
 
     public bool CanHandle(string action) => Actions.Contains(action);
@@ -51,6 +52,10 @@ public sealed class RoutingHandler : ICoreRequestHandler
                 return removeResult.Success
                     ? new ApiResponse(true, new { id = routeDelete.Id }, null)
                     : new ApiResponse(false, null, removeResult.Error);
+
+            case "routing.status":
+                var status = await context.RoutingManager.GetRoutingStatusAsync(cancellationToken);
+                return new ApiResponse(true, status, null);
         }
 
         return new ApiResponse(false, null, $"Unhandled action: {action}");

@@ -9,6 +9,18 @@ var AdvancedSettings = {
         this.render();
         this.bindEvents();
         this.loadTuneables();
+        this.loadNetworkCardsScript();
+    },
+
+    loadNetworkCardsScript: async function() {
+        // Load network-cards.js script if not already loaded
+        if (typeof NetworkCards === 'undefined') {
+            try {
+                await Monolith.ModuleLoader.loadScript('/js/pages/network-cards.js', 'network-cards');
+            } catch (error) {
+                console.warn('Failed to load network-cards script:', error);
+            }
+        }
     },
 
     render: function() {
@@ -18,7 +30,7 @@ var AdvancedSettings = {
                 <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
                     <div>
                         <h1 class="mb-1">Advanced Settings</h1>
-                        <div class="text-muted small">Changes apply immediately and are saved for the next boot.</div>
+                        <div class="text-muted small">Save settings to apply at next boot, or Save and Apply Now to apply immediately.</div>
                     </div>
                     <div class="mt-2 mt-md-0">
                         <button class="btn btn-outline-secondary btn-sm" id="advanced-refresh-btn">Refresh</button>
@@ -41,6 +53,11 @@ var AdvancedSettings = {
                             System Tuneables
                         </button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="advanced-network-cards-tab" data-bs-toggle="tab" data-bs-target="#advanced-network-cards" type="button" role="tab">
+                            Network Cards
+                        </button>
+                    </li>
                 </ul>
 
                 <div class="tab-content pt-4">
@@ -48,7 +65,10 @@ var AdvancedSettings = {
                         <div class="card mb-4">
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0">Core Network Controls</h5>
-                                <button class="btn btn-primary btn-sm" id="advanced-apply-network">Apply Settings</button>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" id="advanced-save-network">Save</button>
+                                    <button class="btn btn-primary" id="advanced-apply-network">Save & Apply Now</button>
+                                </div>
                             </div>
                             <div class="card-body" id="advanced-network-container">
                                 <div class="text-center text-muted py-4">Loading tuneables...</div>
@@ -60,7 +80,10 @@ var AdvancedSettings = {
                         <div class="card mb-4">
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0">Firewall Hardening</h5>
-                                <button class="btn btn-primary btn-sm" id="advanced-apply-firewall">Apply Settings</button>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" id="advanced-save-firewall">Save</button>
+                                    <button class="btn btn-primary" id="advanced-apply-firewall">Save & Apply Now</button>
+                                </div>
                             </div>
                             <div class="card-body" id="advanced-firewall-container">
                                 <div class="text-center text-muted py-4">Loading tuneables...</div>
@@ -75,8 +98,9 @@ var AdvancedSettings = {
                                 <input type="text" class="form-control" id="tuneables-search" placeholder="Filter by name, key, or description">
                             </div>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-outline-primary btn-sm" id="advanced-apply-changes">Apply Changes</button>
-                                <button class="btn btn-outline-secondary btn-sm" id="advanced-apply-all">Apply All</button>
+                                <button class="btn btn-outline-primary btn-sm" id="advanced-save-changes">Save Changes</button>
+                                <button class="btn btn-primary btn-sm" id="advanced-apply-changes">Save & Apply Changes</button>
+                                <button class="btn btn-outline-secondary btn-sm" id="advanced-apply-all">Save & Apply All</button>
                             </div>
                         </div>
 
@@ -103,6 +127,22 @@ var AdvancedSettings = {
                             </div>
                         </div>
                     </div>
+
+                    <div class="tab-pane fade" id="advanced-network-cards" role="tabpanel">
+                        <div class="card mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Network Interface Cards</h5>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-secondary" id="network-cards-refresh">
+                                        <i class="bi bi-arrow-clockwise"></i> Refresh All
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body" id="network-cards-container">
+                                <div class="text-center text-muted py-4">Loading network cards...</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         `);
@@ -112,14 +152,39 @@ var AdvancedSettings = {
         $(document).off('click', '#advanced-refresh-btn');
         $(document).on('click', '#advanced-refresh-btn', () => this.loadTuneables());
 
+        $(document).off('click', '#advanced-save-network');
+        $(document).on('click', '#advanced-save-network', () => this.saveFeatured('#advanced-network-container'));
+
         $(document).off('click', '#advanced-apply-network');
         $(document).on('click', '#advanced-apply-network', () => this.applyFeatured('#advanced-network-container'));
+
+        $(document).off('click', '#advanced-save-firewall');
+        $(document).on('click', '#advanced-save-firewall', () => this.saveFeatured('#advanced-firewall-container'));
 
         $(document).off('click', '#advanced-apply-firewall');
         $(document).on('click', '#advanced-apply-firewall', () => this.applyFeatured('#advanced-firewall-container'));
 
+        $(document).off('click', '#advanced-save-changes');
+        $(document).on('click', '#advanced-save-changes', () => this.saveChanges());
+
         $(document).off('click', '#advanced-apply-changes');
         $(document).on('click', '#advanced-apply-changes', () => this.applyChanges());
+
+        // Network Cards tab events
+        $(document).off('click', '#network-cards-refresh');
+        $(document).on('click', '#network-cards-refresh', () => {
+            if (typeof NetworkCards !== 'undefined') {
+                NetworkCards.loadCards();
+            }
+        });
+
+        // Initialize Network Cards when tab is shown
+        $(document).off('shown.bs.tab', '#advanced-network-cards-tab');
+        $(document).on('shown.bs.tab', '#advanced-network-cards-tab', () => {
+            if (typeof NetworkCards !== 'undefined') {
+                NetworkCards.init();
+            }
+        });
 
         $(document).off('click', '#advanced-apply-all');
         $(document).on('click', '#advanced-apply-all', () => this.applyAll());
@@ -127,6 +192,15 @@ var AdvancedSettings = {
         $(document).off('input', '#tuneables-search');
         $(document).on('input', '#tuneables-search', (e) => {
             this.renderTuneables((e.target.value || '').trim());
+        });
+
+
+        $(document).off('click', '.tuneable-save-btn');
+        $(document).on('click', '.tuneable-save-btn', (e) => {
+            const key = $(e.currentTarget).data('key');
+            if (key) {
+                this.saveSingle(key);
+            }
         });
 
         $(document).off('click', '.tuneable-apply-btn');
@@ -251,7 +325,10 @@ var AdvancedSettings = {
                     <td>${input}</td>
                     <td>${category}</td>
                     <td class="tuneable-actions text-end">
-                        <button class="btn btn-outline-primary btn-sm tuneable-apply-btn" data-key="${key}">Apply</button>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary tuneable-save-btn" data-key="${key}" title="Save for next boot">Save</button>
+                            <button class="btn btn-primary tuneable-apply-btn" data-key="${key}" title="Save and apply now">Apply</button>
+                        </div>
                     </td>
                 </tr>
             `;
@@ -325,9 +402,23 @@ var AdvancedSettings = {
         return items;
     },
 
+    saveFeatured: function(selector) {
+        const items = this.collectItems(`${selector} .tuneable-input`, false);
+        this.saveItems(items);
+    },
+
     applyFeatured: function(selector) {
         const items = this.collectItems(`${selector} .tuneable-input`, false);
         this.applyItems(items);
+    },
+
+    saveChanges: function() {
+        const items = this.collectItems('#tuneables-table-body .tuneable-input', true);
+        if (items.length === 0) {
+            Monolith.UI.toast('No changes to save', 'info');
+            return;
+        }
+        this.saveItems(items);
     },
 
     applyChanges: function() {
@@ -344,6 +435,15 @@ var AdvancedSettings = {
         this.applyItems(items);
     },
 
+    saveSingle: function(key) {
+        const input = $(`#tuneables-table-body .tuneable-input[data-key="${key}"]`);
+        if (!input.length) {
+            return;
+        }
+        const items = this.collectItems(input, false);
+        this.saveItems(items);
+    },
+
     applySingle: function(key) {
         const input = $(`#tuneables-table-body .tuneable-input[data-key="${key}"]`);
         if (!input.length) {
@@ -351,6 +451,26 @@ var AdvancedSettings = {
         }
         const items = this.collectItems(input, false);
         this.applyItems(items);
+    },
+
+    saveItems: async function(items) {
+        if (!items || items.length === 0) {
+            return;
+        }
+
+        try {
+            const response = await Monolith.API.post('/system/tuneables/save', { items: items });
+            if (!(response.Success || response.success)) {
+                throw new Error(response.Error || response.error || 'Save failed');
+            }
+
+            const data = response.Data || response.data || {};
+            this.handleSaveResults(data);
+            await this.loadTuneables();
+        } catch (error) {
+            console.error('Save tuneables failed:', error);
+            Monolith.UI.toast('Failed to save tuneables', 'error');
+        }
     },
 
     applyItems: async function(items) {
@@ -373,16 +493,45 @@ var AdvancedSettings = {
         }
     },
 
-    handleApplyResults: function(data) {
+    handleSaveResults: function(data) {
         const results = data.Results || data.results || [];
         if (!Array.isArray(results) || results.length === 0) {
-            Monolith.UI.toast('Tuneables applied', 'success');
+            Monolith.UI.toast('Tuneables saved (will apply at next boot)', 'success');
             return;
         }
 
         const failures = results.filter(r => !(r.Success || r.success));
         if (failures.length === 0) {
-            Monolith.UI.toast('Tuneables applied', 'success');
+            Monolith.UI.toast('Tuneables saved (will apply at next boot)', 'success');
+            return;
+        }
+
+        const listItems = failures.map(item => `
+            <li>
+                <strong>${item.Key || item.key}</strong>
+                <div class="text-muted small">${item.Error || item.error || 'Failed to save'}</div>
+            </li>
+        `).join('');
+
+        const body = `
+            <div class="alert alert-warning">
+                ${failures.length} tuneable(s) failed to save.
+            </div>
+            <ul class="ps-3 mb-0">${listItems}</ul>
+        `;
+        Monolith.UI.showModal('Tuneable Save Results', body, { size: 'lg' });
+    },
+
+    handleApplyResults: function(data) {
+        const results = data.Results || data.results || [];
+        if (!Array.isArray(results) || results.length === 0) {
+            Monolith.UI.toast('Tuneables saved and applied', 'success');
+            return;
+        }
+
+        const failures = results.filter(r => !(r.Success || r.success));
+        if (failures.length === 0) {
+            Monolith.UI.toast('Tuneables saved and applied', 'success');
             return;
         }
 

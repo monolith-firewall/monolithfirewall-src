@@ -7,6 +7,9 @@ using Monolith.FireWall.Core.Configuration;
 using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Platform;
 using Monolith.FireWall.Platform.Models;
+using CodeLogic;
+using CL.SQLite.Services;
+using System.Reflection;
 
 namespace Monolith.FireWall.Core.Services;
 
@@ -119,7 +122,7 @@ public sealed class PackageInstaller
                     ["update"] = isUpdate
                 });
 
-            await TryReloadPackageAsync(manifest.Id);
+            var packageInfo = await TryReloadPackageAsync(manifest.Id, cancellationToken);
             return PackageInstallResult.Ok(manifest, manifest.RequiresRestart, isUpdate);
         }
         catch (Exception ex)
@@ -285,7 +288,7 @@ public sealed class PackageInstaller
         }
     }
 
-    private async Task TryReloadPackageAsync(string packageId)
+    private async Task<PackageInfo?> TryReloadPackageAsync(string packageId, CancellationToken cancellationToken)
     {
         try
         {
@@ -296,11 +299,50 @@ public sealed class PackageInstaller
             {
                 var packageInfo = await _loader.LoadPackageAsync(target);
                 _registry.RegisterPackage(packageInfo);
+                
+                // Sync database tables for all modules in this package
+                await SyncPackageModuleTablesAsync(packageInfo, cancellationToken);
+
+                // Start lifecycle modules so they receive a context immediately after install/update.
+                // This is important for packages that trigger config generation on writes.
+                await StartPackageLifecycleAsync(packageInfo, cancellationToken);
+                
+                return packageInfo;
             }
+            return null;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, $"Failed to reload package {packageId}");
+            return null;
+        }
+    }
+
+    private async Task StartPackageLifecycleAsync(PackageInfo packageInfo, CancellationToken cancellationToken)
+    {
+        var modules = _registry
+            .GetAllModules(includeDisabled: true)
+            .Where(m => string.Equals(m.Package.Definition.Id, packageInfo.Definition.Id, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var moduleInfo in modules)
+        {
+            if (moduleInfo.Module is not IMonolithModuleLifecycle lifecycle)
+            {
+                continue;
+            }
+
+            try
+            {
+                // Minimal context: modules can still access SQLite via CodeLogic.Libs.
+                var context = new ModuleContextAdapter(_logger, packageInfo.Definition.Id, moduleInfo.Module.Id);
+                await lifecycle.OnStartAsync(context);
+                _logger.LogInformation($"Started module lifecycle: {packageInfo.Definition.Id}/{moduleInfo.Module.Id}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Failed to start module lifecycle: {packageInfo.Definition.Id}/{moduleInfo.Module.Id}");
+            }
         }
     }
 
@@ -334,6 +376,99 @@ public sealed class PackageInstaller
             var target = Path.Combine(destinationDir, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(target) ?? destinationDir);
             File.Copy(file, target, overwrite: true);
+        }
+    }
+
+    /// <summary>
+    /// Syncs database tables for all modules in a package by scanning for SQLite entity types.
+    /// </summary>
+    private async Task SyncPackageModuleTablesAsync(PackageInfo packageInfo, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            if (sqlite?.TableSyncService == null)
+            {
+                _logger.LogWarning($"SQLite library or TableSyncService not available - cannot sync tables for package {packageInfo.Definition.Id}");
+                return;
+            }
+
+            _logger.LogInformation($"Syncing database tables for package: {packageInfo.Definition.Id}");
+
+            // Get the main assembly
+            var mainAssembly = packageInfo.MainAssembly;
+            if (mainAssembly == null)
+            {
+                _logger.LogWarning($"Main assembly not found for package {packageInfo.Definition.Id}");
+                return;
+            }
+
+            // Find all types that have SQLiteTable attribute
+            var entityTypes = mainAssembly.GetTypes()
+                .Where(t => t.GetCustomAttribute<CL.SQLite.Models.SQLiteTableAttribute>() != null)
+                .ToList();
+
+            if (entityTypes.Count == 0)
+            {
+                _logger.LogInformation($"  No SQLite entities found in package {packageInfo.Definition.Id}");
+                return;
+            }
+
+            _logger.LogInformation($"  Found {entityTypes.Count} SQLite entity type(s)");
+
+            // Sync each entity type
+            foreach (var entityType in entityTypes)
+            {
+                try
+                {
+                    var tableAttr = entityType.GetCustomAttribute<CL.SQLite.Models.SQLiteTableAttribute>();
+                    var tableName = tableAttr?.TableName ?? entityType.Name;
+                    
+                    _logger.LogInformation($"  Syncing table: {tableName} ({entityType.Name})");
+                    
+                    // Use reflection to call SyncTableAsync<T> with the entity type
+                    var syncMethod = typeof(TableSyncService).GetMethod("SyncTableAsync", 
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance,
+                        null,
+                        new[] { typeof(CancellationToken) },
+                        null);
+                    
+                    if (syncMethod != null)
+                    {
+                        var genericMethod = syncMethod.MakeGenericMethod(entityType);
+                        var taskObject = genericMethod.Invoke(sqlite.TableSyncService, new object[] { cancellationToken });
+                        
+                        if (taskObject is Task task)
+                        {
+                            await task.ConfigureAwait(false);
+                            _logger.LogInformation($"    ✓ Table {tableName} synced successfully");
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"    ✗ SyncTableAsync did not return a Task");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"    ✗ SyncTableAsync method not found on TableSyncService");
+                    }
+                }
+                catch (TargetInvocationException tie) when (tie.InnerException != null)
+                {
+                    _logger.LogError(tie.InnerException, $"    ✗ Failed to sync table for {entityType.Name}: {tie.InnerException.Message}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"    ✗ Failed to sync table for {entityType.Name}: {ex.Message}");
+                }
+            }
+
+            _logger.LogInformation($"✓ Database tables synced for package: {packageInfo.Definition.Id}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Failed to sync database tables for package {packageInfo.Definition.Id}: {ex.Message}");
+            // Don't fail the installation if table sync fails - it can be done later
         }
     }
 }

@@ -225,6 +225,7 @@ var Interfaces = {
                             </div>
                         </div>
                     </div>
+
                 </div>
             </div>
         `);
@@ -730,7 +731,8 @@ var Interfaces = {
 
         const footer = `
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-primary" id="assignment-save-btn">${isEdit ? 'Save' : 'Add'}</button>
+            <button type="button" class="btn btn-outline-primary" id="assignment-save-btn">${isEdit ? 'Save' : 'Add'}</button>
+            <button type="button" class="btn btn-primary" id="assignment-save-apply-btn">${isEdit ? 'Save & Apply' : 'Add & Apply'}</button>
         `;
 
         const modal = Monolith.UI.showModal(title, body, { size: 'lg', footerHtml: footer, staticBackdrop: true });
@@ -742,7 +744,7 @@ var Interfaces = {
         modal.element.find('#assignment-ipmode').on('change', toggleStaticFields);
         toggleStaticFields();
 
-        modal.element.find('#assignment-save-btn').on('click', async () => {
+        const saveAssignment = async (apply = false) => {
             const iface = modal.element.find('#assignment-interface').val();
             const name = modal.element.find('#assignment-name').val();
             const description = modal.element.find('#assignment-description').val();
@@ -778,13 +780,32 @@ var Interfaces = {
                 }
 
                 Monolith.UI.toast('Assignment saved', 'success');
+                
+                if (apply) {
+                    // Apply configuration immediately
+                    try {
+                        const applyResponse = await Monolith.API.post('/interfaces/config/apply-now', {});
+                        if (applyResponse.Success || applyResponse.success) {
+                            Monolith.UI.toast('Configuration saved and applied', 'success');
+                        } else {
+                            Monolith.UI.toast('Saved but failed to apply: ' + (applyResponse.Error || applyResponse.error || 'Unknown error'), 'warning');
+                        }
+                    } catch (applyError) {
+                        console.error('Apply failed:', applyError);
+                        Monolith.UI.toast('Saved but failed to apply configuration', 'warning');
+                    }
+                }
+                
                 modal.instance.hide();
                 this.loadData();
             } catch (error) {
                 console.error('Save assignment failed:', error);
                 Monolith.UI.toast('Failed to save assignment', 'error');
             }
-        });
+        };
+
+        modal.element.find('#assignment-save-btn').on('click', () => saveAssignment(false));
+        modal.element.find('#assignment-save-apply-btn').on('click', () => saveAssignment(true));
     },
 
     showVlanModal: function(existing) {
@@ -1249,10 +1270,10 @@ var Interfaces = {
              .addClass(`alert-${type}`)
              .text(message);
         setTimeout(() => alert.addClass('d-none'), 5000);
-    }
+    },
+
 };
 
-// Register with Monolith.Pages
 if (typeof Monolith !== 'undefined') {
     Monolith.Pages = Monolith.Pages || {};
     Monolith.Pages.Interfaces = Interfaces;

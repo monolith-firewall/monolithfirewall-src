@@ -13,7 +13,7 @@ $(document).ready(function() {
             // Check if setup is needed (skip if already on setup page)
             if (!window.location.pathname.startsWith('/setup')) {
                 try {
-                    const setupStatus = await Monolith.API.get('/api/setup/status');
+                    const setupStatus = await Monolith.API.get('/setup/status');
                     if (setupStatus.needsSetup) {
                         window.location.href = '/setup';
                         return;

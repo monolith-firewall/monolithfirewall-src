@@ -961,6 +961,44 @@ app.MapPost("/api/interfaces/config/fix", async (HttpContext context, CoreApiCli
 });
 
 // Routing API routes
+app.MapPost("/api/system/command", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        using var doc = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+        var coreRequest = new
+        {
+            action = "system.command.run",
+            payload = doc.RootElement
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapGet("/api/routing/status", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        var coreRequest = new
+        {
+            action = "routing.status"
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
 app.MapGet("/api/routing/gateways", async (HttpContext context, CoreApiClient coreClient) =>
 {
     try

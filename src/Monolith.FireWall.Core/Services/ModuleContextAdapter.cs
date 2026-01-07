@@ -45,6 +45,16 @@ public class ModuleContextAdapter : IModuleContext
     public T GetService<T>() where T : class
     {
         // Service locator implementation
+        if (typeof(T) == typeof(ILogger))
+        {
+            return (T)(object)Logger;
+        }
+
+        if (typeof(T) == typeof(Services.Platform.PlatformExecutor) && _platformExecutor != null)
+        {
+            return (T)(object)_platformExecutor;
+        }
+
         if (typeof(T) == typeof(CL.SQLite.SQLiteLibrary))
         {
             var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();

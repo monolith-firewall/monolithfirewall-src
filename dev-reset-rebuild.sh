@@ -85,13 +85,18 @@ fi
 
 print_step "Step 8: Cleaning build artifacts"
 cd "$PROJECT_ROOT"
-find . -type d -name "bin" -o -name "obj" | while read dir; do
+find . -type d \( -name "bin" -o -name "obj" \) | while read dir; do
     rm -rf "$dir" 2>/dev/null || true
 done
 rm -rf debian/monolith-firewall 2>/dev/null || true
 rm -f debian/*.deb 2>/dev/null || true
 rm -f debian/*.buildinfo 2>/dev/null || true
 rm -f debian/*.changes 2>/dev/null || true
+rm -rf build-output 2>/dev/null || true
+rm -f *.mfwpkg 2>/dev/null || true
+rm -f ../monolith-firewall_*.deb 2>/dev/null || true
+rm -f ../monolith-firewall_*.buildinfo 2>/dev/null || true
+rm -f ../monolith-firewall_*.changes 2>/dev/null || true
 print_success "Build artifacts cleaned"
 
 print_step "Step 9: Building solution"
@@ -101,179 +106,135 @@ dotnet restore || print_error "Failed to restore packages"
 dotnet build -c Release || print_error "Failed to build solution"
 print_success "Solution built successfully"
 
-print_step "Step 10: Building packages"
-cd "$PROJECT_ROOT/packages/monolith-network"
-dotnet publish -c Release -r linux-x64 --self-contained false || print_error "Failed to build monolith-network package"
-print_success "Packages built successfully"
-
-print_step "Step 11: Building Core service"
-cd "$PROJECT_ROOT/src/Monolith.FireWall.Core"
-dotnet publish -c Release -r linux-x64 --self-contained false -o "$PROJECT_ROOT/debian/monolith-firewall/opt/monolith-firewall/core" || print_error "Failed to build Core service"
-print_success "Core service built"
-
-print_step "Step 12: Building WebUI service"
-cd "$PROJECT_ROOT/src/Monolith.FireWall.WebUI"
-dotnet publish -c Release -r linux-x64 --self-contained false -o "$PROJECT_ROOT/debian/monolith-firewall/opt/monolith-firewall/webui" || print_error "Failed to build WebUI service"
-print_success "WebUI service built"
-
-print_step "Step 13: Preparing package structure"
-mkdir -p "$PROJECT_ROOT/debian/monolith-firewall/opt/monolith-firewall/packages/monolith-network/backend"
-mkdir -p "$PROJECT_ROOT/debian/monolith-firewall/opt/monolith-firewall/packages/monolith-network/wwwroot"
-
-# Copy package files
-cd "$PROJECT_ROOT/packages/monolith-network/bin/Release/net10.0/linux-x64/publish"
-cp *.dll "$PROJECT_ROOT/debian/monolith-firewall/opt/monolith-firewall/packages/monolith-network/backend/" 2>/dev/null || true
-cp *.so "$PROJECT_ROOT/debian/monolith-firewall/opt/monolith-firewall/packages/monolith-network/backend/" 2>/dev/null || true
-cp manifest.json "$PROJECT_ROOT/debian/monolith-firewall/opt/monolith-firewall/packages/monolith-network/" 2>/dev/null || true
-cp *.deps.json "$PROJECT_ROOT/debian/monolith-firewall/opt/monolith-firewall/packages/monolith-network/" 2>/dev/null || true
-cp -r wwwroot/* "$PROJECT_ROOT/debian/monolith-firewall/opt/monolith-firewall/packages/monolith-network/wwwroot/" 2>/dev/null || true
-cp -r Pages "$PROJECT_ROOT/debian/monolith-firewall/opt/monolith-firewall/packages/monolith-network/" 2>/dev/null || true
-print_success "Package structure prepared"
-
-print_step "Step 14: Creating systemd service files"
-mkdir -p "$PROJECT_ROOT/debian/monolith-firewall/usr/lib/systemd/system"
-
-cat > "$PROJECT_ROOT/debian/monolith-firewall/usr/lib/systemd/system/monolith-firewall-core.service" << 'EOF'
-[Unit]
-Description=Monolith FireWall Core Service
-After=network.target
-
-[Service]
-Type=simple
-User=monolith-firewall
-Group=monolith-firewall
-WorkingDirectory=/opt/monolith-firewall/core
-ExecStart=/opt/monolith-firewall/core/Monolith.FireWall.Core
-Restart=always
-RestartSec=10
-Environment="DOTNET_ENVIRONMENT=Production"
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-cat > "$PROJECT_ROOT/debian/monolith-firewall/usr/lib/systemd/system/monolith-firewall-webui.service" << 'EOF'
-[Unit]
-Description=Monolith FireWall WebUI Service
-After=network.target monolith-firewall-core.service
-Requires=monolith-firewall-core.service
-
-[Service]
-Type=simple
-User=monolith-firewall
-Group=monolith-firewall
-WorkingDirectory=/opt/monolith-firewall/webui
-ExecStart=/opt/monolith-firewall/webui/Monolith.FireWall.WebUI
-Restart=always
-RestartSec=10
-Environment="DOTNET_ENVIRONMENT=Production"
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-print_success "Systemd service files created"
-
-print_step "Step 15: Creating Debian control file"
-mkdir -p "$PROJECT_ROOT/debian/monolith-firewall/DEBIAN"
-
-cat > "$PROJECT_ROOT/debian/monolith-firewall/DEBIAN/control" << EOF
-Package: monolith-firewall
-Version: 1.0.0-$(date +%Y%m%d%H%M%S)
-Section: admin
-Priority: optional
-Architecture: amd64
-Maintainer: MonolithFireWall Team
-Description: MonolithFireWall - Modular Firewall Management System
- A modern, modular firewall management system built on .NET 10.0
- with a web-based user interface.
- .
- Note: This package requires .NET 10.0 Runtime to be installed.
- Install it from: https://dotnet.microsoft.com/download/dotnet/10.0
-EOF
-
-print_success "Debian control file created"
-
-print_step "Step 16: Creating post-installation script"
-cat > "$PROJECT_ROOT/debian/monolith-firewall/DEBIAN/postinst" << 'EOF'
-#!/bin/bash
-set -e
-
-# Check for .NET 10.0 Runtime
-if ! command -v dotnet &> /dev/null; then
-    echo "ERROR: .NET Runtime is not installed."
-    echo "Please install .NET 10.0 Runtime from: https://dotnet.microsoft.com/download/dotnet/10.0"
-    exit 1
-fi
-
-# Check .NET version
-DOTNET_VERSION=$(dotnet --version 2>/dev/null || echo "0.0.0")
-MAJOR_VERSION=$(echo "$DOTNET_VERSION" | cut -d. -f1)
-
-if [ "$MAJOR_VERSION" -lt 10 ]; then
-    echo "ERROR: .NET 10.0 or higher is required, but version $DOTNET_VERSION is installed."
-    echo "Please install .NET 10.0 Runtime from: https://dotnet.microsoft.com/download/dotnet/10.0"
-    exit 1
-fi
-
-# Create user and group
-if ! id "monolith-firewall" &>/dev/null; then
-    useradd -r -s /bin/false -d /opt/monolith-firewall monolith-firewall
-fi
-
-# Create required directories
-mkdir -p /var/lib/monolith-firewall
-mkdir -p /var/log/monolith-firewall
-mkdir -p /etc/monolith-firewall
-
-# Set permissions
-chown -R monolith-firewall:monolith-firewall /opt/monolith-firewall
-chown -R monolith-firewall:monolith-firewall /var/lib/monolith-firewall
-chown -R monolith-firewall:monolith-firewall /var/log/monolith-firewall
-chown root:monolith-firewall /etc/monolith-firewall
-chmod 755 /var/lib/monolith-firewall
-chmod 755 /var/log/monolith-firewall
-chmod 755 /etc/monolith-firewall
-chmod +x /opt/monolith-firewall/core/Monolith.FireWall.Core
-chmod +x /opt/monolith-firewall/webui/Monolith.FireWall.WebUI
-
-# Reload systemd and enable services
-systemctl daemon-reload
-systemctl enable monolith-firewall-core.service
-systemctl enable monolith-firewall-webui.service
-
-echo "MonolithFireWall installed successfully!"
-echo "Start services with:"
-echo "  sudo systemctl start monolith-firewall-core"
-echo "  sudo systemctl start monolith-firewall-webui"
-echo ""
-echo "Access the WebUI at: http://localhost:80 or https://localhost:443"
-echo "Default credentials: admin / admin"
-
-exit 0
-EOF
-
-chmod +x "$PROJECT_ROOT/debian/monolith-firewall/DEBIAN/postinst"
-print_success "Post-installation script created"
-
-print_step "Step 17: Building Debian package"
+print_step "Step 10: Building all .mfwpkg packages"
 cd "$PROJECT_ROOT"
-dpkg-deb --build debian/monolith-firewall || print_error "Failed to build Debian package"
-DEB_FILE=$(ls debian/*.deb | head -1)
-print_success "Debian package built: $DEB_FILE"
+if [ -f "build-scripts/build-all-packages.sh" ]; then
+    chmod +x build-scripts/build-all-packages.sh
+    ./build-scripts/build-all-packages.sh || print_error "Failed to build packages"
+    print_success "All packages built successfully"
+else
+    print_warning "build-all-packages.sh not found, skipping package build"
+fi
 
-print_step "Step 18: Installing Debian package"
-dpkg -i "$DEB_FILE" || print_error "Failed to install Debian package"
-print_success "Debian package installed"
+print_step "Step 11: Building Debian package"
+cd "$PROJECT_ROOT"
+if [ -f "build-scripts/build-deb.sh" ]; then
+    chmod +x build-scripts/build-deb.sh
+    ./build-scripts/build-deb.sh || print_error "Failed to build Debian package"
+    DEB_FILE=$(ls build-output/monolith-firewall_*.deb 2>/dev/null | head -1)
+    if [ -z "$DEB_FILE" ]; then
+        DEB_FILE=$(ls ../monolith-firewall_*.deb 2>/dev/null | head -1)
+    fi
+    if [ -z "$DEB_FILE" ]; then
+        print_error "Debian package not found after build"
+    fi
+    print_success "Debian package built: $DEB_FILE"
+else
+    print_error "build-deb.sh not found"
+fi
 
-print_step "Step 19: Starting services"
-systemctl start monolith-firewall-core
-sleep 3
-systemctl start monolith-firewall-webui
+print_step "Step 12: Installing Debian package"
+if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
+    dpkg -i "$DEB_FILE" || apt-get install -f -y || print_error "Failed to install Debian package"
+    print_success "Debian package installed"
+else
+    print_error "Debian package file not found: $DEB_FILE"
+fi
+
+print_step "Step 13: Starting Core service (required for package installation)"
+systemctl start monolith-firewall-core || print_error "Failed to start Core service"
+
+# Wait for Core service to be ready (Unix socket exists)
+echo "  Waiting for Core service to be ready..."
+SOCKET_PATH="/var/lib/monolith-firewall/run/monolith-core.sock"
+MAX_WAIT=30
+WAIT_COUNT=0
+while [ ! -S "$SOCKET_PATH" ] && [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+    sleep 1
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    echo -n "."
+done
+echo ""
+
+if [ ! -S "$SOCKET_PATH" ]; then
+    print_warning "Core service socket not ready after ${MAX_WAIT}s, continuing anyway..."
+else
+    print_success "Core service is ready"
+fi
+
+print_step "Step 14: Installing .mfwpkg packages"
+PACKAGES_DIR="$PROJECT_ROOT/build-output/packages"
+PACKAGES_STAGING_DIR="/var/lib/monolith-firewall/packages"
+if [ -d "$PACKAGES_DIR" ]; then
+    INSTALLED_COUNT=0
+    FAILED_COUNT=0
+    mkdir -p "$PACKAGES_STAGING_DIR"
+    
+    # Copy packages to staging directory
+    for pkg_file in "$PACKAGES_DIR"/*.mfwpkg; do
+        if [ -f "$pkg_file" ]; then
+            pkg_name=$(basename "$pkg_file")
+            echo "  Copying $pkg_name to staging..."
+            cp "$pkg_file" "$PACKAGES_STAGING_DIR/" || print_warning "Failed to copy $pkg_name"
+        fi
+    done
+    
+    chown -R monolith-firewall:monolith-firewall "$PACKAGES_STAGING_DIR" 2>/dev/null || true
+    
+    # Install packages using monolith-pkgmgr CLI
+    if command -v monolith-pkgmgr &> /dev/null; then
+        for pkg_file in "$PACKAGES_STAGING_DIR"/*.mfwpkg; do
+            if [ -f "$pkg_file" ]; then
+                pkg_name=$(basename "$pkg_file")
+                echo "  Installing $pkg_name..."
+                
+                # Try installing with overwrite flag
+                INSTALL_OUTPUT=$(monolith-pkgmgr package install "$pkg_file" --overwrite 2>&1)
+                INSTALL_EXIT=$?
+                echo "$INSTALL_OUTPUT" | tee /tmp/pkgmgr-install.log
+                
+                if [ $INSTALL_EXIT -eq 0 ]; then
+                    INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
+                    print_success "Installed $pkg_name"
+                else
+                    # Check if it's already installed (not a real error)
+                    if echo "$INSTALL_OUTPUT" | grep -qi "already installed\|already exists"; then
+                        INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
+                        print_success "$pkg_name already installed (skipped)"
+                    elif echo "$INSTALL_OUTPUT" | grep -qi "Core service is not running"; then
+                        FAILED_COUNT=$((FAILED_COUNT + 1))
+                        print_error "Core service not running - cannot install $pkg_name"
+                    else
+                        FAILED_COUNT=$((FAILED_COUNT + 1))
+                        print_warning "Failed to install $pkg_name (check logs)"
+                    fi
+                fi
+            fi
+        done
+    else
+        print_warning "monolith-pkgmgr not found, packages copied but not installed"
+        print_warning "Install manually with: monolith-pkgmgr package install <package.mfwpkg>"
+        INSTALLED_COUNT=$(ls -1 "$PACKAGES_STAGING_DIR"/*.mfwpkg 2>/dev/null | wc -l)
+    fi
+    
+    if [ $INSTALLED_COUNT -gt 0 ]; then
+        print_success "Installed/prepared $INSTALLED_COUNT package(s)"
+        if [ $FAILED_COUNT -gt 0 ]; then
+            print_warning "$FAILED_COUNT package(s) failed to install"
+        fi
+    else
+        print_warning "No .mfwpkg packages found to install"
+    fi
+else
+    print_warning "Packages directory not found: $PACKAGES_DIR"
+fi
+
+print_step "Step 15: Starting WebUI service"
+systemctl start monolith-firewall-webui || print_warning "Failed to start WebUI service"
 sleep 2
 print_success "Services started"
 
-print_step "Step 20: Verifying installation"
+print_step "Step 16: Verifying installation"
 if systemctl is-active --quiet monolith-firewall-core; then
     print_success "Core service is running"
 else

@@ -27,6 +27,8 @@ public class UnixSocketListener
     private readonly StartupManager _startupManager;
     private readonly WebUiSettingsManager _webUiSettingsManager;
     private readonly WebUiServiceManager _webUiServiceManager;
+    private readonly Services.BackupManager _backupManager;
+    private readonly Services.Platform.PlatformCommandRunner _commandRunner;
     private readonly List<ICoreRequestHandler> _coreHandlers;
     private readonly string _socketPath;
     private readonly int _maxConcurrentConnections;
@@ -50,6 +52,8 @@ public class UnixSocketListener
         StartupManager startupManager,
         WebUiSettingsManager webUiSettingsManager,
         WebUiServiceManager webUiServiceManager,
+        Services.BackupManager backupManager,
+        Services.Platform.PlatformCommandRunner commandRunner,
         string socketPath = "/var/lib/monolith-firewall/run/monolith-core.sock",
         int maxConcurrentConnections = 20)
     {
@@ -68,6 +72,8 @@ public class UnixSocketListener
         _startupManager = startupManager;
         _webUiSettingsManager = webUiSettingsManager;
         _webUiServiceManager = webUiServiceManager;
+        _backupManager = backupManager;
+        _commandRunner = commandRunner;
         _socketPath = socketPath;
         _maxConcurrentConnections = maxConcurrentConnections;
         _cts = new CancellationTokenSource();
@@ -84,7 +90,10 @@ public class UnixSocketListener
             new FirewallHandler(),
             new SetupHandler(_setupManager, _logger),
             new StartupHandler(),
-            new WebUiSettingsHandler()
+            new WebUiSettingsHandler(),
+            new BackupHandler(),
+            new SystemCommandHandler(),
+            new NetworkCardHandler()
         };
     }
 
@@ -291,7 +300,9 @@ public class UnixSocketListener
                                 _firewallManager,
                                 _startupManager,
                                 _webUiSettingsManager,
-                                _webUiServiceManager);
+                                _webUiServiceManager,
+                                _backupManager,
+                                _commandRunner);
                             response = await handler.HandleAsync(context, request, cancellationToken);
                         }
                         else

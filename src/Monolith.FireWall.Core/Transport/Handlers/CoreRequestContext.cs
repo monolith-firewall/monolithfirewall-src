@@ -19,7 +19,9 @@ public sealed class CoreRequestContext
         FirewallManager firewallManager,
         StartupManager startupManager,
         WebUiSettingsManager webUiSettingsManager,
-        WebUiServiceManager webUiServiceManager)
+        WebUiServiceManager webUiServiceManager,
+        BackupManager backupManager,
+        Services.Platform.PlatformCommandRunner commandRunner)
     {
         Logger = logger;
         ModuleRegistry = moduleRegistry;
@@ -34,6 +36,8 @@ public sealed class CoreRequestContext
         StartupManager = startupManager;
         WebUiSettingsManager = webUiSettingsManager;
         WebUiServiceManager = webUiServiceManager;
+        BackupManager = backupManager;
+        CommandRunner = commandRunner;
     }
 
     public ILogger Logger { get; }
@@ -49,4 +53,6 @@ public sealed class CoreRequestContext
     public StartupManager StartupManager { get; }
     public WebUiSettingsManager WebUiSettingsManager { get; }
     public WebUiServiceManager WebUiServiceManager { get; }
+    public BackupManager BackupManager { get; }
+    public Services.Platform.PlatformCommandRunner CommandRunner { get; }
 }

@@ -83,6 +83,18 @@ public sealed class FirewallStartupResult
 }
 
 /// <summary>
+/// Result of system tuneables application during startup.
+/// </summary>
+public sealed class TuneablesStartupResult
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public int AppliedCount { get; set; }
+    public int TotalCount { get; set; }
+    public List<string> Warnings { get; set; } = new();
+}
+
+/// <summary>
 /// Result of system initialization during startup.
 /// </summary>
 public sealed class StartupResult
@@ -93,6 +105,7 @@ public sealed class StartupResult
     public DateTime? CompletedAt { get; set; }
     public TimeSpan? Duration { get; set; }
     public SystemSettingsResult SystemSettings { get; set; } = new();
+    public TuneablesStartupResult Tuneables { get; set; } = new();
     public InterfaceConfigResult Interfaces { get; set; } = new();
     public Services.ModuleConfigGenerationSummary Modules { get; set; } = new();
     public Services.ServiceManagementResult Services { get; set; } = new();

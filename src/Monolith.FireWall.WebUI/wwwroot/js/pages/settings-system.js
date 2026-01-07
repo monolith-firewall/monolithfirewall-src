@@ -5,7 +5,9 @@ var SettingsSystem = {
     init: function() {
         console.log('Initializing System Settings tab...');
         this.render();
-        this.loadSettings();
+        this.loadTimezones().then(() => {
+            this.loadSettings();
+        });
     },
 
     render: function() {
@@ -34,14 +36,9 @@ var SettingsSystem = {
                                 <div class="mb-3">
                                     <label for="timezone" class="form-label">Timezone</label>
                                     <select class="form-select" id="timezone">
-                                        <option value="UTC">UTC</option>
-                                        <option value="America/New_York">America/New_York</option>
-                                        <option value="America/Chicago">America/Chicago</option>
-                                        <option value="America/Los_Angeles">America/Los_Angeles</option>
-                                        <option value="Europe/London">Europe/London</option>
-                                        <option value="Europe/Paris">Europe/Paris</option>
-                                        <option value="Asia/Tokyo">Asia/Tokyo</option>
+                                        <option value="">Loading timezones...</option>
                                     </select>
+                                    <div class="form-text">System timezone (loaded from OS)</div>
                                 </div>
 
                                 <div class="mb-3">
@@ -98,6 +95,48 @@ var SettingsSystem = {
         $(document).on('click', '.dns-remove-btn', (e) => {
             $(e.currentTarget).closest('.dns-server-row').remove();
         });
+    },
+
+    loadTimezones: async function() {
+        try {
+            const response = await Monolith.API.get('/system/settings/timezones');
+            const data = response.Data || response.data || {};
+            const timezones = data.timezones || data.Timezones || [];
+            
+            const select = $('#timezone');
+            select.empty();
+            
+            if (timezones.length > 0) {
+                timezones.forEach(tz => {
+                    select.append(`<option value="${tz}">${tz}</option>`);
+                });
+            } else {
+                // Fallback to common timezones if API fails
+                const fallback = [
+                    'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 
+                    'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 
+                    'Europe/Berlin', 'Asia/Tokyo', 'Asia/Shanghai'
+                ];
+                fallback.forEach(tz => {
+                    select.append(`<option value="${tz}">${tz}</option>`);
+                });
+                console.warn('Using fallback timezones - API returned no timezones');
+            }
+        } catch (error) {
+            console.error('Failed to load timezones:', error);
+            // Fallback to common timezones
+            const select = $('#timezone');
+            select.empty();
+            const fallback = [
+                'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 
+                'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 
+                'Europe/Berlin', 'Asia/Tokyo', 'Asia/Shanghai'
+            ];
+            fallback.forEach(tz => {
+                select.append(`<option value="${tz}">${tz}</option>`);
+            });
+            Monolith.UI.toast('Failed to load timezones from OS, using fallback list', 'warning');
+        }
     },
 
     loadSettings: async function() {

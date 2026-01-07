@@ -64,3 +64,21 @@ public sealed class StaticRouteDeleteRequest
 {
     public int Id { get; set; }
 }
+
+public sealed class RoutingStatusView
+{
+    public bool IpForwardingEnabled { get; set; }
+    public GatewayView? DefaultGateway { get; set; }
+    public List<RouteSummaryView> Routes { get; set; } = new();
+    public bool NatMasqueradeEnabled { get; set; }
+}
+
+public sealed class RouteSummaryView
+{
+    public string Destination { get; set; } = string.Empty;
+    public string? Gateway { get; set; }
+    public string? Interface { get; set; }
+    public string? Protocol { get; set; }
+    public int? Metric { get; set; }
+    public bool IsDefault { get; set; }
+}

@@ -14,16 +14,18 @@ body {
 }
 
 .navbar-container {
-    max-width: 1400px;
-    margin: 0 auto;
+    max-width: 1400px !important;
+    margin: 0 auto !important;
     padding-left: 1rem;
     padding-right: 1rem;
 }
 
 /* Center content with same max-width as navbar */
-.content-container {
-    max-width: 1400px;
-    margin: 0 auto;
+#page-content .container-fluid,
+.container-fluid.content-container {
+    max-width: 1400px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
     padding-left: 1rem;
     padding-right: 1rem;
 }

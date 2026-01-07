@@ -18,7 +18,9 @@ Monolith.PageLoader = {
         '/system/settings': { module: 'settings', asset: 'settings' },
         '/system/advanced': { module: 'advanced-settings', asset: 'advanced-settings', css: ['advanced-settings'] },
         '/system/routing': { module: 'routing', asset: 'routing', css: ['routing'] },
+        '/interfaces/network-cards': { module: 'network-cards', asset: 'network-cards' },
         '/system/logs': { module: 'system-logs', asset: 'system-logs', css: ['system-logs'] },
+        '/system/backup': { module: 'backup', asset: 'backup' },
         '/about': { module: 'about', asset: 'about' }
     },
 
@@ -104,6 +106,10 @@ Monolith.PageLoader = {
             return this.internalRoutes[route];
         }
 
+        if (route.startsWith('/interfaces/network-cards')) {
+            return { module: 'network-cards', asset: 'network-cards' };
+        }
+        
         if (route.startsWith('/interfaces')) {
             return { module: 'interfaces', asset: 'interfaces' };
         }

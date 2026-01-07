@@ -85,7 +85,7 @@
         });
 
         function loadTimezones() {
-            Monolith.API.get('/api/system/settings/timezones')
+            Monolith.API.get('/system/settings/timezones')
                 .then(data => {
                     const select = $('#timezone');
                     select.empty();

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using System.IO;
 using Monolith.FireWall.Common.Services;
 using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Platform;
@@ -73,6 +74,32 @@ public sealed class FirewallApplyManager
             };
         }
 
+        // Write config to /etc/nftables.conf for persistence
+        // This ensures rules survive reboots and are in the standard location
+        var systemConfigPath = "/etc/nftables.conf";
+        
+        // Copy the generated config to /etc/nftables.conf using sudo
+        var copyResult = await _commandRunner.RunAsync(new PlatformCommand
+        {
+            FileName = "cp",
+            Arguments = $"\"{configPath}\" \"{systemConfigPath}\"",
+            UseSudo = true,
+            TimeoutMs = 5000
+        }, cancellationToken);
+        
+        if (copyResult.ExitCode != 0)
+        {
+            return new FirewallApplyResult
+            {
+                Success = false,
+                Error = $"Failed to copy config to {systemConfigPath}: {copyResult.StdErr?.Trim() ?? "Unknown error"}",
+                Warnings = buildResult.Warnings,
+                ConfigPath = configPath
+            };
+        }
+
+        // Delete existing tables before applying new configuration
+        // This is necessary because nft -f will fail if tables already exist
         var cleanupResult = await RemoveManagedTablesAsync(cancellationToken);
         if (!cleanupResult.Success)
         {
@@ -81,28 +108,75 @@ public sealed class FirewallApplyManager
                 Success = false,
                 Error = cleanupResult.Error ?? "Failed to remove existing firewall tables",
                 Warnings = buildResult.Warnings,
-                ConfigPath = configPath
+                ConfigPath = systemConfigPath
             };
         }
 
+        // Apply the new firewall configuration from /etc/nftables.conf
+        // Use -f to load from file - this will create tables and chains atomically
         var result = await _commandRunner.RunAsync(new PlatformCommand
         {
             FileName = "nft",
-            Arguments = $"-f {configPath}",
+            Arguments = $"-f \"{systemConfigPath}\"",
             UseSudo = true,
-            TimeoutMs = 15000
+            TimeoutMs = 30000  // Increased timeout to ensure apply completes
         }, cancellationToken);
 
         if (result.ExitCode != 0)
         {
+            var errorMessage = string.IsNullOrWhiteSpace(result.StdErr)
+                ? $"nft exited with code {result.ExitCode}"
+                : result.StdErr.Trim();
+            
+            // Include stdout in error if available (nft sometimes puts errors there)
+            if (!string.IsNullOrWhiteSpace(result.StdOut))
+            {
+                errorMessage += $"\nOutput: {result.StdOut.Trim()}";
+            }
+
             return new FirewallApplyResult
             {
                 Success = false,
-                Error = string.IsNullOrWhiteSpace(result.StdErr)
-                    ? $"nft exited with code {result.ExitCode}"
-                    : result.StdErr.Trim(),
+                Error = errorMessage,
                 Warnings = buildResult.Warnings,
-                ConfigPath = configPath
+                ConfigPath = systemConfigPath
+            };
+        }
+
+        // Verify the apply was successful by checking if tables exist
+        var verifyResult = await _commandRunner.RunAsync(new PlatformCommand
+        {
+            FileName = "nft",
+            Arguments = "list table inet monolith_filter",
+            UseSudo = true,
+            TimeoutMs = 5000
+        }, cancellationToken);
+
+        if (verifyResult.ExitCode != 0)
+        {
+            var verifyError = string.IsNullOrWhiteSpace(verifyResult.StdErr)
+                ? $"nft list exited with code {verifyResult.ExitCode}"
+                : verifyResult.StdErr.Trim();
+            
+            await _loggingManager.LogSecurityAsync(
+                "Firewall",
+                "Error",
+                "FirewallApply",
+                "Firewall configuration verification failed",
+                details: new Dictionary<string, object>
+                {
+                    ["configPath"] = systemConfigPath,
+                    ["backupPath"] = configPath,
+                    ["verifyError"] = verifyError,
+                    ["nftStdout"] = verifyResult.StdOut ?? string.Empty
+                });
+
+            return new FirewallApplyResult
+            {
+                Success = false,
+                Error = $"Firewall configuration was not applied - tables do not exist after apply. Verification error: {verifyError}",
+                Warnings = buildResult.Warnings,
+                ConfigPath = systemConfigPath
             };
         }
 
@@ -110,16 +184,18 @@ public sealed class FirewallApplyManager
             "Firewall",
             "Info",
             "FirewallApply",
-            "Applied firewall configuration",
+            "Applied firewall configuration successfully",
             details: new Dictionary<string, object>
             {
-                ["configPath"] = configPath
+                ["configPath"] = systemConfigPath,
+                ["backupPath"] = configPath,
+                ["verifyOutput"] = verifyResult.StdOut ?? string.Empty
             });
 
         return new FirewallApplyResult
         {
             Success = true,
-            ConfigPath = configPath,
+            ConfigPath = systemConfigPath,  // Return the system config path where rules are actually applied
             Warnings = buildResult.Warnings
         };
     }
@@ -135,6 +211,7 @@ public sealed class FirewallApplyManager
 
         foreach (var (family, name) in tables)
         {
+            // Check if table exists
             var listResult = await _commandRunner.RunAsync(new PlatformCommand
             {
                 FileName = "nft",
@@ -145,9 +222,12 @@ public sealed class FirewallApplyManager
 
             if (listResult.ExitCode != 0)
             {
+                // Table doesn't exist, skip
                 continue;
             }
 
+            // Delete the table - this is necessary for nft -f to work
+            // The gap is minimized by applying new rules immediately after
             var deleteResult = await _commandRunner.RunAsync(new PlatformCommand
             {
                 FileName = "nft",
@@ -184,36 +264,46 @@ public sealed class FirewallApplyManager
         var ipv4Rules = natRules.Where(r => r.Enabled && (r.AddressFamily == "ipv4" || r.AddressFamily == "dual")).ToList();
         var ipv6Rules = natRules.Where(r => r.Enabled && (r.AddressFamily == "ipv6" || r.AddressFamily == "dual")).ToList();
 
-        if (ipv4Rules.Count == 0 && ipv6Rules.Count == 0)
+        // Check if we have WAN interfaces - if so, we need NAT table for masquerade even without NAT rules
+        var hasWanInterfaces = assignments.Any(a => a.Role == InterfaceRole.Wan);
+        
+        // Always create IPv4 NAT table if we have WAN interfaces (for masquerade) or NAT rules
+        if (ipv4Rules.Count > 0 || hasWanInterfaces)
         {
-            warnings.Add("No enabled NAT rules found");
+            AppendNatTable(builder, "ip", ipv4Rules, aliases, natSettings, assignments, warnings);
+        }
+        else if (ipv4Rules.Count == 0 && ipv6Rules.Count == 0)
+        {
+            warnings.Add("No enabled NAT rules found and no WAN interfaces configured");
         }
 
-        if (ipv4Rules.Count > 0)
+        // Always create IPv6 NAT table if we have WAN interfaces (for masquerade) or NAT rules
+        if (ipv6Rules.Count > 0 || hasWanInterfaces)
         {
-            AppendNatTable(builder, "ip", ipv4Rules, aliases, natSettings, warnings);
-        }
-
-        if (ipv6Rules.Count > 0)
-        {
-            AppendNatTable(builder, "ip6", ipv6Rules, aliases, natSettings, warnings);
+            AppendNatTable(builder, "ip6", ipv6Rules, aliases, natSettings, assignments, warnings);
         }
 
         AppendFilterTable(builder, effectiveRules, defaults, assignments, aliases, warnings);
 
-        var configPath = "/var/lib/monolith-firewall/firewall.nft";
-        var dir = Path.GetDirectoryName(configPath);
-        if (!string.IsNullOrWhiteSpace(dir))
+        // Write to backup location first (we'll copy to /etc/nftables.conf in ApplyAsync)
+        var backupConfigPath = "/var/lib/monolith-firewall/firewall.nft";
+        
+        // Ensure backup directory exists
+        var backupDir = Path.GetDirectoryName(backupConfigPath);
+        if (!string.IsNullOrWhiteSpace(backupDir))
         {
-            Directory.CreateDirectory(dir);
+            Directory.CreateDirectory(backupDir);
         }
 
-        await File.WriteAllTextAsync(configPath, builder.ToString(), cancellationToken);
+        var configContent = builder.ToString();
+        
+        // Write to backup location (this will be copied to /etc/nftables.conf during apply)
+        await File.WriteAllTextAsync(backupConfigPath, configContent, cancellationToken);
 
         return new FirewallApplyResult
         {
             Success = true,
-            ConfigPath = configPath,
+            ConfigPath = backupConfigPath,  // Return backup path (will be copied to /etc/nftables.conf in ApplyAsync)
             Warnings = warnings
         };
     }
@@ -224,6 +314,7 @@ public sealed class FirewallApplyManager
         List<FirewallNatRuleView> rules,
         List<FirewallAliasView> aliases,
         FirewallNatSettingsView natSettings,
+        List<InterfaceAssignmentEntity> assignments,
         List<string> warnings)
     {
         builder.AppendLine($"table {family} monolith_nat {{");
@@ -233,6 +324,12 @@ public sealed class FirewallApplyManager
         {
             builder.AppendLine($"  set {aliasSet.Name} {{");
             builder.AppendLine($"    type {aliasSet.Type};");
+            // Check if set contains CIDR ranges (contains '/')
+            var hasCidr = aliasSet.Values.Any(v => v.Contains('/'));
+            if (hasCidr)
+            {
+                builder.AppendLine("    flags interval;");
+            }
             builder.AppendLine("    elements = { " + string.Join(", ", aliasSet.Values) + " }");
             builder.AppendLine("  }");
         }
@@ -261,6 +358,28 @@ public sealed class FirewallApplyManager
         builder.AppendLine("  chain output {");
         builder.AppendLine("    type nat hook output priority -100; policy accept;");
         builder.AppendLine("  }");
+        
+        // Postrouting chain for masquerade (enables NAT for outbound traffic)
+        builder.AppendLine("  chain postrouting {");
+        builder.AppendLine("    type nat hook postrouting priority 100; policy accept;");
+        
+        // Get WAN interfaces for this address family
+        var wanInterfaces = assignments
+            .Where(a => a.Role == InterfaceRole.Wan)
+            .Select(a => a.InterfaceName)
+            .ToList();
+        
+        if (wanInterfaces.Count > 0)
+        {
+            foreach (var wanInterface in wanInterfaces)
+            {
+                // Masquerade all outbound traffic on WAN interface
+                // This allows LAN devices to access internet through WAN
+                builder.AppendLine($"    oifname \"{wanInterface}\" masquerade comment \"Auto: WAN masquerade on {wanInterface}\"");
+            }
+        }
+        
+        builder.AppendLine("  }");
         builder.AppendLine("}");
 
         if (natSettings.ReflectionEnabled && natSettings.ReflectionMode == "nat")
@@ -284,6 +403,12 @@ public sealed class FirewallApplyManager
         {
             builder.AppendLine($"  set {aliasSet.Name} {{");
             builder.AppendLine($"    type {aliasSet.Type};");
+            // Check if set contains CIDR ranges (contains '/')
+            var hasCidr = aliasSet.Values.Any(v => v.Contains('/'));
+            if (hasCidr)
+            {
+                builder.AppendLine("    flags interval;");
+            }
             builder.AppendLine("    elements = { " + string.Join(", ", aliasSet.Values) + " }");
             builder.AppendLine("  }");
         }
@@ -300,6 +425,8 @@ public sealed class FirewallApplyManager
         {
             builder.AppendLine($"  set {systemSet.Name} {{");
             builder.AppendLine($"    type {systemSet.Type};");
+            // System sets always contain CIDR ranges, so add flags interval
+            builder.AppendLine("    flags interval;");
             builder.AppendLine("    elements = { " + string.Join(", ", systemSet.Values) + " }");
             builder.AppendLine("  }");
         }
@@ -316,6 +443,60 @@ public sealed class FirewallApplyManager
 
         builder.AppendLine("  chain forward {");
         builder.AppendLine("    type filter hook forward priority 0; policy drop;");
+        
+        // Automatic forward rules for WAN↔LAN routing
+        // Get interface roles
+        var wanInterfaces = assignments
+            .Where(a => a.Role == InterfaceRole.Wan)
+            .Select(a => a.InterfaceName)
+            .ToList();
+        var lanInterfaces = assignments
+            .Where(a => a.Role == InterfaceRole.Lan)
+            .Select(a => a.InterfaceName)
+            .ToList();
+        
+        // Allow forwarding from WAN to LAN (for incoming connections from internet)
+        // This enables port forwarding and incoming connections
+        if (wanInterfaces.Count > 0 && lanInterfaces.Count > 0)
+        {
+            foreach (var wan in wanInterfaces)
+            {
+                foreach (var lan in lanInterfaces)
+                {
+                    builder.AppendLine($"    iifname \"{wan}\" oifname \"{lan}\" accept comment \"Auto: WAN to LAN routing\"");
+                }
+            }
+        }
+        
+        // Allow forwarding from LAN to WAN (for outbound connections to internet)
+        // This enables LAN devices to access internet through WAN
+        if (lanInterfaces.Count > 0 && wanInterfaces.Count > 0)
+        {
+            foreach (var lan in lanInterfaces)
+            {
+                foreach (var wan in wanInterfaces)
+                {
+                    builder.AppendLine($"    iifname \"{lan}\" oifname \"{wan}\" accept comment \"Auto: LAN to WAN routing\"");
+                }
+            }
+        }
+        
+        // Allow forwarding between LAN interfaces (for internal routing)
+        if (lanInterfaces.Count > 1)
+        {
+            for (int i = 0; i < lanInterfaces.Count; i++)
+            {
+                for (int j = i + 1; j < lanInterfaces.Count; j++)
+                {
+                    var lan1 = lanInterfaces[i];
+                    var lan2 = lanInterfaces[j];
+                    builder.AppendLine($"    iifname \"{lan1}\" oifname \"{lan2}\" accept comment \"Auto: LAN to LAN routing\"");
+                    builder.AppendLine($"    iifname \"{lan2}\" oifname \"{lan1}\" accept comment \"Auto: LAN to LAN routing\"");
+                }
+            }
+        }
+        
+        // Continue with interface-specific forward chains (existing code)
         foreach (var assignment in assignments)
         {
             builder.AppendLine($"    iifname \"{assignment.InterfaceName}\" jump forward_{assignment.InterfaceName}");
@@ -547,16 +728,17 @@ public sealed class FirewallApplyManager
             return string.Empty;
         }
 
+        // Don't include protocol here - it's already added in BuildFilterRule
         if (aliasSets.TryGetPortSet(value, out var setName))
         {
-            return $"{protocol} {(isSource ? "sport" : "dport")} @{setName}";
+            return $"{(isSource ? "sport" : "dport")} @{setName}";
         }
 
         var portExpression = value.Contains(',')
             ? "{" + value + "}"
             : value;
 
-        return $"{protocol} {(isSource ? "sport" : "dport")} {portExpression}";
+        return $"{(isSource ? "sport" : "dport")} {portExpression}";
     }
 
     private RuleAliasSetCollection CollectRuleAliases(List<FirewallRuleView> rules, List<FirewallAliasView> aliases)
@@ -940,12 +1122,13 @@ public sealed class FirewallApplyManager
             return string.Empty;
         }
 
+        // Don't include protocol here - it's already added in BuildNatRule
         if (aliasSets.TryGetPortSet(value, out var setName))
         {
-            return $"{protocol} dport @{setName}";
+            return $"dport @{setName}";
         }
 
-        return $"{protocol} dport {value}";
+        return $"dport {value}";
     }
 
     private static string BuildSourcePortMatch(
@@ -965,12 +1148,13 @@ public sealed class FirewallApplyManager
             return string.Empty;
         }
 
+        // Don't include protocol here - it's already added in BuildNatRule
         if (aliasSets.TryGetPortSet(value, out var setName))
         {
-            return $"{protocol} sport @{setName}";
+            return $"sport @{setName}";
         }
 
-        return $"{protocol} sport {value}";
+        return $"sport {value}";
     }
 
     private static List<string> ExpandProtocols(string protocol)

@@ -13,6 +13,7 @@ public sealed class InterfaceAssignmentManager
     private readonly InterfaceConfigManager _configManager;
     private readonly PlatformCommandRunner _commandRunner;
     private readonly SystemSettingsManager _settingsManager;
+    private readonly SystemTuneablesManager? _tuneablesManager;
     private readonly LoggingManager _loggingManager;
 
     public InterfaceAssignmentManager(
@@ -20,13 +21,15 @@ public sealed class InterfaceAssignmentManager
         NetworkInventoryService inventory,
         InterfaceConfigManager configManager,
         PlatformCommandRunner commandRunner,
-        SystemSettingsManager settingsManager)
+        SystemSettingsManager settingsManager,
+        SystemTuneablesManager? tuneablesManager = null)
     {
         _store = store;
         _inventory = inventory;
         _configManager = configManager;
         _commandRunner = commandRunner;
         _settingsManager = settingsManager;
+        _tuneablesManager = tuneablesManager;
         _loggingManager = LoggingManager.Instance;
     }
 
@@ -247,6 +250,9 @@ public sealed class InterfaceAssignmentManager
         {
             return (false, "Failed to save assignment", null);
         }
+
+        // Auto-enable IP forwarding if WAN and LAN interfaces are configured
+        await EnsureIpForwardingEnabledAsync(cancellationToken);
 
         await _loggingManager.LogSystemAsync(
             "Network",
@@ -701,5 +707,83 @@ public sealed class InterfaceAssignmentManager
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Automatically enables IP forwarding if both WAN and LAN interfaces are configured.
+    /// This is required for routing between networks.
+    /// </summary>
+    private async Task EnsureIpForwardingEnabledAsync(CancellationToken cancellationToken)
+    {
+        if (_tuneablesManager == null)
+        {
+            return; // Tuneables manager not available
+        }
+
+        try
+        {
+            var assignments = await _store.GetAssignmentsAsync();
+            var hasWan = assignments.Any(a => a.Role == InterfaceRole.Wan);
+            var hasLan = assignments.Any(a => a.Role == InterfaceRole.Lan);
+
+            if (hasWan && hasLan)
+            {
+                // Check current IP forwarding status
+                var currentValue = await _tuneablesManager.GetTuneablesAsync(cancellationToken);
+                var ipForward = currentValue.FirstOrDefault(t => t.Key == "net.ipv4.ip_forward");
+                
+                if (ipForward != null && ipForward.CurrentValue != "1")
+                {
+                    // Enable IPv4 forwarding
+                    var applyRequest = new TuneableApplyRequest
+                    {
+                        Items = new List<TuneableUpdate>
+                        {
+                            new TuneableUpdate { Key = "net.ipv4.ip_forward", Value = "1" }
+                        }
+                    };
+
+                    var result = await _tuneablesManager.ApplyAsync(applyRequest, cancellationToken);
+                    if (result.Success)
+                    {
+                        await _loggingManager.LogSystemAsync(
+                            "Network",
+                            "info",
+                            "InterfaceAssignmentManager",
+                            "Auto-enabled IPv4 forwarding for WAN/LAN routing",
+                            new Dictionary<string, object>
+                            {
+                                ["wanInterfaces"] = assignments.Where(a => a.Role == InterfaceRole.Wan).Select(a => a.InterfaceName).ToList(),
+                                ["lanInterfaces"] = assignments.Where(a => a.Role == InterfaceRole.Lan).Select(a => a.InterfaceName).ToList()
+                            });
+                    }
+                    else
+                    {
+                        await _loggingManager.LogSystemAsync(
+                            "Network",
+                            "warning",
+                            "InterfaceAssignmentManager",
+                            "Failed to auto-enable IPv4 forwarding",
+                            new Dictionary<string, object>
+                            {
+                                ["error"] = result.Error ?? "Unknown error"
+                            });
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail the interface assignment
+            await _loggingManager.LogSystemAsync(
+                "Network",
+                "error",
+                "InterfaceAssignmentManager",
+                "Error checking/enabling IP forwarding",
+                new Dictionary<string, object>
+                {
+                    ["error"] = ex.Message
+                });
+        }
     }
 }

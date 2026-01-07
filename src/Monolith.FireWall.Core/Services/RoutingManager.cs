@@ -204,6 +204,95 @@ public sealed class RoutingManager
         return (true, null);
     }
 
+    public async Task<RoutingStatusView> GetRoutingStatusAsync(CancellationToken cancellationToken)
+    {
+        var systemRoutes = await ListSystemRoutesAsync(cancellationToken);
+        var routeViews = systemRoutes.Select(r => new RouteSummaryView
+        {
+            Destination = r.Destination,
+            Gateway = r.Gateway,
+            Interface = r.Interface,
+            Protocol = r.Protocol,
+            Metric = r.Metric,
+            IsDefault = r.IsDefault
+        }).ToList();
+
+        var status = new RoutingStatusView
+        {
+            IpForwardingEnabled = await GetIpForwardingStatusAsync(cancellationToken),
+            DefaultGateway = await GetDefaultGatewayAsync(cancellationToken),
+            Routes = routeViews,
+            NatMasqueradeEnabled = await CheckNatMasqueradeAsync(cancellationToken)
+        };
+
+        return status;
+    }
+
+    private async Task<bool> GetIpForwardingStatusAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var command = new PlatformCommand
+            {
+                FileName = "cat",
+                Arguments = "/proc/sys/net/ipv4/ip_forward",
+                UseSudo = false,
+                TimeoutMs = 2000
+            };
+
+            var result = await _commandRunner.RunAsync(command, cancellationToken);
+            if (result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.StdOut))
+            {
+                return result.StdOut.Trim() == "1";
+            }
+        }
+        catch
+        {
+            // Ignore errors
+        }
+
+        return false;
+    }
+
+    private async Task<GatewayView?> GetDefaultGatewayAsync(CancellationToken cancellationToken)
+    {
+        var gateways = await GetGatewaysAsync(cancellationToken);
+        return gateways.FirstOrDefault(g => g.IsDefault);
+    }
+
+    private async Task<bool> CheckNatMasqueradeAsync(CancellationToken cancellationToken)
+    {
+        if (!_commandRunner.CommandExists("nft"))
+        {
+            return false;
+        }
+
+        try
+        {
+            var command = new PlatformCommand
+            {
+                FileName = "nft",
+                Arguments = "list table ip monolith_nat",
+                UseSudo = true,
+                TimeoutMs = 3000
+            };
+
+            var result = await _commandRunner.RunAsync(command, cancellationToken);
+            if (result.ExitCode != 0)
+            {
+                return false; // Table doesn't exist
+            }
+
+            // Check if output contains masquerade
+            var output = result.StdOut ?? string.Empty;
+            return output.Contains("masquerade", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private async Task<List<RouteEntry>> ListSystemRoutesAsync(CancellationToken cancellationToken)
     {
         var routes = new List<RouteEntry>();
