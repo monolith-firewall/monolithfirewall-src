@@ -17,6 +17,11 @@ public sealed class FirewallApplyManager
     private readonly FirewallRulesManager _rulesManager;
     private readonly FirewallDefaultsManager _defaultsManager;
     private readonly InterfaceAssignmentStore _interfaceStore;
+    private readonly FirewallVirtualIpManager _virtualIpManager;
+    private readonly FirewallVirtualIpApplier _virtualIpApplier;
+    private readonly FirewallScheduleManager _scheduleManager;
+    private readonly TrafficShaperManager _trafficShaperManager;
+    private readonly TrafficShaperApplier _trafficShaperApplier;
     private readonly PlatformCommandRunner _commandRunner;
     private readonly LoggingManager _loggingManager;
 
@@ -37,10 +42,38 @@ public sealed class FirewallApplyManager
         _interfaceStore = interfaceStore;
         _commandRunner = commandRunner;
         _loggingManager = LoggingManager.Instance;
+        _virtualIpManager = new FirewallVirtualIpManager();
+        _virtualIpApplier = new FirewallVirtualIpApplier(commandRunner, interfaceStore);
+        _scheduleManager = new FirewallScheduleManager();
+        _trafficShaperManager = new TrafficShaperManager();
+        _trafficShaperApplier = new TrafficShaperApplier(commandRunner, interfaceStore);
     }
 
     public async Task<FirewallApplyResult> ApplyAsync(CancellationToken cancellationToken)
     {
+        // STEP 1: Apply Virtual IPs BEFORE firewall rules
+        // Virtual IPs must be configured on interfaces before firewall can reference them
+        var virtualIps = await _virtualIpManager.ListVirtualIpsAsync();
+        if (virtualIps.Count > 0)
+        {
+            var vipResult = await _virtualIpApplier.ApplyAsync(virtualIps, cancellationToken);
+            if (!vipResult.Success)
+            {
+                await _loggingManager.LogSecurityAsync(
+                    "Firewall",
+                    "Warning",
+                    "VirtualIp",
+                    $"Virtual IP application had {vipResult.Errors.Count} error(s), continuing with firewall apply",
+                    details: new Dictionary<string, object>
+                    {
+                        ["appliedCount"] = vipResult.AppliedCount,
+                        ["skippedCount"] = vipResult.SkippedCount,
+                        ["errors"] = string.Join("; ", vipResult.Errors)
+                    });
+            }
+        }
+
+        // STEP 2: Build firewall configuration
         var buildResult = await BuildConfigAsync(cancellationToken);
         if (!buildResult.Success)
         {
@@ -192,6 +225,30 @@ public sealed class FirewallApplyManager
                 ["verifyOutput"] = verifyResult.StdOut ?? string.Empty
             });
 
+        // STEP 3: Apply Traffic Shaping AFTER firewall rules
+        // Traffic shaping is applied to interfaces and is independent of nftables
+        var trafficShaperRules = await _trafficShaperManager.ListRulesAsync();
+        if (trafficShaperRules.Count > 0)
+        {
+            var tsResult = await _trafficShaperApplier.ApplyAsync(trafficShaperRules, cancellationToken);
+            if (!tsResult.Success)
+            {
+                await _loggingManager.LogSecurityAsync(
+                    "Firewall",
+                    "Warning",
+                    "TrafficShaper",
+                    $"Traffic shaping had {tsResult.Errors.Count} error(s), firewall rules still active",
+                    details: new Dictionary<string, object>
+                    {
+                        ["appliedCount"] = tsResult.AppliedCount,
+                        ["skippedCount"] = tsResult.SkippedCount,
+                        ["errors"] = string.Join("; ", tsResult.Errors)
+                    });
+                // Don't fail the entire apply if traffic shaping fails
+                // Firewall rules are more critical than QoS
+            }
+        }
+
         return new FirewallApplyResult
         {
             Success = true,
@@ -261,8 +318,14 @@ public sealed class FirewallApplyManager
         builder.AppendLine($"# {DateTime.UtcNow:O}");
         builder.AppendLine("# Managed tables will be replaced by apply step");
 
-        var ipv4Rules = natRules.Where(r => r.Enabled && (r.AddressFamily == "ipv4" || r.AddressFamily == "dual")).ToList();
-        var ipv6Rules = natRules.Where(r => r.Enabled && (r.AddressFamily == "ipv6" || r.AddressFamily == "dual")).ToList();
+        // Filter NAT rules based on schedules
+        var activeNatRules = await FilterRulesByScheduleAsync(natRules);
+        var ipv4Rules = activeNatRules.Where(r => r.Enabled && (r.AddressFamily == "ipv4" || r.AddressFamily == "dual")).ToList();
+        var ipv6Rules = activeNatRules.Where(r => r.Enabled && (r.AddressFamily == "ipv6" || r.AddressFamily == "dual")).ToList();
+
+        // Filter effective filter rules based on schedules
+        var activeFilterRules = await FilterRulesByScheduleAsync(effectiveRules);
+        effectiveRules = activeFilterRules;
 
         // Check if we have WAN interfaces - if so, we need NAT table for masquerade even without NAT rules
         var hasWanInterfaces = assignments.Any(a => a.Role == InterfaceRole.Wan);
@@ -362,13 +425,18 @@ public sealed class FirewallApplyManager
         // Postrouting chain for masquerade (enables NAT for outbound traffic)
         builder.AppendLine("  chain postrouting {");
         builder.AppendLine("    type nat hook postrouting priority 100; policy accept;");
-        
-        // Get WAN interfaces for this address family
+
+        // Get WAN and LAN interfaces for this address family
         var wanInterfaces = assignments
             .Where(a => a.Role == InterfaceRole.Wan)
             .Select(a => a.InterfaceName)
             .ToList();
-        
+        var lanInterfaces = assignments
+            .Where(a => a.Role == InterfaceRole.Lan)
+            .Select(a => a.InterfaceName)
+            .ToList();
+
+        // Standard WAN masquerade rules
         if (wanInterfaces.Count > 0)
         {
             foreach (var wanInterface in wanInterfaces)
@@ -378,14 +446,121 @@ public sealed class FirewallApplyManager
                 builder.AppendLine($"    oifname \"{wanInterface}\" masquerade comment \"Auto: WAN masquerade on {wanInterface}\"");
             }
         }
-        
+
+        // NAT Reflection (Hairpin NAT) rules
+        // These allow LAN clients to access port forwards using the WAN IP
+        if (lanInterfaces.Count > 0 && (natSettings.ReflectionEnabled || rules.Any(r => r.ReflectionMode == "nat")))
+        {
+            AppendReflectionRules(builder, rules, lanInterfaces, usedAliases, family, natSettings, warnings);
+        }
+
         builder.AppendLine("  }");
         builder.AppendLine("}");
+    }
 
-        if (natSettings.ReflectionEnabled && natSettings.ReflectionMode == "nat")
+    private void AppendReflectionRules(
+        StringBuilder builder,
+        List<FirewallNatRuleView> rules,
+        List<string> lanInterfaces,
+        AliasSetCollection aliasSets,
+        string family,
+        FirewallNatSettingsView natSettings,
+        List<string> warnings)
+    {
+        builder.AppendLine();
+        builder.AppendLine("    # NAT Reflection (Hairpin NAT) rules");
+        builder.AppendLine("    # Allow LAN clients to access port forwards via WAN IP");
+
+        foreach (var rule in rules.OrderBy(r => r.RuleNumber))
         {
-            warnings.Add("NAT reflection is enabled but not fully implemented in nftables output yet");
+            // Determine if reflection is enabled for this rule
+            var reflectionEnabled = rule.ReflectionMode == "nat" ||
+                                   (rule.ReflectionMode == "default" && natSettings.ReflectionEnabled && natSettings.ReflectionMode == "nat");
+
+            if (!reflectionEnabled)
+            {
+                continue;
+            }
+
+            // Only port forwards support reflection
+            if (rule.Type != "port_forward")
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(rule.RedirectTargetIp))
+            {
+                warnings.Add($"NAT rule #{rule.RuleNumber}: Reflection enabled but no redirect target");
+                continue;
+            }
+
+            var reflectionRules = BuildReflectionRule(rule, lanInterfaces, aliasSets, family, warnings);
+            foreach (var line in reflectionRules)
+            {
+                builder.AppendLine("    " + line);
+            }
         }
+    }
+
+    private List<string> BuildReflectionRule(
+        FirewallNatRuleView rule,
+        List<string> lanInterfaces,
+        AliasSetCollection aliasSets,
+        string family,
+        List<string> warnings)
+    {
+        var lines = new List<string>();
+        var addressQualifier = family == "ip6" ? "ip6" : "ip";
+
+        // For each LAN interface, create a reflection rule
+        foreach (var lanInterface in lanInterfaces)
+        {
+            var match = new StringBuilder();
+
+            // Match traffic coming from AND going to the same LAN interface (hairpin)
+            match.Append($"iifname \"{lanInterface}\" oifname \"{lanInterface}\"");
+
+            // Match the target IP (after DNAT has been applied in prerouting)
+            match.Append($" {addressQualifier} daddr {rule.RedirectTargetIp}");
+
+            // Match protocol if specified
+            var protocols = ExpandProtocols(rule.Protocol);
+            foreach (var protocol in protocols)
+            {
+                var protocolMatch = new StringBuilder(match.ToString());
+
+                if (protocol != "any")
+                {
+                    protocolMatch.Append($" {protocol}");
+                }
+
+                // Match destination port (the redirected port)
+                if (!string.IsNullOrWhiteSpace(rule.RedirectTargetPort) && protocol != "any" && protocol != "icmp")
+                {
+                    protocolMatch.Append($" dport {rule.RedirectTargetPort}");
+                }
+                else if (!string.IsNullOrWhiteSpace(rule.DestinationPort) && protocol != "any" && protocol != "icmp")
+                {
+                    // If no redirect port specified, use original destination port
+                    var portMatch = BuildPortMatch(protocol, rule.DestinationPort, aliasSets, warnings, rule.RuleNumber);
+                    if (!string.IsNullOrWhiteSpace(portMatch))
+                    {
+                        protocolMatch.Append($" {portMatch}");
+                    }
+                }
+
+                // Apply masquerade (SNAT) so return traffic goes through router
+                var comment = !string.IsNullOrWhiteSpace(rule.Description)
+                    ? $"Reflection: {rule.Description.Replace("\"", "")}"
+                    : $"Reflection: Rule #{rule.RuleNumber}";
+
+                protocolMatch.Append($" masquerade comment \"{comment}\"");
+
+                lines.Add(protocolMatch.ToString());
+            }
+        }
+
+        return lines;
     }
 
     private void AppendFilterTable(
@@ -434,6 +609,17 @@ public sealed class FirewallApplyManager
         builder.AppendLine("  chain input {");
         builder.AppendLine("    type filter hook input priority 0; policy drop;");
 
+        // Connection tracking for input chain
+        builder.AppendLine();
+        builder.AppendLine("    # Connection tracking");
+        builder.AppendLine("    ct state invalid drop comment \"Drop invalid packets\"");
+        builder.AppendLine("    ct state established,related accept comment \"Allow established/related connections\"");
+        builder.AppendLine();
+
+        // Allow loopback
+        builder.AppendLine("    iif \"lo\" accept comment \"Allow loopback\"");
+        builder.AppendLine();
+
         foreach (var assignment in assignments)
         {
             builder.AppendLine($"    iifname \"{assignment.InterfaceName}\" jump input_{assignment.InterfaceName}");
@@ -443,7 +629,14 @@ public sealed class FirewallApplyManager
 
         builder.AppendLine("  chain forward {");
         builder.AppendLine("    type filter hook forward priority 0; policy drop;");
-        
+
+        // Connection tracking - stateful firewall (CRITICAL SECURITY)
+        builder.AppendLine();
+        builder.AppendLine("    # Connection tracking - stateful firewall");
+        builder.AppendLine("    ct state invalid drop comment \"Drop invalid packets\"");
+        builder.AppendLine("    ct state established,related accept comment \"Allow established/related connections\"");
+        builder.AppendLine();
+
         // Automatic forward rules for WAN↔LAN routing
         // Get interface roles
         var wanInterfaces = assignments
@@ -454,33 +647,24 @@ public sealed class FirewallApplyManager
             .Where(a => a.Role == InterfaceRole.Lan)
             .Select(a => a.InterfaceName)
             .ToList();
-        
-        // Allow forwarding from WAN to LAN (for incoming connections from internet)
-        // This enables port forwarding and incoming connections
-        if (wanInterfaces.Count > 0 && lanInterfaces.Count > 0)
-        {
-            foreach (var wan in wanInterfaces)
-            {
-                foreach (var lan in lanInterfaces)
-                {
-                    builder.AppendLine($"    iifname \"{wan}\" oifname \"{lan}\" accept comment \"Auto: WAN to LAN routing\"");
-                }
-            }
-        }
-        
-        // Allow forwarding from LAN to WAN (for outbound connections to internet)
-        // This enables LAN devices to access internet through WAN
+
+        // Allow NEW connections from LAN to WAN (outbound internet access)
+        // Established/related connections are handled by ct state rules above
         if (lanInterfaces.Count > 0 && wanInterfaces.Count > 0)
         {
             foreach (var lan in lanInterfaces)
             {
                 foreach (var wan in wanInterfaces)
                 {
-                    builder.AppendLine($"    iifname \"{lan}\" oifname \"{wan}\" accept comment \"Auto: LAN to WAN routing\"");
+                    builder.AppendLine($"    iifname \"{lan}\" oifname \"{wan}\" ct state new accept comment \"Auto: LAN to WAN (new outbound connections)\"");
                 }
             }
         }
-        
+
+        // NEW connections from WAN to LAN are NOT automatically allowed
+        // Port forward rules in NAT prerouting will create specific exceptions
+        // This prevents unsolicited WAN→LAN connections (SECURITY FIX)
+
         // Allow forwarding between LAN interfaces (for internal routing)
         if (lanInterfaces.Count > 1)
         {
@@ -495,8 +679,8 @@ public sealed class FirewallApplyManager
                 }
             }
         }
-        
-        // Continue with interface-specific forward chains (existing code)
+
+        // Continue with interface-specific forward chains (for custom user rules)
         foreach (var assignment in assignments)
         {
             builder.AppendLine($"    iifname \"{assignment.InterfaceName}\" jump forward_{assignment.InterfaceName}");
@@ -637,7 +821,10 @@ public sealed class FirewallApplyManager
 
             if (rule.LogEnabled)
             {
-                lines.Add($"{match} log prefix \"MF rule\"");
+                // Enhanced log prefix with rule metadata for easier analysis
+                // Format: MF[rule_id,interface,direction,action]
+                var logPrefix = $"MF[{rule.Id},{rule.Interface},{rule.Direction},{rule.Action}] ";
+                lines.Add($"{match} log prefix \"{logPrefix}\"");
             }
 
             lines.Add($"{match} {MapAction(rule.Action)}");
@@ -1051,6 +1238,24 @@ public sealed class FirewallApplyManager
                 match.Append(' ').Append(destinationPortMatch);
             }
 
+            // Add logging if enabled
+            if (rule.LogEnabled)
+            {
+                // Enhanced log prefix with NAT rule metadata
+                // Format: MF-NAT[rule_id,interface,type,target]
+                var logPrefix = $"MF-NAT[{rule.Id},{rule.Interface},{rule.Type},{rule.RedirectTargetIp}";
+                if (!string.IsNullOrWhiteSpace(rule.RedirectTargetPort))
+                {
+                    logPrefix += $":{rule.RedirectTargetPort}";
+                }
+                logPrefix += "] ";
+
+                var logLine = new StringBuilder();
+                logLine.Append(match);
+                logLine.Append(" log prefix \"").Append(logPrefix).Append("\"");
+                lines.Add(logLine.ToString());
+            }
+
             var redirect = new StringBuilder();
             redirect.Append(match);
             redirect.Append(" dnat to ");
@@ -1285,6 +1490,66 @@ public sealed class FirewallApplyManager
             setName = entry.Name;
             return true;
         }
+    }
+
+    /// <summary>
+    /// Filter firewall filter rules based on their schedule (if any)
+    /// Rules without schedules or with active schedules are included
+    /// </summary>
+    private async Task<List<FirewallRuleView>> FilterRulesByScheduleAsync(List<FirewallRuleView> rules)
+    {
+        var result = new List<FirewallRuleView>();
+        var now = DateTime.Now;
+
+        foreach (var rule in rules)
+        {
+            // If rule has no schedule, always include it
+            if (!rule.ScheduleId.HasValue)
+            {
+                result.Add(rule);
+                continue;
+            }
+
+            // Check if the schedule is currently active
+            var isActive = await _scheduleManager.IsScheduleActiveAsync(rule.ScheduleId.Value, now);
+            if (isActive)
+            {
+                result.Add(rule);
+            }
+            // If schedule is not active, rule is filtered out (not added to result)
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Filter NAT rules based on their schedule (if any)
+    /// Rules without schedules or with active schedules are included
+    /// </summary>
+    private async Task<List<FirewallNatRuleView>> FilterRulesByScheduleAsync(List<FirewallNatRuleView> rules)
+    {
+        var result = new List<FirewallNatRuleView>();
+        var now = DateTime.Now;
+
+        foreach (var rule in rules)
+        {
+            // If rule has no schedule, always include it
+            if (!rule.ScheduleId.HasValue)
+            {
+                result.Add(rule);
+                continue;
+            }
+
+            // Check if the schedule is currently active
+            var isActive = await _scheduleManager.IsScheduleActiveAsync(rule.ScheduleId.Value, now);
+            if (isActive)
+            {
+                result.Add(rule);
+            }
+            // If schedule is not active, rule is filtered out (not added to result)
+        }
+
+        return result;
     }
 }
 

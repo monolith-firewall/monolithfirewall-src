@@ -1,5 +1,7 @@
 using System.Globalization;
 using Monolith.FireWall.Core.Models;
+using Monolith.FireWall.Core.Services.Platform;
+using Monolith.FireWall.Platform.Models;
 
 namespace Monolith.FireWall.Core.Services;
 
@@ -10,6 +12,13 @@ public sealed class InterfaceConfigManager
     private const string MainInterfacesPath = "/etc/network/interfaces";
     private const string BackupDirPath = "/var/lib/monolith-firewall/backups/interfaces";
     private const string IncludeLine = "source /etc/network/interfaces.d/*";
+
+    private readonly PlatformCommandRunner _commandRunner;
+
+    public InterfaceConfigManager(PlatformCommandRunner? commandRunner = null)
+    {
+        _commandRunner = commandRunner ?? new PlatformCommandRunner();
+    }
 
     public string ManagedPath => ManagedFilePath;
     public string UnmanagedPath => UnmanagedFilePath;
@@ -62,6 +71,200 @@ public sealed class InterfaceConfigManager
             ManagedFile = ManagedFilePath,
             AssignmentCount = assignments.Count(),
             BackupFile = backupPath
+        };
+    }
+
+    /// <summary>
+    /// Apply interface configuration to running system using ifup/ifdown or ifreload
+    /// </summary>
+    public async Task<InterfaceApplyNowResult> ApplyToSystemAsync(
+        IEnumerable<InterfaceAssignmentEntity> assignments,
+        CancellationToken cancellationToken)
+    {
+        // Try ifreload first (if available) - it's more robust
+        var hasIfreload = _commandRunner.CommandExists("ifreload");
+
+        if (hasIfreload)
+        {
+            return await ApplyViaIfreloadAsync(assignments, cancellationToken);
+        }
+
+        // Fallback to ifup/ifdown
+        return await ApplyViaIfupDownAsync(assignments, cancellationToken);
+    }
+
+    /// <summary>
+    /// Apply configuration using ifreload command (ifupdown2 package)
+    /// </summary>
+    private async Task<InterfaceApplyNowResult> ApplyViaIfreloadAsync(
+        IEnumerable<InterfaceAssignmentEntity> assignments,
+        CancellationToken cancellationToken)
+    {
+        var interfaceList = assignments.Select(a => a.InterfaceName).ToList();
+        var interfaceArgs = interfaceList.Count > 0 ? string.Join(" ", interfaceList) : "-a";
+
+        var command = new PlatformCommand
+        {
+            FileName = "ifreload",
+            Arguments = interfaceArgs,
+            UseSudo = true,
+            TimeoutMs = 60000
+        };
+
+        var result = await _commandRunner.RunAsync(command, cancellationToken);
+
+        return new InterfaceApplyNowResult
+        {
+            Success = result.ExitCode == 0,
+            Message = result.ExitCode == 0
+                ? $"Successfully reloaded {interfaceList.Count} interface(s) using ifreload"
+                : "ifreload command failed",
+            Command = $"ifreload {interfaceArgs}",
+            ExitCode = result.ExitCode,
+            TimedOut = result.TimedOut,
+            StdOut = result.StdOut,
+            StdErr = result.StdErr
+        };
+    }
+
+    /// <summary>
+    /// Apply configuration using ifdown/ifup commands (traditional ifupdown package)
+    /// </summary>
+    private async Task<InterfaceApplyNowResult> ApplyViaIfupDownAsync(
+        IEnumerable<InterfaceAssignmentEntity> assignments,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<string>();
+        var errors = new List<string>();
+        var allSuccess = true;
+
+        foreach (var assignment in assignments)
+        {
+            // Skip if interface is in 'manual' mode (IpMode.None)
+            if (assignment.IpMode == InterfaceIpMode.None)
+            {
+                results.Add($"Skipped {assignment.InterfaceName} (manual mode)");
+                continue;
+            }
+
+            // Bring interface down first
+            var downCommand = new PlatformCommand
+            {
+                FileName = "ifdown",
+                Arguments = assignment.InterfaceName,
+                UseSudo = true,
+                TimeoutMs = 30000
+            };
+
+            var downResult = await _commandRunner.RunAsync(downCommand, cancellationToken);
+
+            // ifdown may fail if interface is not up, which is fine
+            if (downResult.ExitCode != 0 && !string.IsNullOrWhiteSpace(downResult.StdErr))
+            {
+                results.Add($"ifdown {assignment.InterfaceName}: {downResult.StdErr.Trim()}");
+            }
+
+            // Bring interface up with new configuration
+            var upCommand = new PlatformCommand
+            {
+                FileName = "ifup",
+                Arguments = assignment.InterfaceName,
+                UseSudo = true,
+                TimeoutMs = 30000
+            };
+
+            var upResult = await _commandRunner.RunAsync(upCommand, cancellationToken);
+
+            if (upResult.ExitCode == 0)
+            {
+                results.Add($"✓ {assignment.InterfaceName} configured successfully");
+            }
+            else
+            {
+                allSuccess = false;
+                var errorMsg = !string.IsNullOrWhiteSpace(upResult.StdErr)
+                    ? upResult.StdErr.Trim()
+                    : "Unknown error";
+                errors.Add($"✗ {assignment.InterfaceName}: {errorMsg}");
+                results.Add($"✗ {assignment.InterfaceName} failed");
+            }
+        }
+
+        var message = allSuccess
+            ? $"Successfully applied configuration to all interfaces"
+            : $"Some interfaces failed to apply. {errors.Count} error(s)";
+
+        return new InterfaceApplyNowResult
+        {
+            Success = allSuccess,
+            Message = message,
+            Command = "ifdown/ifup for each interface",
+            ExitCode = allSuccess ? 0 : 1,
+            TimedOut = false,
+            StdOut = string.Join("\n", results),
+            StdErr = errors.Count > 0 ? string.Join("\n", errors) : null
+        };
+    }
+
+    /// <summary>
+    /// Bring up a specific interface
+    /// </summary>
+    public async Task<InterfaceApplyNowResult> BringUpInterfaceAsync(
+        string interfaceName,
+        CancellationToken cancellationToken)
+    {
+        var command = new PlatformCommand
+        {
+            FileName = "ifup",
+            Arguments = interfaceName,
+            UseSudo = true,
+            TimeoutMs = 30000
+        };
+
+        var result = await _commandRunner.RunAsync(command, cancellationToken);
+
+        return new InterfaceApplyNowResult
+        {
+            Success = result.ExitCode == 0,
+            Message = result.ExitCode == 0
+                ? $"Interface {interfaceName} brought up successfully"
+                : $"Failed to bring up {interfaceName}",
+            Command = $"ifup {interfaceName}",
+            ExitCode = result.ExitCode,
+            TimedOut = result.TimedOut,
+            StdOut = result.StdOut,
+            StdErr = result.StdErr
+        };
+    }
+
+    /// <summary>
+    /// Bring down a specific interface
+    /// </summary>
+    public async Task<InterfaceApplyNowResult> BringDownInterfaceAsync(
+        string interfaceName,
+        CancellationToken cancellationToken)
+    {
+        var command = new PlatformCommand
+        {
+            FileName = "ifdown",
+            Arguments = interfaceName,
+            UseSudo = true,
+            TimeoutMs = 30000
+        };
+
+        var result = await _commandRunner.RunAsync(command, cancellationToken);
+
+        return new InterfaceApplyNowResult
+        {
+            Success = result.ExitCode == 0,
+            Message = result.ExitCode == 0
+                ? $"Interface {interfaceName} brought down successfully"
+                : $"Failed to bring down {interfaceName}",
+            Command = $"ifdown {interfaceName}",
+            ExitCode = result.ExitCode,
+            TimedOut = result.TimedOut,
+            StdOut = result.StdOut,
+            StdErr = result.StdErr
         };
     }
 

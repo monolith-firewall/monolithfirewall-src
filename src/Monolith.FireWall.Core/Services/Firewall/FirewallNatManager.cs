@@ -247,6 +247,8 @@ public sealed class FirewallNatManager
             RedirectTargetPort = entity.RedirectTargetPort,
             ReflectionMode = entity.ReflectionMode,
             Enabled = entity.Enabled,
+            LogEnabled = entity.LogEnabled,
+            ScheduleId = entity.ScheduleId,
             Description = entity.Description,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt

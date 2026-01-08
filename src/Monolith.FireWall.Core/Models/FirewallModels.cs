@@ -98,6 +98,12 @@ public sealed class FirewallNatRuleEntity
     [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "1")]
     public bool Enabled { get; set; } = true;
 
+    [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "0")]
+    public bool LogEnabled { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.INTEGER)]
+    public int? ScheduleId { get; set; }
+
     [SQLiteColumn(DataType = SQLiteDataType.TEXT, Size = 256)]
     public string? Description { get; set; }
 
@@ -171,6 +177,8 @@ public sealed class FirewallNatRuleView
     public string? RedirectTargetPort { get; set; }
     public string ReflectionMode { get; set; } = string.Empty;
     public bool Enabled { get; set; }
+    public bool LogEnabled { get; set; }
+    public int? ScheduleId { get; set; }
     public string? Description { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -282,6 +290,9 @@ public sealed class FirewallRuleEntity
     [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "1")]
     public bool Enabled { get; set; } = true;
 
+    [SQLiteColumn(DataType = SQLiteDataType.INTEGER)]
+    public int? ScheduleId { get; set; }
+
     [SQLiteColumn(DataType = SQLiteDataType.TEXT, Size = 256)]
     public string? Description { get; set; }
 
@@ -335,6 +346,7 @@ public sealed class FirewallRuleView
     public string? Gateway { get; set; }
     public bool LogEnabled { get; set; }
     public bool Enabled { get; set; }
+    public int? ScheduleId { get; set; }
     public string? Description { get; set; }
     public bool IsSystem { get; set; }
     public string? SystemTag { get; set; }

@@ -401,6 +401,7 @@ public sealed class FirewallRulesManager
             Gateway = entity.Gateway,
             LogEnabled = entity.LogEnabled,
             Enabled = entity.Enabled,
+            ScheduleId = entity.ScheduleId,
             Description = entity.Description,
             IsSystem = isSystem,
             SystemTag = systemTag,

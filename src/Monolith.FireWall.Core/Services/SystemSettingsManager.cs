@@ -119,6 +119,10 @@ public sealed class SystemSettingsManager
         if (dnsServers != null)
         {
             entity.DnsServers = dnsServers.Count > 0 ? string.Join(',', dnsServers) : null;
+            if (dnsServers.Count > 0)
+            {
+                await ApplyDnsServersAsync(dnsServers);
+            }
         }
         entity.UpdatedAt = DateTime.UtcNow;
 
@@ -178,9 +182,7 @@ public sealed class SystemSettingsManager
             {
                 try
                 {
-                    // DNS servers are applied via resolv.conf or systemd-resolved
-                    // For now, we'll just mark as applied if they exist in database
-                    // Full DNS application would require updating /etc/resolv.conf or systemd-resolved
+                    await ApplyDnsServersAsync(dnsServers);
                     result.DnsApplied = true;
                 }
                 catch (Exception ex)
@@ -419,6 +421,149 @@ public sealed class SystemSettingsManager
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Warning: Failed to apply date/time: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Apply DNS servers to system
+    /// </summary>
+    private async Task ApplyDnsServersAsync(List<string> dnsServers)
+    {
+        try
+        {
+            // Check if systemd-resolved is available and active
+            var systemdResolvedExists = File.Exists("/run/systemd/resolve/stub-resolv.conf") ||
+                                        File.Exists("/etc/systemd/resolved.conf");
+
+            if (systemdResolvedExists)
+            {
+                // Use systemd-resolved
+                await ApplyDnsViaSystemdResolvedAsync(dnsServers);
+            }
+            else
+            {
+                // Fallback to direct /etc/resolv.conf modification
+                await ApplyDnsViaResolvConfAsync(dnsServers);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Warning: Failed to apply DNS servers: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Apply DNS servers via systemd-resolved
+    /// </summary>
+    private async Task ApplyDnsViaSystemdResolvedAsync(List<string> dnsServers)
+    {
+        try
+        {
+            var configPath = "/etc/systemd/resolved.conf";
+            var lines = new List<string>();
+
+            // Read existing config
+            if (File.Exists(configPath))
+            {
+                var existingLines = await File.ReadAllLinesAsync(configPath);
+                bool inResolveSection = false;
+
+                foreach (var line in existingLines)
+                {
+                    var trimmed = line.Trim();
+
+                    // Track if we're in the [Resolve] section
+                    if (trimmed.StartsWith("[") && trimmed.EndsWith("]"))
+                    {
+                        inResolveSection = trimmed == "[Resolve]";
+                        lines.Add(line);
+                        continue;
+                    }
+
+                    // Skip existing DNS= lines in [Resolve] section
+                    if (inResolveSection &&
+                        (trimmed.StartsWith("DNS=", StringComparison.OrdinalIgnoreCase) ||
+                         trimmed.StartsWith("#DNS=", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue;
+                    }
+
+                    lines.Add(line);
+                }
+            }
+            else
+            {
+                // Create new config file
+                lines.Add("[Resolve]");
+            }
+
+            // Ensure we have a [Resolve] section
+            if (!lines.Any(l => l.Trim() == "[Resolve]"))
+            {
+                lines.Insert(0, "[Resolve]");
+            }
+
+            // Add DNS servers after [Resolve] section
+            var resolveIndex = lines.FindIndex(l => l.Trim() == "[Resolve]");
+            if (resolveIndex >= 0)
+            {
+                lines.Insert(resolveIndex + 1, $"DNS={string.Join(" ", dnsServers)}");
+            }
+
+            await File.WriteAllLinesAsync(configPath, lines);
+
+            // Restart systemd-resolved
+            var restartCommand = new PlatformCommand
+            {
+                FileName = "systemctl",
+                Arguments = "restart systemd-resolved.service",
+                UseSudo = true,
+                TimeoutMs = 10000
+            };
+            await _commandRunner.RunAsync(restartCommand, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Warning: Failed to apply DNS via systemd-resolved: {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Apply DNS servers via direct /etc/resolv.conf modification
+    /// </summary>
+    private async Task ApplyDnsViaResolvConfAsync(List<string> dnsServers)
+    {
+        try
+        {
+            var lines = new List<string>();
+
+            // Read existing resolv.conf and preserve non-nameserver lines
+            if (File.Exists("/etc/resolv.conf"))
+            {
+                var existingLines = await File.ReadAllLinesAsync("/etc/resolv.conf");
+                foreach (var line in existingLines)
+                {
+                    var trimmed = line.Trim();
+                    if (!trimmed.StartsWith("nameserver ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        lines.Add(line);
+                    }
+                }
+            }
+
+            // Add new nameserver entries
+            foreach (var dns in dnsServers)
+            {
+                lines.Add($"nameserver {dns}");
+            }
+
+            await File.WriteAllLinesAsync("/etc/resolv.conf", lines);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Warning: Failed to apply DNS via resolv.conf: {ex.Message}");
+            throw;
         }
     }
 
