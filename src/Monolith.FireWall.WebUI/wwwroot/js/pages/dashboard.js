@@ -1,5 +1,8 @@
 // Dashboard Widget System
-var Dashboard = {
+var Monolith = window.Monolith || {};
+Monolith.Pages = Monolith.Pages || {};
+
+Monolith.Pages.Dashboard = {
     widgets: [],
     layout: null,
     refreshTimers: {},
@@ -23,7 +26,7 @@ var Dashboard = {
         
         // Ensure container exists
         const container = $('#dashboard-container');
-        if (container.length === 0) {
+        if (container.length === 0 && window.location.pathname === '/dashboard') {
             console.error('Dashboard container not found! Waiting...');
             setTimeout(() => this.init(), 100);
             return;
@@ -32,6 +35,10 @@ var Dashboard = {
         // Clear any existing state
         this.widgets = [];
         this.layout = null;
+    },
+
+    renderPage: function() {
+        console.log('Rendering Dashboard page...');
         this.loadWidgets();
     },
 
@@ -1163,8 +1170,5 @@ var Dashboard = {
     }
 };
 
-// Expose to Monolith namespace
-if (typeof Monolith !== 'undefined') {
-    Monolith.Pages = Monolith.Pages || {};
-    Monolith.Pages.Dashboard = Dashboard;
-}
+// Backward compatibility: expose as global Dashboard
+window.Dashboard = Monolith.Pages.Dashboard;

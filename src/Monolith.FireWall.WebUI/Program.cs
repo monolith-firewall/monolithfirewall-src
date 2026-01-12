@@ -10,6 +10,7 @@ using Monolith.FireWall.WebUI.Features.Firewall.Nat;
 using Monolith.FireWall.WebUI.Features.Firewall.VirtualIps;
 using Monolith.FireWall.WebUI.Features.Firewall.TrafficShaper;
 using Monolith.FireWall.WebUI.Features.Firewall.Schedules;
+using Microsoft.AspNetCore.Mvc;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -56,6 +57,9 @@ builder.Services.AddSingleton<PackageViewRouter>();
 builder.Services.AddSingleton<PackageViewsRegistry>();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<PackageUpdatesClient>();
+builder.Services.AddSingleton<RazorPartialRenderer>();
+builder.Services.AddSingleton<PageContentRenderer>();
+builder.Services.AddSingleton<UiManifestBuilder>();
 
 // Frontend expects camelCase JSON for WebUI endpoints
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -105,8 +109,30 @@ if (sqliteForDI != null)
     builder.Services.AddSingleton<FirewallService>();
 }
 
-builder.Services.AddControllers();
-builder.Services.AddRazorPages();
+builder.Services.AddControllers(options =>
+{
+    // Disable response caching for all controllers
+    options.Filters.Add(new Microsoft.AspNetCore.Mvc.ResponseCacheAttribute
+    {
+        NoStore = true,
+        Location = Microsoft.AspNetCore.Mvc.ResponseCacheLocation.None
+    });
+}).AddJsonOptions(options =>
+{
+    // Use camelCase for JSON serialization in controllers
+    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    options.JsonSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+    options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+});
+builder.Services.AddRazorPages(options =>
+{
+    // Disable response caching for Razor pages
+    options.Conventions.ConfigureFilter(new Microsoft.AspNetCore.Mvc.ResponseCacheAttribute
+    {
+        NoStore = true,
+        Location = Microsoft.AspNetCore.Mvc.ResponseCacheLocation.None
+    });
+});
 
 // Add background services
 builder.Services.AddHostedService<Monolith.FireWall.WebUI.BackgroundServices.PermissionSyncService>();
@@ -123,6 +149,19 @@ builder.Services.Configure<Microsoft.AspNetCore.Mvc.Razor.RazorViewEngineOptions
 });
 
 var app = builder.Build();
+
+// Redirect legacy index.html to the new app shell.
+app.Use(async (context, next) =>
+{
+    if (HttpMethods.IsGet(context.Request.Method) &&
+        string.Equals(context.Request.Path.Value, "/index.html", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.Redirect("/");
+        return;
+    }
+
+    await next();
+});
 
 // Initialize UserService if CL.SQLite is available
 if (sqliteForDI != null)
@@ -166,21 +205,52 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
+// SPA fallback: rewrite HTML routes to the app shell (keeps /login and /setup separate)
+app.Use(async (context, next) =>
+{
+    if (HttpMethods.IsGet(context.Request.Method))
+    {
+        var path = context.Request.Path.Value ?? "/";
+        var accept = context.Request.Headers.Accept.ToString();
+        var isAjax = context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+        var wantsHtml = accept.Contains("text/html", StringComparison.OrdinalIgnoreCase);
+        var isStatic = Path.HasExtension(path);
+        var isPublic =
+            path.Equals("/", StringComparison.Ordinal) ||
+            path.StartsWith("/login", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/setup", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/assets/", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/_content/", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/css/", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/js/", StringComparison.OrdinalIgnoreCase);
+
+        if (wantsHtml && !isAjax && !isStatic && !isPublic)
+        {
+            context.Request.Path = "/";
+        }
+    }
+
+    await next();
+});
+
 // Routing
 app.UseRouting();
 
 // Authentication middleware
 app.UseMiddleware<AuthenticationMiddleware>();
 
+var packagesRoot = Environment.GetEnvironmentVariable("MONOLITH_PACKAGES_ROOT") ?? "/opt/monolith-firewall/packages";
+
 // Custom route for package static files: /_content/{PackageName}/{**filePath}
-// Maps /_content/Monolith.Network/js/file.js -> /opt/monolith-firewall/packages/monolith-network/wwwroot/js/file.js
+// Maps /_content/Monolith.Network/js/file.js -> {packagesRoot}/monolith-network/wwwroot/js/file.js
 app.MapGet("/_content/{packageName}/{**filePath}", async (HttpContext context, string packageName, string filePath) =>
 {
     try
     {
         // Convert package name: Monolith.Network -> monolith-network
         var packageFolder = packageName.ToLowerInvariant().Replace(".", "-");
-        var physicalPath = $"/opt/monolith-firewall/packages/{packageFolder}/wwwroot/{filePath}";
+        var physicalPath = Path.Combine(packagesRoot, packageFolder, "wwwroot", filePath);
         
         if (System.IO.File.Exists(physicalPath))
         {
@@ -308,9 +378,9 @@ static string? ResolveInternalAsset(Microsoft.AspNetCore.Hosting.IWebHostEnviron
     return ResolveCandidatePath(webRoot, candidates);
 }
 
-static string? ResolvePackageAsset(string packageFolder, string filePath)
+static string? ResolvePackageAsset(string packagesRoot, string packageFolder, string filePath)
 {
-    var basePath = $"/opt/monolith-firewall/packages/{packageFolder}/wwwroot";
+    var basePath = Path.Combine(packagesRoot, packageFolder, "wwwroot");
     var extension = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
     var fileName = System.IO.Path.GetFileName(filePath);
     var candidates = new List<string>();
@@ -463,7 +533,7 @@ app.MapGet("/assets/package/{package}/{module}/{**filePath}", async (HttpContext
     try
     {
         var packageFolder = package.ToLowerInvariant();
-        var resolvedPath = ResolvePackageAsset(packageFolder, filePath);
+        var resolvedPath = ResolvePackageAsset(packagesRoot, packageFolder, filePath);
         if (resolvedPath == null)
         {
             context.Response.StatusCode = 404;
@@ -484,6 +554,9 @@ app.MapGet("/assets/package/{package}/{module}/{**filePath}", async (HttpContext
 
 // Controllers (includes Firewall API controllers)
 app.MapControllers();
+
+// Razor Pages (login, setup, package pages, app shell)
+app.MapRazorPages();
 
 // Login endpoint
 app.MapPost("/api/auth/login", async (HttpContext context, UserService userService) =>
@@ -610,7 +683,7 @@ app.MapGet("/p/{package}/{module}", async (HttpContext context, string package, 
     
     // Convert package name to folder name: monolith-network
     var packageFolder = package.ToLowerInvariant();
-    var pagesPath = $"/opt/monolith-firewall/packages/{packageFolder}/Pages";
+    var pagesPath = Path.Combine(packagesRoot, packageFolder, "Pages");
     var moduleFolder = FindModuleFolder(pagesPath, module);
     
     // Map module to file path
@@ -618,8 +691,8 @@ app.MapGet("/p/{package}/{module}", async (HttpContext context, string package, 
     var moduleCap = moduleFolder ?? (char.ToUpper(module[0]) + module.Substring(1));
     
     // Try Index.cshtml first, then Config.cshtml as fallback
-    var indexPath = $"/opt/monolith-firewall/packages/{packageFolder}/Pages/{moduleCap}/Index.cshtml";
-    var configPath = $"/opt/monolith-firewall/packages/{packageFolder}/Pages/{moduleCap}/Config.cshtml";
+    var indexPath = Path.Combine(packagesRoot, packageFolder, "Pages", moduleCap, "Index.cshtml");
+    var configPath = Path.Combine(packagesRoot, packageFolder, "Pages", moduleCap, "Config.cshtml");
     
     string? filePath = null;
     if (System.IO.File.Exists(indexPath))
@@ -671,14 +744,14 @@ app.MapGet("/p/{package}/{module}/{page}", async (HttpContext context, string pa
     
     // Convert package name to folder name: monolith-network
     var packageFolder = package.ToLowerInvariant();
-    var pagesPath = $"/opt/monolith-firewall/packages/{packageFolder}/Pages";
+    var pagesPath = Path.Combine(packagesRoot, packageFolder, "Pages");
     var moduleFolder = FindModuleFolder(pagesPath, module);
     
     // Map module/page to file path
     // Example: dhcp/config -> Pages/Dhcp/Config.cshtml
     var moduleCap = moduleFolder ?? (char.ToUpper(module[0]) + module.Substring(1));
     var pageCap = char.ToUpper(page[0]) + page.Substring(1);
-    var filePath = $"/opt/monolith-firewall/packages/{packageFolder}/Pages/{moduleCap}/{pageCap}.cshtml";
+    var filePath = Path.Combine(packagesRoot, packageFolder, "Pages", moduleCap, $"{pageCap}.cshtml");
     
     if (System.IO.File.Exists(filePath))
     {
