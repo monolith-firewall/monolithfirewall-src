@@ -25,19 +25,21 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* Override any conflicting styles from monolith-theme.css - ensure consistent icon size */
+/* Match icon size with other menus - use same size as .top-navbar .dropdown-icon */
 #menu-status .dropdown-icon {
-    width: 20px !important;
-    height: auto !important;
-    min-width: 20px !important;
+    width: 12px !important;
+    height: 12px !important;
+    min-width: 12px !important;
+    max-width: 12px !important;
     text-align: center;
-    color: var(--bs-primary);
+    color: var(--bs-primary) !important;
     transition: transform 0.2s ease, color 0.2s ease;
-    font-size: 1rem !important;
+    font-size: 0.75rem !important;
+    line-height: 1 !important;
     transform: scale(1) !important;
     display: inline-block;
     flex-shrink: 0;
-    opacity: 1 !important;
+    opacity: 0.8 !important;
     fill: currentColor !important;
 }
 
@@ -49,7 +51,8 @@
 /* Scale on hover */
 #menu-status .dropdown-item:hover .dropdown-icon {
     color: white !important;
-    transform: scale(1.1) !important;
+    opacity: 1 !important;
+    transform: scale(1.05) !important;
 }
 
 #menu-status .dropdown-item span:last-child {
