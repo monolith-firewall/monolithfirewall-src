@@ -414,6 +414,55 @@ static string? ResolvePackageAsset(string packagesRoot, string packageFolder, st
 }
 
 
+static bool IsPrivateIpAddress(string host)
+{
+    if (string.IsNullOrWhiteSpace(host))
+        return false;
+
+    // Try to parse as IP address
+    if (!System.Net.IPAddress.TryParse(host, out var ipAddress))
+        return false;
+
+    var bytes = ipAddress.GetAddressBytes();
+
+    // IPv4 private ranges:
+    // 10.0.0.0/8 (10.0.0.0 to 10.255.255.255)
+    // 172.16.0.0/12 (172.16.0.0 to 172.31.255.255)
+    // 192.168.0.0/16 (192.168.0.0 to 192.168.255.255)
+    // 127.0.0.0/8 (127.0.0.0 to 127.255.255.255) - loopback
+    if (bytes.Length == 4)
+    {
+        // 10.x.x.x
+        if (bytes[0] == 10)
+            return true;
+        
+        // 172.16.x.x to 172.31.x.x
+        if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
+            return true;
+        
+        // 192.168.x.x
+        if (bytes[0] == 192 && bytes[1] == 168)
+            return true;
+        
+        // 127.x.x.x (loopback)
+        if (bytes[0] == 127)
+            return true;
+    }
+    // IPv6 private ranges (simplified check)
+    else if (bytes.Length == 16)
+    {
+        // fc00::/7 (unique local addresses)
+        if (bytes[0] == 0xfc || bytes[0] == 0xfd)
+            return true;
+        
+        // ::1 (loopback)
+        if (ipAddress.Equals(System.Net.IPAddress.IPv6Loopback))
+            return true;
+    }
+
+    return false;
+}
+
 static async Task<string> DownloadPackageAsync(string packageId, string downloadUrl, string? expectedSha256, bool allowInsecureHttp, CancellationToken cancellationToken)
 {
     if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri))
@@ -428,9 +477,13 @@ static async Task<string> DownloadPackageAsync(string packageId, string download
             string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(uri.Host, "::1", StringComparison.OrdinalIgnoreCase);
 
-        if (!allowInsecureHttp && !isLocalhost)
+        var isPrivateIp = IsPrivateIpAddress(uri.Host);
+
+        // Allow HTTP for localhost and private IPs (they're on local network, trusted)
+        // For public IPs, require allowInsecureHttp to be true
+        if (!allowInsecureHttp && !isLocalhost && !isPrivateIp)
         {
-            throw new Exception("Only HTTPS downloads are allowed");
+            throw new Exception("Only HTTPS downloads are allowed for public addresses. Use HTTP only for localhost or private IP addresses.");
         }
     }
 
