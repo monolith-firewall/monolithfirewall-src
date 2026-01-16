@@ -17,6 +17,7 @@ Monolith.Pages.Dashboard = {
     trafficSeries: {
         rx: [],
         tx: [],
+        timestamps: [],
         maxPoints: 30
     },
     trafficLast: null,
@@ -606,12 +607,14 @@ Monolith.Pages.Dashboard = {
         }
 
         const rates = this.calculateTrafficRates(data);
-        this.pushSeries(this.trafficSeries.rx, rates.totalRx, this.trafficSeries.maxPoints);
-        this.pushSeries(this.trafficSeries.tx, rates.totalTx, this.trafficSeries.maxPoints);
+        this.pushTrafficSeries(rates.totalRx, rates.totalTx, this.trafficSeries.maxPoints);
 
-        const totalChart = this.buildDualSparkline(this.trafficSeries.rx, this.trafficSeries.tx);
         const rxRate = this.formatRate(rates.totalRx);
         const txRate = this.formatRate(rates.totalTx);
+
+        // Build individual charts with timestamps
+        const rxChart = this.buildTrafficSparkline(this.trafficSeries.rx, this.trafficSeries.timestamps, 'rx');
+        const txChart = this.buildTrafficSparkline(this.trafficSeries.tx, this.trafficSeries.timestamps, 'tx');
 
         const listRows = data.interfaces.map(iface => {
             const rate = rates.interfaces[iface.name] || { rx: 0, tx: 0 };
@@ -631,7 +634,7 @@ Monolith.Pages.Dashboard = {
         }).join('');
 
         return `
-            <div class="traffic-summary">
+            <div class="traffic-summary mb-3">
                 <div class="traffic-metric">
                     <div class="traffic-label">RX</div>
                     <div class="traffic-value">${rxRate}</div>
@@ -641,14 +644,23 @@ Monolith.Pages.Dashboard = {
                     <div class="traffic-value">${txRate}</div>
                 </div>
             </div>
-            <div class="traffic-chart">
-                ${totalChart}
-                <div class="traffic-legend">
-                    <span class="legend-item legend-rx">RX</span>
-                    <span class="legend-item legend-tx">TX</span>
+            <div class="traffic-charts-container">
+                <div class="traffic-chart-item mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong class="text-primary">RX Traffic</strong>
+                        <small class="text-muted">${rxRate}</small>
+                    </div>
+                    ${rxChart}
+                </div>
+                <div class="traffic-chart-item">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong class="text-success">TX Traffic</strong>
+                        <small class="text-muted">${txRate}</small>
+                    </div>
+                    ${txChart}
                 </div>
             </div>
-            <div class="traffic-list">
+            <div class="traffic-list mt-3">
                 ${listRows || '<div class="text-muted">No managed interfaces.</div>'}
             </div>
         `;
@@ -725,6 +737,21 @@ Monolith.Pages.Dashboard = {
         }
     },
 
+    pushTrafficSeries: function(rxValue, txValue, maxPoints) {
+        const rxNumeric = Number(rxValue);
+        const txNumeric = Number(txValue);
+        
+        this.trafficSeries.rx.push(Number.isFinite(rxNumeric) ? rxNumeric : 0);
+        this.trafficSeries.tx.push(Number.isFinite(txNumeric) ? txNumeric : 0);
+        this.trafficSeries.timestamps.push(new Date());
+        
+        if (this.trafficSeries.rx.length > maxPoints) {
+            this.trafficSeries.rx.shift();
+            this.trafficSeries.tx.shift();
+            this.trafficSeries.timestamps.shift();
+        }
+    },
+
     buildSparklinePath: function(series, maxValue) {
         const points = Array.isArray(series) ? series : [];
         if (points.length === 0) {
@@ -749,6 +776,61 @@ Monolith.Pages.Dashboard = {
             <svg viewBox="0 0 100 30" class="sparkline">
                 <path class="${className}" d="${path}" />
             </svg>
+        `;
+    },
+
+    buildTrafficSparkline: function(series, timestamps, type) {
+        const points = Array.isArray(series) ? series : [];
+        const times = Array.isArray(timestamps) ? timestamps : [];
+        
+        if (points.length === 0) {
+            return '<div class="text-muted small">No data yet</div>';
+        }
+
+        const max = Math.max(...points, 1);
+        const height = 60;
+        const width = 100;
+        const step = points.length > 1 ? width / (points.length - 1) : width;
+
+        const pathData = points.map((value, index) => {
+            const x = index * step;
+            const y = height - (value / max) * height;
+            return `${index === 0 ? 'M' : 'L'} ${x},${y}`;
+        }).join(' ');
+
+        const color = type === 'rx' ? '#0d6efd' : '#198754';
+        
+        // Build timestamp labels (show first, middle, last)
+        let timeLabels = '';
+        if (times.length > 0) {
+            const firstTime = times[0];
+            const lastTime = times[times.length - 1];
+            const midIndex = Math.floor(times.length / 2);
+            const midTime = times[midIndex];
+            
+            const formatTime = (date) => {
+                if (!date) return '';
+                const d = new Date(date);
+                return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            };
+            
+            timeLabels = `
+                <div class="traffic-timestamps d-flex justify-content-between mt-1">
+                    <small class="text-muted">${formatTime(firstTime)}</small>
+                    ${times.length > 2 ? `<small class="text-muted">${formatTime(midTime)}</small>` : '<small></small>'}
+                    <small class="text-muted">${formatTime(lastTime)}</small>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="traffic-sparkline-wrapper">
+                <svg class="traffic-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: ${height}px;">
+                    <path d="${pathData}" stroke="${color}" stroke-width="2" fill="none" />
+                    <path d="M0,${height} ${pathData} L${width},${height}" fill="${color}" opacity="0.1" />
+                </svg>
+                ${timeLabels}
+            </div>
         `;
     },
 

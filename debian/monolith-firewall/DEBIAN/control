@@ -2,7 +2,7 @@ Package: monolith-firewall
 Version: 1.0.0-12
 Architecture: amd64
 Maintainer: Monolith FireWall Team <dev@monolithfirewall.org>
-Installed-Size: 458768
+Installed-Size: 458774
 Depends: libc6 (>= 2.34), libgcc-s1 (>= 3.0), libstdc++6 (>= 6), nftables, iproute2, systemd, sqlite3, sudo, procps, iputils-ping, bridge-utils, vlan, ifupdown2, isc-dhcp-client, isc-dhcp-server, unbound, tcpdump, mtr, socat, ethtool, pciutils
 Recommends: traceroute, iptables
 Section: net

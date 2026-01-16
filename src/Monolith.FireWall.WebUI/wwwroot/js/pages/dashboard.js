@@ -18,6 +18,7 @@ Monolith.Pages.Dashboard = {
         rx: [],
         tx: [],
         timestamps: [],
+        interfaces: {}, // Store per-interface series: { "eth0": { rx: [], tx: [], timestamps: [] } }
         maxPoints: 30
     },
     trafficLast: null,
@@ -612,56 +613,84 @@ Monolith.Pages.Dashboard = {
         const rxRate = this.formatRate(rates.totalRx);
         const txRate = this.formatRate(rates.totalTx);
 
-        // Build individual charts with timestamps
+        // Build individual charts with timestamps for total
         const rxChart = this.buildTrafficSparkline(this.trafficSeries.rx, this.trafficSeries.timestamps, 'rx');
         const txChart = this.buildTrafficSparkline(this.trafficSeries.tx, this.trafficSeries.timestamps, 'tx');
 
-        const listRows = data.interfaces.map(iface => {
+        // Build per-interface graphs
+        const interfaceGraphs = data.interfaces.map(iface => {
             const rate = rates.interfaces[iface.name] || { rx: 0, tx: 0 };
             const statusBadge = iface.status === 'up' ? 'success' : 'secondary';
+            
+            // Push interface traffic data
+            this.pushInterfaceTraffic(iface.name, rate.rx, rate.tx, this.trafficSeries.maxPoints);
+            
+            // Get interface series
+            const ifaceSeries = this.trafficSeries.interfaces[iface.name] || { rx: [], tx: [], timestamps: [] };
+            
+            // Build combined graph for this interface (RX and TX together)
+            const ifaceChart = this.buildInterfaceTrafficSparkline(
+                ifaceSeries.rx, 
+                ifaceSeries.tx, 
+                ifaceSeries.timestamps, 
+                iface.name
+            );
+            
             return `
-                <div class="traffic-row">
-                    <div class="traffic-name">
-                        <span class="badge bg-${statusBadge}">${iface.status}</span>
-                        <strong>${iface.name}</strong>
+                <div class="interface-traffic-card mb-3 p-3 border rounded">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-${statusBadge}">${iface.status}</span>
+                            <strong>${iface.name}</strong>
+                        </div>
+                        <div class="d-flex gap-3">
+                            <div class="text-primary">
+                                <small class="text-muted d-block">RX</small>
+                                <strong>${this.formatRate(rate.rx)}</strong>
+                            </div>
+                            <div class="text-success">
+                                <small class="text-muted d-block">TX</small>
+                                <strong>${this.formatRate(rate.tx)}</strong>
+                            </div>
+                        </div>
                     </div>
-                    <div class="traffic-values">
-                        <span>RX ${this.formatRate(rate.rx)}</span>
-                        <span>TX ${this.formatRate(rate.tx)}</span>
-                    </div>
+                    ${ifaceChart}
                 </div>
             `;
         }).join('');
 
         return `
-            <div class="traffic-summary mb-3">
-                <div class="traffic-metric">
-                    <div class="traffic-label">RX</div>
-                    <div class="traffic-value">${rxRate}</div>
-                </div>
-                <div class="traffic-metric">
-                    <div class="traffic-label">TX</div>
-                    <div class="traffic-value">${txRate}</div>
+            <div class="traffic-summary mb-3 p-2 bg-light rounded">
+                <div class="d-flex justify-content-around">
+                    <div class="traffic-metric text-center">
+                        <div class="traffic-label text-muted small">Total RX</div>
+                        <div class="traffic-value text-primary fw-bold">${rxRate}</div>
+                    </div>
+                    <div class="traffic-metric text-center">
+                        <div class="traffic-label text-muted small">Total TX</div>
+                        <div class="traffic-value text-success fw-bold">${txRate}</div>
+                    </div>
                 </div>
             </div>
-            <div class="traffic-charts-container">
-                <div class="traffic-chart-item mb-3">
+            <div class="traffic-charts-container mb-3">
+                <div class="traffic-chart-item mb-3 p-2 border rounded">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <strong class="text-primary">RX Traffic</strong>
+                        <strong class="text-primary">Total RX Traffic</strong>
                         <small class="text-muted">${rxRate}</small>
                     </div>
                     ${rxChart}
                 </div>
-                <div class="traffic-chart-item">
+                <div class="traffic-chart-item p-2 border rounded">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <strong class="text-success">TX Traffic</strong>
+                        <strong class="text-success">Total TX Traffic</strong>
                         <small class="text-muted">${txRate}</small>
                     </div>
                     ${txChart}
                 </div>
             </div>
-            <div class="traffic-list mt-3">
-                ${listRows || '<div class="text-muted">No managed interfaces.</div>'}
+            <div class="interface-traffic-section">
+                <h6 class="mb-3 text-muted">Per-Interface Traffic</h6>
+                ${interfaceGraphs || '<div class="text-muted">No managed interfaces.</div>'}
             </div>
         `;
     },
@@ -752,6 +781,30 @@ Monolith.Pages.Dashboard = {
         }
     },
 
+    pushInterfaceTraffic: function(interfaceName, rxValue, txValue, maxPoints) {
+        if (!this.trafficSeries.interfaces[interfaceName]) {
+            this.trafficSeries.interfaces[interfaceName] = {
+                rx: [],
+                tx: [],
+                timestamps: []
+            };
+        }
+        
+        const iface = this.trafficSeries.interfaces[interfaceName];
+        const rxNumeric = Number(rxValue);
+        const txNumeric = Number(txValue);
+        
+        iface.rx.push(Number.isFinite(rxNumeric) ? rxNumeric : 0);
+        iface.tx.push(Number.isFinite(txNumeric) ? txNumeric : 0);
+        iface.timestamps.push(new Date());
+        
+        if (iface.rx.length > maxPoints) {
+            iface.rx.shift();
+            iface.tx.shift();
+            iface.timestamps.shift();
+        }
+    },
+
     buildSparklinePath: function(series, maxValue) {
         const points = Array.isArray(series) ? series : [];
         if (points.length === 0) {
@@ -829,6 +882,82 @@ Monolith.Pages.Dashboard = {
                     <path d="${pathData}" stroke="${color}" stroke-width="2" fill="none" />
                     <path d="M0,${height} ${pathData} L${width},${height}" fill="${color}" opacity="0.1" />
                 </svg>
+                ${timeLabels}
+            </div>
+        `;
+    },
+
+    buildInterfaceTrafficSparkline: function(rxSeries, txSeries, timestamps, interfaceName) {
+        const rxPoints = Array.isArray(rxSeries) ? rxSeries : [];
+        const txPoints = Array.isArray(txSeries) ? txSeries : [];
+        const times = Array.isArray(timestamps) ? timestamps : [];
+        
+        if (rxPoints.length === 0 && txPoints.length === 0) {
+            return '<div class="text-muted small">No data yet</div>';
+        }
+
+        const max = Math.max(
+            Math.max(...rxPoints, 0),
+            Math.max(...txPoints, 0),
+            1
+        );
+        const height = 50;
+        const width = 100;
+        const step = Math.max(rxPoints.length, txPoints.length) > 1 
+            ? width / (Math.max(rxPoints.length, txPoints.length) - 1) 
+            : width;
+
+        const rxPathData = rxPoints.map((value, index) => {
+            const x = index * step;
+            const y = height - (value / max) * height;
+            return `${index === 0 ? 'M' : 'L'} ${x},${y}`;
+        }).join(' ');
+
+        const txPathData = txPoints.map((value, index) => {
+            const x = index * step;
+            const y = height - (value / max) * height;
+            return `${index === 0 ? 'M' : 'L'} ${x},${y}`;
+        }).join(' ');
+
+        // Build timestamp labels
+        let timeLabels = '';
+        if (times.length > 0) {
+            const firstTime = times[0];
+            const lastTime = times[times.length - 1];
+            const midIndex = Math.floor(times.length / 2);
+            const midTime = times[midIndex];
+            
+            const formatTime = (date) => {
+                if (!date) return '';
+                const d = new Date(date);
+                return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            };
+            
+            timeLabels = `
+                <div class="traffic-timestamps d-flex justify-content-between mt-1 pt-1 border-top">
+                    <small class="text-muted">${formatTime(firstTime)}</small>
+                    ${times.length > 2 ? `<small class="text-muted">${formatTime(midTime)}</small>` : '<small></small>'}
+                    <small class="text-muted">${formatTime(lastTime)}</small>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="interface-sparkline-wrapper">
+                <svg class="interface-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: ${height}px;">
+                    ${rxPathData ? `
+                        <path d="M0,${height} ${rxPathData} L${width},${height}" fill="#0d6efd" opacity="0.15" />
+                        <path d="${rxPathData}" stroke="#0d6efd" stroke-width="2" fill="none" />
+                    ` : ''}
+                    ${txPathData ? `
+                        <path d="M0,${height} ${txPathData} L${width},${height}" fill="#198754" opacity="0.15" />
+                        <path d="${txPathData}" stroke="#198754" stroke-width="2" fill="none" />
+                    ` : ''}
+                </svg>
+                <div class="d-flex justify-content-center gap-3 mt-1">
+                    <small class="text-primary"><i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> RX</small>
+                    <small class="text-success"><i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> TX</small>
+                </div>
                 ${timeLabels}
             </div>
         `;
