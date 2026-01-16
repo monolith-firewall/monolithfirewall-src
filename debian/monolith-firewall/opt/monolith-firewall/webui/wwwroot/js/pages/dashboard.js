@@ -475,7 +475,11 @@ Monolith.Pages.Dashboard = {
                 container.html(this.renderDhcpStatus(data));
                 break;
             default:
-                container.html('<div class="alert alert-info">Widget data renderer not implemented</div>');
+                console.warn(`Widget renderer not implemented for: ${widgetId}`);
+                container.html(`<div class="alert alert-info">
+                    <i class="fa-solid fa-info-circle me-2"></i>
+                    Widget data renderer not implemented for: <code>${widgetId}</code>
+                </div>`);
         }
     },
 
