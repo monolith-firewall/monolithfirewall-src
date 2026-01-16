@@ -297,6 +297,7 @@ body {
 
 .notification-item.unread {
     font-weight: 600;
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
 }
 
 /* Fix notification menu z-index and positioning */
@@ -305,6 +306,7 @@ body {
     overflow-y: auto;
     min-width: 320px;
     z-index: 1051 !important;
+    position: absolute;
 }
 
 #notifications-menu .dropdown-divider {
@@ -336,6 +338,11 @@ body {
 #notifications-menu #notifications-mark-read:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+/* Ensure dropdown menus don't interfere with page content */
+.dropdown-menu.dropdown-menu-end {
+    z-index: 1050 !important;
 }
 
 .monitoring-item {

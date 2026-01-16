@@ -25,17 +25,31 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-#menu-status .dropdown-item:hover .dropdown-icon {
-    color: white !important;
-    transform: scale(1.1);
-}
-
+/* Override any conflicting styles from monolith-theme.css - ensure consistent icon size */
 #menu-status .dropdown-icon {
-    width: 20px;
+    width: 20px !important;
+    height: auto !important;
+    min-width: 20px !important;
     text-align: center;
     color: var(--bs-primary);
-    transition: all 0.2s ease;
-    font-size: 1rem;
+    transition: transform 0.2s ease, color 0.2s ease;
+    font-size: 1rem !important;
+    transform: scale(1) !important;
+    display: inline-block;
+    flex-shrink: 0;
+    opacity: 1 !important;
+    fill: currentColor !important;
+}
+
+/* Reset transform when not hovering - ensures icons don't stay scaled */
+#menu-status .dropdown-item:not(:hover) .dropdown-icon {
+    transform: scale(1) !important;
+}
+
+/* Scale on hover */
+#menu-status .dropdown-item:hover .dropdown-icon {
+    color: white !important;
+    transform: scale(1.1) !important;
 }
 
 #menu-status .dropdown-item span:last-child {

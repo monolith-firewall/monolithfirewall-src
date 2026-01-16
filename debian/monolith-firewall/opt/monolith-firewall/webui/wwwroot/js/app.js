@@ -366,7 +366,11 @@ function renderNotificationsMenu(notifications, unreadCount) {
 
     const footer = `
         <li><hr class="dropdown-divider"></li>
-        <li><a href="javascript:void(0)" class="dropdown-item text-center" id="notifications-mark-read">Mark all read</a></li>
+        <li>
+            <a href="javascript:void(0)" class="dropdown-item text-center text-primary" id="notifications-mark-read" style="font-weight: 500;">
+                <i class="fa-solid fa-check-double me-2"></i>Mark all read
+            </a>
+        </li>
     `;
 
     container.html(items + footer);
@@ -383,12 +387,33 @@ $(document).on('click', '.notification-item', async function() {
     }
 });
 
-$(document).on('click', '#notifications-mark-read', async function() {
+$(document).on('click', '#notifications-mark-read', async function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const btn = $(this);
+    const originalText = btn.html();
+    btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-2"></i>Marking read...');
+    
     try {
-        await Monolith.API.post('/monitoring/notifications/read', { all: true });
-        loadNotifications();
+        const response = await Monolith.API.post('/monitoring/notifications/read', { all: true });
+        if (response.Success || response.success) {
+            // Reload notifications to update the UI
+            await loadNotifications();
+            if (typeof Monolith !== 'undefined' && Monolith.UI) {
+                Monolith.UI.toast('All notifications marked as read', 'success');
+            }
+        } else {
+            throw new Error(response.Error || response.error || 'Failed to mark notifications as read');
+        }
     } catch (error) {
         console.error('Error marking notifications read:', error);
+        if (typeof Monolith !== 'undefined' && Monolith.UI) {
+            Monolith.UI.toast('Failed to mark notifications as read', 'error');
+        }
+        btn.html(originalText);
+    } finally {
+        btn.prop('disabled', false);
     }
 });
 

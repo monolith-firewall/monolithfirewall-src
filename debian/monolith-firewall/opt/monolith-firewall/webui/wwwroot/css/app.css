@@ -297,6 +297,52 @@ body {
 
 .notification-item.unread {
     font-weight: 600;
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
+}
+
+/* Fix notification menu z-index and positioning */
+#notifications-menu {
+    max-height: 400px;
+    overflow-y: auto;
+    min-width: 320px;
+    z-index: 1051 !important;
+    position: absolute;
+}
+
+#notifications-menu .dropdown-divider {
+    margin: 0.25rem 0;
+}
+
+#notifications-menu #notifications-mark-read {
+    position: sticky;
+    bottom: 0;
+    background-color: var(--bs-light, #f8f9fa);
+    z-index: 2;
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+    margin-top: 0.25rem;
+    padding: 0.75rem 1rem;
+    font-weight: 500;
+}
+
+[data-bs-theme="dark"] #notifications-menu #notifications-mark-read {
+    background-color: #1e293b;
+    border-top-color: #334155;
+    color: #60a5fa;
+}
+
+#notifications-menu #notifications-mark-read:hover {
+    background-color: var(--bs-primary) !important;
+    color: white !important;
+}
+
+#notifications-menu #notifications-mark-read:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Ensure dropdown menus don't interfere with page content */
+.dropdown-menu.dropdown-menu-end {
+    z-index: 1050 !important;
 }
 
 .monitoring-item {
