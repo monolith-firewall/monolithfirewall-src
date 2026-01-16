@@ -38,6 +38,9 @@ public class UserEntity
     [SQLiteColumn(DataType = SQLiteDataType.DATETIME, ColumnName = "updated_at")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    [SQLiteColumn(Size = 10, DefaultValue = "'dark'")]
+    public string Theme { get; set; } = "dark"; // "light", "dark", or "auto"
+
     /// <summary>
     /// Get roles as array
     /// </summary>

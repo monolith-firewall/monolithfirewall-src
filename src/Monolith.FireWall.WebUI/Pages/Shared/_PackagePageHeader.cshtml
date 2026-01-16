@@ -1,0 +1,56 @@
+@* Package Page Header - Standardized header for all package pages *@
+@{
+    var packageId = ViewData["PackageId"]?.ToString() ?? "";
+    var moduleId = ViewData["ModuleId"]?.ToString() ?? "";
+    var pageId = ViewData["PageId"]?.ToString() ?? "config";
+    var packageName = ViewData["PackageName"]?.ToString() ?? packageId;
+    var moduleName = ViewData["ModuleName"]?.ToString() ?? moduleId;
+    var pageName = ViewData["PageName"]?.ToString() ?? pageId;
+    
+    // Format names: "monolith-diagnostics" -> "Monolith Diagnostics", "dhcp" -> "DHCP"
+    var formattedPackageName = System.Text.RegularExpressions.Regex.Replace(
+        packageName.Replace("monolith-", ""), 
+        @"\b\w", 
+        m => m.Value.ToUpper());
+    var formattedModuleName = moduleName.ToUpperInvariant();
+    var formattedPageName = char.ToUpper(pageName[0]) + pageName.Substring(1);
+}
+
+<nav class="package-page-header navbar navbar-expand-lg">
+    <div class="container-fluid">
+        <div class="package-header-content">
+            <div class="package-breadcrumb">
+                <a href="/dashboard" class="breadcrumb-link" data-route="/dashboard">
+                    <i class="fas fa-home"></i>
+                    <span>Dashboard</span>
+                </a>
+                <span class="breadcrumb-separator">/</span>
+                <a href="/system/packages" class="breadcrumb-link" data-route="/system/packages">
+                    <span>Packages</span>
+                </a>
+                <span class="breadcrumb-separator">/</span>
+                <span class="breadcrumb-current">
+                    <span class="package-name">@formattedPackageName</span>
+                    <span class="module-name">@formattedModuleName</span>
+                </span>
+            </div>
+            <div class="package-header-title">
+                <h1 class="package-page-title">
+                    <span class="package-icon">
+                        <i class="fas fa-cube"></i>
+                    </span>
+                    <span class="title-text">
+                        <span class="module-title">@formattedModuleName</span>
+                        <span class="page-title">@formattedPageName</span>
+                    </span>
+                </h1>
+            </div>
+        </div>
+        <div class="package-header-actions">
+            <button class="btn btn-sm btn-outline-secondary" onclick="window.history.back()" title="Go Back">
+                <i class="fas fa-arrow-left"></i>
+                <span>Back</span>
+            </button>
+        </div>
+    </div>
+</nav>

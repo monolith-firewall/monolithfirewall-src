@@ -454,3 +454,52 @@ public sealed class FirewallInterfaceSettingsView
     public bool BlockBogon { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
+
+// Firewall States Models
+public sealed class FirewallStateView
+{
+    public string Id { get; set; } = string.Empty;
+    public string Protocol { get; set; } = string.Empty;
+    public string SourceIp { get; set; } = string.Empty;
+    public int? SourcePort { get; set; }
+    public string DestIp { get; set; } = string.Empty;
+    public int? DestPort { get; set; }
+    public string State { get; set; } = string.Empty;
+    public string Interface { get; set; } = string.Empty;
+    public string Direction { get; set; } = string.Empty;
+    public int Age { get; set; }
+    public long PacketsIn { get; set; }
+    public long PacketsOut { get; set; }
+    public long BytesIn { get; set; }
+    public long BytesOut { get; set; }
+}
+
+public sealed class FirewallStatesListRequest
+{
+    public string? Protocol { get; set; }
+    public string? SourceIp { get; set; }
+    public string? DestIp { get; set; }
+    public string? SourcePort { get; set; }
+    public string? DestPort { get; set; }
+    public string? State { get; set; }
+    public string? Interface { get; set; }
+    public string? Direction { get; set; }
+    public string? Search { get; set; }
+    public int? MinAge { get; set; }
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 50;
+}
+
+public sealed class FirewallStatesListResponse
+{
+    public List<FirewallStateView> States { get; set; } = new();
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages { get; set; }
+}
+
+public sealed class FirewallStateKillRequest
+{
+    public string Id { get; set; } = string.Empty;
+}

@@ -35,6 +35,8 @@ public sealed class FirewallHandler : ICoreRequestHandler
         "firewall.interface_settings.list",
         "firewall.interface_settings.get",
         "firewall.interface_settings.update",
+        "firewall.states.list",
+        "firewall.states.kill",
         "firewall.status",
         "firewall.config",
         "firewall.pending",
@@ -365,6 +367,39 @@ public sealed class FirewallHandler : ICoreRequestHandler
                     configPath,
                     warnings = buildResult.Warnings
                 }, null);
+
+            case "firewall.states.list":
+                FirewallStatesListRequest statesRequest;
+                if (request.TryGetProperty("payload", out var payload))
+                {
+                    if (!CoreRequestParsing.TryGetPayload(request, out statesRequest, out var statesError))
+                    {
+                        statesRequest = new FirewallStatesListRequest();
+                    }
+                }
+                else
+                {
+                    statesRequest = new FirewallStatesListRequest();
+                }
+
+                var statesResponse = await context.FirewallManager.States.ListStatesAsync(statesRequest, cancellationToken);
+                return new ApiResponse(true, statesResponse, null);
+
+            case "firewall.states.kill":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallStateKillRequest killRequest, out var killError))
+                {
+                    return new ApiResponse(false, null, killError);
+                }
+
+                if (string.IsNullOrWhiteSpace(killRequest.Id))
+                {
+                    return new ApiResponse(false, null, "State ID is required");
+                }
+
+                var killed = await context.FirewallManager.States.KillStateAsync(killRequest.Id, cancellationToken);
+                return killed
+                    ? new ApiResponse(true, new { killed = true }, null)
+                    : new ApiResponse(false, null, "Failed to kill connection state");
         }
 
         return new ApiResponse(false, null, $"Unhandled action: {action}");

@@ -634,7 +634,73 @@ app.MapPost("/api/profile/change-password", async (HttpContext context, UserServ
     }
 });
 
-app.MapGet("/api/user/current", async (HttpContext httpContext) =>
+// Theme endpoints
+app.MapGet("/api/users/profile/theme", async (HttpContext httpContext, UserService userService) =>
+{
+    try
+    {
+        var user = AuthenticationMiddleware.GetUser(httpContext);
+        if (user == null)
+        {
+            return Results.Json(new { success = false, error = "Not authenticated" }, statusCode: 401);
+        }
+
+        var theme = await userService.GetUserThemeAsync(user.UserId);
+        return Results.Json(new { success = true, data = new { theme } });
+    }
+    catch (Exception ex)
+    {
+        var logger = httpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error getting user theme");
+        return Results.Json(new { success = false, error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPut("/api/users/profile/theme", async (HttpContext httpContext, UserService userService, ILogger<Program> logger) =>
+{
+    try
+    {
+        var user = AuthenticationMiddleware.GetUser(httpContext);
+        if (user == null)
+        {
+            return Results.Json(new { success = false, error = "Not authenticated" }, statusCode: 401);
+        }
+
+        var body = await new StreamReader(httpContext.Request.Body).ReadToEndAsync();
+        var request = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
+        
+        if (!request.TryGetProperty("theme", out var themeEl))
+        {
+            return Results.Json(new { success = false, error = "Theme is required" }, statusCode: 400);
+        }
+
+        var theme = themeEl.GetString();
+        if (string.IsNullOrEmpty(theme))
+        {
+            return Results.Json(new { success = false, error = "Theme cannot be empty" }, statusCode: 400);
+        }
+
+        var updated = await userService.UpdateUserThemeAsync(user.UserId, theme);
+        if (!updated)
+        {
+            return Results.Json(new { success = false, error = "Failed to update theme" }, statusCode: 500);
+        }
+
+        logger.LogInformation("User {UserId} theme updated to {Theme}", user.UserId, theme);
+        return Results.Json(new { success = true, data = new { theme } });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.Json(new { success = false, error = ex.Message }, statusCode: 400);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error updating user theme");
+        return Results.Json(new { success = false, error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapGet("/api/user/current", async (HttpContext httpContext, UserService userService) =>
 {
     var user = AuthenticationMiddleware.GetUser(httpContext);
     if (user == null)
@@ -643,6 +709,9 @@ app.MapGet("/api/user/current", async (HttpContext httpContext) =>
         return Results.Json(new { success = false, authenticated = false });
     }
 
+    // Get full user entity to include theme
+    var userEntity = await userService.GetUserByIdAsync(user.UserId);
+    
     return Results.Json(new {
         success = true,
         authenticated = true,
@@ -650,10 +719,12 @@ app.MapGet("/api/user/current", async (HttpContext httpContext) =>
             id = user.UserId,
             username = user.Username,
             roles = user.Roles,
-            permissions = user.Permissions
+            permissions = user.Permissions,
+            theme = userEntity?.Theme ?? "dark"
         }
     });
 });
+
 
 // Package pages are handled by Razor Pages via PackagePageWrapper.cshtml
 // Route: /p/{package}/{module}/{page?} is defined in PackagePageWrapper.cshtml
@@ -796,6 +867,133 @@ app.MapPost("/api/interfaces/config/apply-now", async (HttpContext context, Core
         var requestJson = JsonSerializer.Serialize(coreRequest);
         var responseJson = await coreClient.SendRequestAsync(requestJson);
         return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+// Firewall States API routes
+app.MapGet("/api/firewall/states", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        // Parse query parameters
+        var protocol = context.Request.Query["protocol"].ToString();
+        var sourceIp = context.Request.Query["sourceIp"].ToString();
+        var destIp = context.Request.Query["destIp"].ToString();
+        var sourcePort = context.Request.Query["sourcePort"].ToString();
+        var destPort = context.Request.Query["destPort"].ToString();
+        var state = context.Request.Query["state"].ToString();
+        var iface = context.Request.Query["interface"].ToString();
+        var direction = context.Request.Query["direction"].ToString();
+        var search = context.Request.Query["search"].ToString();
+        var minAge = context.Request.Query["minAge"].ToString();
+        var page = context.Request.Query["page"].ToString();
+        var pageSize = context.Request.Query["pageSize"].ToString();
+
+        var payload = new Dictionary<string, object?>();
+        if (!string.IsNullOrWhiteSpace(protocol)) payload["protocol"] = protocol;
+        if (!string.IsNullOrWhiteSpace(sourceIp)) payload["sourceIp"] = sourceIp;
+        if (!string.IsNullOrWhiteSpace(destIp)) payload["destIp"] = destIp;
+        if (!string.IsNullOrWhiteSpace(sourcePort)) payload["sourcePort"] = sourcePort;
+        if (!string.IsNullOrWhiteSpace(destPort)) payload["destPort"] = destPort;
+        if (!string.IsNullOrWhiteSpace(state)) payload["state"] = state;
+        if (!string.IsNullOrWhiteSpace(iface)) payload["interface"] = iface;
+        if (!string.IsNullOrWhiteSpace(direction)) payload["direction"] = direction;
+        if (!string.IsNullOrWhiteSpace(search)) payload["search"] = search;
+        if (!string.IsNullOrWhiteSpace(minAge) && int.TryParse(minAge, out var minAgeVal)) payload["minAge"] = minAgeVal;
+        if (!string.IsNullOrWhiteSpace(page) && int.TryParse(page, out var pageVal)) payload["page"] = pageVal;
+        if (!string.IsNullOrWhiteSpace(pageSize) && int.TryParse(pageSize, out var pageSizeVal)) payload["pageSize"] = pageSizeVal;
+
+        var coreRequest = new
+        {
+            action = "firewall.states.list",
+            payload = payload.Count > 0 ? payload : null
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPost("/api/firewall/states/kill", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        using var reader = new StreamReader(context.Request.Body);
+        var body = await reader.ReadToEndAsync();
+        var request = JsonSerializer.Deserialize<JsonElement>(body);
+        
+        if (!request.TryGetProperty("id", out var idEl))
+        {
+            return Results.Json(new { Success = false, Data = (object?)null, Error = "State ID is required" }, statusCode: 400);
+        }
+
+        var coreRequest = new
+        {
+            action = "firewall.states.kill",
+            payload = new { id = idEl.GetString() }
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+// Diagnostic endpoint to check connection tracking status
+app.MapGet("/api/firewall/states/diagnostic", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        var diagnostic = new Dictionary<string, object>();
+        
+        // Check if /proc/net/nf_conntrack exists
+        var procPath = "/proc/net/nf_conntrack";
+        diagnostic["procExists"] = File.Exists(procPath);
+        
+        if (File.Exists(procPath))
+        {
+            try
+            {
+                var lines = await File.ReadAllLinesAsync(procPath);
+                diagnostic["lineCount"] = lines.Length;
+                if (lines.Length > 0)
+                {
+                    diagnostic["firstLine"] = lines[0].Substring(0, Math.Min(300, lines[0].Length));
+                    diagnostic["sampleLines"] = lines.Take(3).Select(l => l.Substring(0, Math.Min(200, l.Length))).ToArray();
+                }
+            }
+            catch (Exception ex)
+            {
+                diagnostic["procReadError"] = ex.Message;
+            }
+        }
+        
+        // Check if conntrack command exists
+        var conntrackExists = File.Exists("/usr/bin/conntrack") || File.Exists("/usr/sbin/conntrack") || File.Exists("/bin/conntrack");
+        diagnostic["conntrackExists"] = conntrackExists;
+        
+        // Try to get actual states count
+        var coreRequest = new { action = "firewall.states.list", payload = new { page = 1, pageSize = 1 } };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        var response = JsonSerializer.Deserialize<JsonElement>(responseJson);
+        if (response.TryGetProperty("Data", out var data) && data.TryGetProperty("Total", out var total))
+        {
+            diagnostic["totalStates"] = total.GetInt32();
+        }
+        
+        return Results.Json(new { Success = true, Data = diagnostic, Error = (string?)null });
     }
     catch (Exception ex)
     {

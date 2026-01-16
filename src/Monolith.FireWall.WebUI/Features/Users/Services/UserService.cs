@@ -43,6 +43,7 @@ public class UserService
                     Email = "admin@monolith.local",
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin"),
                     Enabled = true,
+                    Theme = "dark", // Default theme
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
@@ -116,6 +117,7 @@ public class UserService
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             Enabled = true,
+            Theme = "dark", // Default theme
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -147,5 +149,37 @@ public class UserService
             return null;
 
         return user;
+    }
+
+    /// <summary>
+    /// Get user's theme preference
+    /// </summary>
+    public async Task<string> GetUserThemeAsync(int userId)
+    {
+        var user = await _repository.GetByIdAsync(userId);
+        if (user == null)
+            return "dark"; // Default
+        
+        return string.IsNullOrEmpty(user.Theme) ? "dark" : user.Theme;
+    }
+
+    /// <summary>
+    /// Update user's theme preference
+    /// </summary>
+    public async Task<bool> UpdateUserThemeAsync(int userId, string theme)
+    {
+        // Validate theme value
+        if (theme != "light" && theme != "dark" && theme != "auto")
+        {
+            throw new ArgumentException("Theme must be 'light', 'dark', or 'auto'");
+        }
+
+        var user = await _repository.GetByIdAsync(userId);
+        if (user == null)
+            return false;
+
+        user.Theme = theme;
+        user.UpdatedAt = DateTime.UtcNow;
+        return await _repository.UpdateAsync(user);
     }
 }

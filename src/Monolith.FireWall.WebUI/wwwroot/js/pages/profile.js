@@ -64,6 +64,16 @@ Monolith.Pages.Profile = {
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="preferences-tab" data-bs-toggle="tab" data-bs-target="#preferences" 
+                                type="button" role="tab" aria-controls="preferences" aria-selected="false">
+                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                                <path d="M8 4a.5.5 0 0 1 .5.5v3.793l1.146-1.147a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 1 1 .708-.708L7.5 8.293V4.5A.5.5 0 0 1 8 4zM5.793 7.5a.5.5 0 0 1 0 .707L3.853 9.854a.5.5 0 1 1-.707-.707l2-2a.5.5 0 0 1 .707 0zm4.414 0a.5.5 0 0 0 0 .707l1.94 1.647a.5.5 0 1 0 .707-.707l-2-2a.5.5 0 0 0-.707 0z"/>
+                                <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM1 8a7 7 0 1 1 14 0A7 7 0 0 1 1 8z"/>
+                            </svg>
+                            Preferences
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
                         <button class="nav-link" id="permissions-tab" data-bs-toggle="tab" data-bs-target="#permissions" 
                                 type="button" role="tab" aria-controls="permissions" aria-selected="false">
                             <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
@@ -263,6 +273,44 @@ Monolith.Pages.Profile = {
                         </div>
                     </div>
 
+                    <!-- Preferences Tab -->
+                    <div class="tab-pane fade" id="preferences" role="tabpanel" aria-labelledby="preferences-tab">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Appearance & Preferences</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-4">
+                                    <label class="col-sm-3 col-form-label fw-bold">Theme</label>
+                                    <div class="col-sm-9">
+                                        <div class="btn-group" role="group" id="theme-selector">
+                                            <input type="radio" class="btn-check" name="theme" id="theme-light" value="light" autocomplete="off">
+                                            <label class="btn btn-outline-primary" for="theme-light">
+                                                <i class="fas fa-sun me-1"></i>
+                                                Light
+                                            </label>
+
+                                            <input type="radio" class="btn-check" name="theme" id="theme-dark" value="dark" autocomplete="off">
+                                            <label class="btn btn-outline-primary" for="theme-dark">
+                                                <i class="fas fa-moon me-1"></i>
+                                                Dark
+                                            </label>
+
+                                            <input type="radio" class="btn-check" name="theme" id="theme-auto" value="auto" autocomplete="off">
+                                            <label class="btn btn-outline-primary" for="theme-auto">
+                                                <i class="fas fa-adjust me-1"></i>
+                                                Auto (System)
+                                            </label>
+                                        </div>
+                                        <div class="form-text mt-2">
+                                            Choose your preferred color theme. "Auto" will follow your system preference.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Permissions Tab -->
                     <div class="tab-pane fade" id="permissions" role="tabpanel" aria-labelledby="permissions-tab">
                         <div class="card">
@@ -298,6 +346,7 @@ Monolith.Pages.Profile = {
                 this.currentUser = response.data;
                 this.renderBasicInfo();
                 this.renderSecurity();
+                this.renderPreferences();
                 this.renderPermissions();
             } else {
                 this.showMessage('Failed to load profile', 'error');
@@ -353,6 +402,23 @@ Monolith.Pages.Profile = {
             $('#twoFactorSetup').hide();
             $('#twoFactorEnabledInfo').hide();
         }
+    },
+
+    /**
+     * Render preferences tab
+     */
+    renderPreferences: function() {
+        if (!this.currentUser) return;
+
+        // Get current theme from Theme manager or user data
+        const theme = (this.currentUser.theme || this.currentUser.Theme || Monolith.Theme?.getTheme() || 'dark').toLowerCase();
+        
+        // Set radio button
+        $(`#theme-${theme}`).prop('checked', true);
+        
+        // Update button states
+        $('#theme-selector .btn').removeClass('active');
+        $(`#theme-selector label[for="theme-${theme}"]`).addClass('active');
     },
 
     /**
@@ -459,6 +525,24 @@ Monolith.Pages.Profile = {
         $(document).on('change', '#twoFactorEnabled', () => {
             // TODO: Implement 2FA setup
             Monolith.UI.toast('2FA setup coming soon', 'info');
+        });
+
+        // Theme selector
+        $(document).off('change', 'input[name="theme"]');
+        $(document).on('change', 'input[name="theme"]', async (e) => {
+            const theme = $(e.target).val();
+            if (Monolith.Theme) {
+                await Monolith.Theme.setTheme(theme);
+                this.showMessage('Theme updated successfully', 'success');
+                
+                // Update currentUser
+                if (this.currentUser) {
+                    this.currentUser.theme = theme;
+                    this.currentUser.Theme = theme;
+                }
+            } else {
+                this.showMessage('Theme manager not available', 'error');
+            }
         });
     },
 

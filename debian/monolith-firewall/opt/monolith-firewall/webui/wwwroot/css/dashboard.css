@@ -44,6 +44,13 @@
     position: relative;
 }
 
+/* Dark theme widget support */
+[data-bs-theme="dark"] .widget-card {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
 .widget-card.ui-sortable-helper {
     box-shadow: var(--shadow-xl);
     transform: rotate(2deg);
@@ -62,6 +69,16 @@
     padding: 1rem 1.25rem;
     background: linear-gradient(135deg, rgba(13, 110, 253, 0.05), rgba(13, 202, 240, 0.05));
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Dark theme widget header */
+[data-bs-theme="dark"] .widget-header {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(6, 182, 212, 0.15));
+    border-bottom-color: #334155;
+}
+
+[data-bs-theme="dark"] .widget-title {
+    color: #f1f5f9;
 }
 
 .widget-actions {
@@ -113,6 +130,11 @@
     min-height: 150px;
 }
 
+/* Dark theme widget body */
+[data-bs-theme="dark"] .widget-body {
+    color: #f1f5f9;
+}
+
 .widget-loading {
     display: flex;
     justify-content: center;
@@ -148,6 +170,24 @@
     padding: 0.75rem;
     background: rgba(13, 110, 253, 0.04);
     border-radius: 10px;
+}
+
+/* Dark theme metric cards */
+[data-bs-theme="dark"] .metric-card {
+    background: rgba(37, 99, 235, 0.15);
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .metric-header {
+    color: #cbd5e1;
+}
+
+[data-bs-theme="dark"] .metric-value {
+    color: #60a5fa;
+}
+
+[data-bs-theme="dark"] .metric-sub {
+    color: #94a3b8;
 }
 
 .metric-header {
@@ -225,6 +265,21 @@
     border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
+/* Dark theme details cards */
+[data-bs-theme="dark"] .details-card {
+    background: rgba(37, 99, 235, 0.12);
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .details-title {
+    color: #cbd5e1;
+}
+
+[data-bs-theme="dark"] .details-row span:last-child {
+    color: #f1f5f9;
+}
+
 .details-title {
     font-size: 0.75rem;
     text-transform: uppercase;
@@ -257,6 +312,20 @@
     padding: 0.5rem 0.75rem;
     background: rgba(13, 110, 253, 0.03);
     border-radius: 8px;
+}
+
+/* Dark theme traffic metrics */
+[data-bs-theme="dark"] .traffic-metric {
+    background: rgba(37, 99, 235, 0.12);
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .traffic-label {
+    color: #cbd5e1;
+}
+
+[data-bs-theme="dark"] .traffic-value {
+    color: #60a5fa;
 }
 
 .traffic-label {
@@ -344,6 +413,13 @@
     border-left: 3px solid var(--primary);
 }
 
+/* Dark theme network items */
+[data-bs-theme="dark"] .network-item {
+    background: rgba(37, 99, 235, 0.12);
+    border-left-color: #3b82f6;
+    color: #f1f5f9;
+}
+
 /* Activity Widget */
 .activity-list {
     display: flex;
@@ -358,6 +434,20 @@
     background: rgba(13, 110, 253, 0.03);
     border-radius: 8px;
     font-size: 0.875rem;
+}
+
+/* Dark theme activity items */
+[data-bs-theme="dark"] .activity-item {
+    background: rgba(37, 99, 235, 0.12);
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .activity-time {
+    color: #94a3b8;
+}
+
+[data-bs-theme="dark"] .activity-message {
+    color: #f1f5f9;
 }
 
 .activity-time {

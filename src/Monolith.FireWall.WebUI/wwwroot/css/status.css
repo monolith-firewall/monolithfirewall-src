@@ -1,0 +1,176 @@
+/* Status Pages Styles */
+
+/* States Page */
+#states-table {
+    font-size: 0.875rem;
+}
+
+#states-table thead th {
+    position: sticky;
+    top: 0;
+    background-color: var(--bs-light, #f8f9fa);
+    z-index: 10;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    padding: 0.75rem 0.5rem;
+    border-bottom: 2px solid var(--bs-border-color, #dee2e6);
+}
+
+#states-table tbody td {
+    padding: 0.75rem 0.5rem;
+    vertical-align: middle;
+}
+
+#states-table tbody tr:hover {
+    background-color: var(--bs-light, #f8f9fa);
+}
+
+[data-bs-theme="dark"] #states-table thead th {
+    background-color: #1e293b;
+    border-bottom-color: #334155;
+}
+
+[data-bs-theme="dark"] #states-table tbody tr:hover {
+    background-color: #1e293b;
+}
+
+/* State badges */
+#states-table .badge {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    font-weight: 500;
+}
+
+/* Filter panel */
+#filterPanel .card-body {
+    background-color: var(--bs-light, #f8f9fa);
+}
+
+[data-bs-theme="dark"] #filterPanel .card-body {
+    background-color: #1e293b;
+}
+
+#filterPanel .form-label {
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+/* Code elements in table */
+#states-table code {
+    background-color: var(--bs-light, #f8f9fa);
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    font-family: 'Courier New', monospace;
+}
+
+[data-bs-theme="dark"] #states-table code {
+    background-color: #1e293b;
+    color: #60a5fa;
+}
+
+/* Sticky table header */
+.table-responsive {
+    position: relative;
+}
+
+/* Pagination */
+.card-footer {
+    background-color: var(--bs-light, #f8f9fa);
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+}
+
+[data-bs-theme="dark"] .card-footer {
+    background-color: #1e293b;
+    border-top-color: #334155;
+}
+
+/* Auto-refresh indicator */
+#auto-refresh-interval:not([value="0"]) ~ .btn {
+    position: relative;
+}
+
+#auto-refresh-interval:not([value="0"]) ~ .btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 8px;
+    background-color: #28a745;
+    border-radius: 50%;
+    border: 2px solid white;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Loading state */
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+    border-width: 0.15em;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    #states-table {
+        font-size: 0.75rem;
+    }
+    
+    #states-table thead th,
+    #states-table tbody td {
+        padding: 0.5rem 0.25rem;
+    }
+    
+    .card-header h4 {
+        font-size: 1.1rem;
+    }
+}
+
+/* Action buttons */
+#states-table .btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+/* Filter collapse animation */
+#filterPanel.collapse {
+    transition: height 0.35s ease;
+}
+
+/* Empty state */
+#states-tbody .text-muted {
+    padding: 3rem 1rem;
+}
+
+/* Connection state colors */
+.bg-success {
+    background-color: #28a745 !important;
+}
+
+.bg-warning {
+    background-color: #ffc107 !important;
+    color: #000 !important;
+}
+
+.bg-info {
+    background-color: #17a2b8 !important;
+}
+
+.bg-secondary {
+    background-color: #6c757d !important;
+}
+
+.bg-primary {
+    background-color: #007bff !important;
+}

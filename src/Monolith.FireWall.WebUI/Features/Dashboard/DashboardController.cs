@@ -357,33 +357,73 @@ public class DashboardController : ControllerBase
             }
 
             // Handle package widgets (e.g., "network.dhcp.status")
-            if (id.Contains("."))
+            if (id.Contains(".") && !id.StartsWith("system."))
             {
                 var parts = id.Split('.');
                 if (parts.Length >= 3)
                 {
-                    var package = parts[0]; // "network" -> "monolith-network"
+                    var packagePrefix = parts[0]; // "network" -> "monolith-network"
                     var module = parts[1]; // "dhcp"
                     var widgetAction = parts[2]; // "status"
+                    var packageId = $"monolith-{packagePrefix}";
 
-                    // Call Core API to get widget data from package
-                    var coreRequest = new
+                    // Try the new package API format first: /api/packages/{package}/modules/{module}/{action}
+                    // This uses the standard package module action format
+                    try
                     {
-                        package = $"monolith-{package}",
-                        module = module,
-                        action = $"get-widget-data",
-                        data = new { widgetId = id }
-                    };
-                    var requestJson = JsonSerializer.Serialize(coreRequest);
-                    var responseJson = await _coreClient.SendRequestAsync(requestJson);
-                    var coreResponse = JsonSerializer.Deserialize<JsonElement>(responseJson);
-
-                    if (coreResponse.TryGetProperty("success", out var successProp) && successProp.GetBoolean())
-                    {
-                        if (coreResponse.TryGetProperty("data", out var dataProp))
+                        var packageApiRequest = new
                         {
-                            return Ok(new { success = true, data = dataProp });
+                            packageId = packageId,
+                            moduleId = module,
+                            action = $"get-widget-data",
+                            body = JsonSerializer.Serialize(new { widgetId = id, action = widgetAction })
+                        };
+                        var packageApiJson = JsonSerializer.Serialize(packageApiRequest);
+                        var packageApiResponse = await _coreClient.SendRequestAsync(packageApiJson);
+                        var packageApiElement = JsonSerializer.Deserialize<JsonElement>(packageApiResponse);
+
+                        if (TryGetPropertyIgnoreCase(packageApiElement, "success", out var pkgSuccess) && pkgSuccess.GetBoolean())
+                        {
+                            if (TryGetPropertyIgnoreCase(packageApiElement, "data", out var pkgData))
+                            {
+                                return Ok(new { success = true, data = pkgData });
+                            }
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Package API request failed for widget {WidgetId}, trying fallback", id);
+                    }
+
+                    // Fallback: Try direct Core API format
+                    try
+                    {
+                        var coreRequest = new
+                        {
+                            action = "packages.get-widget-data",
+                            payload = new
+                            {
+                                packageId = packageId,
+                                moduleId = module,
+                                widgetId = id,
+                                action = widgetAction
+                            }
+                        };
+                        var requestJson = JsonSerializer.Serialize(coreRequest);
+                        var responseJson = await _coreClient.SendRequestAsync(requestJson);
+                        var coreResponse = JsonSerializer.Deserialize<JsonElement>(responseJson);
+
+                        if (TryGetPropertyIgnoreCase(coreResponse, "success", out var successProp) && successProp.GetBoolean())
+                        {
+                            if (TryGetPropertyIgnoreCase(coreResponse, "data", out var dataProp))
+                            {
+                                return Ok(new { success = true, data = dataProp });
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Core API request failed for widget {WidgetId}, trying fallback", id);
                     }
 
                     // Fallback for DHCP widget

@@ -5,6 +5,17 @@ body {
     background-color: #f5f5f5;
 }
 
+/* Light theme body background */
+[data-bs-theme="light"] body {
+    background-color: #f8fafc;
+}
+
+/* Dark theme body background */
+[data-bs-theme="dark"] body {
+    background-color: #0f172a;
+    color: #f1f5f9;
+}
+
 /* Sticky navbar with centered max-width */
 .top-navbar {
     position: sticky;
@@ -48,12 +59,183 @@ body {
     border: none;
 }
 
+/* Dark theme card adjustments */
+[data-bs-theme="dark"] .card {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .card-header {
+    background-color: #0f172a !important;
+    background: #0f172a !important;
+    border-bottom-color: #334155;
+    color: #f1f5f9 !important;
+}
+
+[data-bs-theme="dark"] .card-body {
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .card-footer {
+    background-color: #0f172a;
+    border-top-color: #334155;
+    color: #f1f5f9;
+}
+
 .btn {
     border-radius: 4px;
 }
 
 .form-control {
     border-radius: 4px;
+}
+
+/* Dark theme form controls */
+[data-bs-theme="dark"] .form-control {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .form-control:focus {
+    background-color: #1e293b;
+    border-color: #3b82f6;
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .form-control::placeholder {
+    color: #94a3b8;
+}
+
+/* Dark theme form select */
+[data-bs-theme="dark"] .form-select {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #f1f5f9;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23f1f5f9' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+}
+
+[data-bs-theme="dark"] .form-select:focus {
+    background-color: #1e293b;
+    border-color: #3b82f6;
+    color: #f1f5f9;
+    box-shadow: 0 0 0 0.25rem rgba(59, 130, 246, 0.25);
+}
+
+[data-bs-theme="dark"] .form-select option {
+    background-color: #1e293b;
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .form-label {
+    color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .form-text {
+    color: #94a3b8;
+}
+
+/* Dark theme form check and radio */
+[data-bs-theme="dark"] .form-check-input {
+    background-color: #1e293b;
+    border-color: #334155;
+}
+
+[data-bs-theme="dark"] .form-check-input:checked {
+    background-color: #3b82f6;
+    border-color: #3b82f6;
+}
+
+[data-bs-theme="dark"] .form-check-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 0.25rem rgba(59, 130, 246, 0.25);
+}
+
+[data-bs-theme="dark"] .form-check-label {
+    color: #f1f5f9;
+}
+
+/* Dark theme form switch */
+[data-bs-theme="dark"] .form-switch .form-check-input {
+    background-color: #334155;
+}
+
+[data-bs-theme="dark"] .form-switch .form-check-input:checked {
+    background-color: #3b82f6;
+}
+
+/* Dark theme textarea */
+[data-bs-theme="dark"] textarea.form-control {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] textarea.form-control:focus {
+    background-color: #1e293b;
+    border-color: #3b82f6;
+    color: #f1f5f9;
+}
+
+/* Dark theme input groups */
+[data-bs-theme="dark"] .input-group-text {
+    background-color: #0f172a;
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .input-group .form-control,
+[data-bs-theme="dark"] .input-group .form-select {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
+/* Dark theme form range */
+[data-bs-theme="dark"] .form-range::-webkit-slider-thumb {
+    background-color: #3b82f6;
+}
+
+[data-bs-theme="dark"] .form-range::-moz-range-thumb {
+    background-color: #3b82f6;
+}
+
+[data-bs-theme="dark"] .form-range::-webkit-slider-runnable-track {
+    background-color: #334155;
+}
+
+[data-bs-theme="dark"] .form-range::-moz-range-track {
+    background-color: #334155;
+}
+
+/* Dark theme form floating labels */
+[data-bs-theme="dark"] .form-floating > label {
+    color: #94a3b8;
+}
+
+[data-bs-theme="dark"] .form-floating > .form-control:focus ~ label,
+[data-bs-theme="dark"] .form-floating > .form-control:not(:placeholder-shown) ~ label {
+    color: #cbd5e1;
+}
+
+/* Dark theme invalid/valid feedback */
+[data-bs-theme="dark"] .invalid-feedback {
+    color: #fca5a5;
+}
+
+[data-bs-theme="dark"] .valid-feedback {
+    color: #6ee7b7;
+}
+
+[data-bs-theme="dark"] .form-control.is-invalid,
+[data-bs-theme="dark"] .form-select.is-invalid {
+    border-color: #ef4444;
+}
+
+[data-bs-theme="dark"] .form-control.is-valid,
+[data-bs-theme="dark"] .form-select.is-valid {
+    border-color: #10b981;
 }
 
 .user-menu .nav-icon-button {
@@ -69,6 +251,16 @@ body {
 .user-menu .nav-icon-button:hover {
     background: rgba(0, 0, 0, 0.05);
     color: #0f172a;
+}
+
+/* Dark theme user menu */
+[data-bs-theme="dark"] .user-menu .nav-icon-button {
+    color: #ffffff;
+}
+
+[data-bs-theme="dark"] .user-menu .nav-icon-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
 }
 
 .status-indicator {
@@ -149,4 +341,137 @@ body {
 
 .tab-pane.active.show {
     display: block;
+}
+
+/* Dark theme table adjustments */
+[data-bs-theme="dark"] .table {
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .table thead th {
+    border-bottom-color: #334155;
+    color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .table tbody tr {
+    border-top-color: #334155;
+}
+
+[data-bs-theme="dark"] .table-hover tbody tr:hover {
+    background-color: #1e293b;
+    color: #f1f5f9;
+}
+
+/* Dark theme text colors */
+[data-bs-theme="dark"] .text-muted {
+    color: #94a3b8 !important;
+}
+
+[data-bs-theme="dark"] h1, 
+[data-bs-theme="dark"] h2, 
+[data-bs-theme="dark"] h3, 
+[data-bs-theme="dark"] h4, 
+[data-bs-theme="dark"] h5, 
+[data-bs-theme="dark"] h6 {
+    color: #f1f5f9;
+}
+
+/* Dark theme badges */
+[data-bs-theme="dark"] .badge {
+    color: #fff;
+}
+
+/* Dark theme dropdowns */
+[data-bs-theme="dark"] .dropdown-menu {
+    background-color: #1e293b;
+    border-color: #334155;
+}
+
+[data-bs-theme="dark"] .dropdown-item {
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .dropdown-item:hover,
+[data-bs-theme="dark"] .dropdown-item:focus {
+    background-color: #334155;
+    color: #f1f5f9;
+}
+
+/* Light theme modals */
+[data-bs-theme="light"] .modal-header {
+    background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+    border-bottom-color: #e2e8f0;
+    color: #1f2937;
+}
+
+[data-bs-theme="light"] .modal-header .modal-title {
+    color: #1f2937;
+}
+
+[data-bs-theme="light"] .modal-footer {
+    background-color: #f8fafc;
+    border-top-color: #e2e8f0;
+}
+
+/* Dark theme modals */
+[data-bs-theme="dark"] .modal-content {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .modal-header {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border-bottom-color: #334155;
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .modal-header .modal-title {
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .modal-footer {
+    background-color: #0f172a;
+    border-top-color: #334155;
+}
+
+/* Dark theme list groups */
+[data-bs-theme="dark"] .list-group-item {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .list-group-item.active {
+    background-color: #2563eb;
+    border-color: #2563eb;
+}
+
+/* Dark theme alerts */
+[data-bs-theme="dark"] .alert {
+    border-color: #334155;
+}
+
+[data-bs-theme="dark"] .alert-success {
+    background-color: rgba(16, 185, 129, 0.2);
+    border-color: #10b981;
+    color: #6ee7b7;
+}
+
+[data-bs-theme="dark"] .alert-danger {
+    background-color: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+    color: #fca5a5;
+}
+
+[data-bs-theme="dark"] .alert-warning {
+    background-color: rgba(245, 158, 11, 0.2);
+    border-color: #f59e0b;
+    color: #fcd34d;
+}
+
+[data-bs-theme="dark"] .alert-info {
+    background-color: rgba(6, 182, 212, 0.2);
+    border-color: #06b6d4;
+    color: #67e8f9;
 }

@@ -306,6 +306,22 @@
       }
     },
     {
+      "id": "status.states",
+      "path": "/status/states",
+      "title": "Firewall States",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"status-container\"></div>",
+      "assets": {
+        "js": [
+          "status"
+        ],
+        "css": [
+          "status"
+        ]
+      }
+    },
+    {
       "id": "setup.router",
       "path": "/setup/router",
       "title": "Setup Router",
@@ -350,6 +366,11 @@
           "label": "Logs",
           "routeId": "status.logs",
           "icon": "fa-solid fa-clipboard-list"
+        },
+        {
+          "label": "States",
+          "routeId": "status.states",
+          "icon": "fa-solid fa-network-wired"
         }
       ]
     },

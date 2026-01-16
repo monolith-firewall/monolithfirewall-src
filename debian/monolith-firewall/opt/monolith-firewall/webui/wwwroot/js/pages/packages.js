@@ -53,11 +53,7 @@ var Packages = {
         const container = $('#packages-container');
         container.html(`
             <div class="container-fluid packages-shell">
-                <div class="packages-hero">
-                    <div>
-                        <h1 class="mb-1">Package Manager</h1>
-                        <p class="text-muted mb-0">Install, update, and audit platform extensions.</p>
-                    </div>
+                <div class="packages-toolbar d-flex justify-content-between align-items-center mb-3">
                     <div class="packages-actions">
                         <button class="btn btn-outline-primary" id="packages-refresh">
                             <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">

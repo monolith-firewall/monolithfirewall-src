@@ -29,6 +29,9 @@ $(document).ready(function() {
             // Update user info in navbar
             updateUserInfo();
             
+            // Initialize theme toggle in navbar
+            initNavbarThemeToggle();
+            
             // Initialize menu system (optional - menu-manager.js may not exist)
             if (Monolith.Menu && typeof Monolith.Menu.init === 'function') {
                 try {
@@ -119,6 +122,40 @@ function updateUserInfo() {
         $('#user-info').text(Monolith.Auth.currentUser.username);
         startMonitoringUi();
     }
+}
+
+function initNavbarThemeToggle() {
+    // Wait for theme manager to be ready
+    if (!Monolith.Theme) {
+        setTimeout(initNavbarThemeToggle, 100);
+        return;
+    }
+
+    // Get current theme and set radio button
+    const currentTheme = Monolith.Theme.getTheme();
+    $(`#navbar-theme-${currentTheme}`).prop('checked', true);
+    
+    // Update button states
+    $('#navbar-theme-toggle .btn').removeClass('active');
+    $(`#navbar-theme-toggle label[for="navbar-theme-${currentTheme}"]`).addClass('active');
+
+    // Handle theme change
+    $(document).off('change', 'input[name="navbar-theme"]');
+    $(document).on('change', 'input[name="navbar-theme"]', async function() {
+        const theme = $(this).val();
+        if (Monolith.Theme) {
+            await Monolith.Theme.setTheme(theme);
+            Monolith.UI.toast(`Theme changed to ${theme}`, 'success');
+        }
+    });
+
+    // Listen for theme changes from other sources (e.g., profile page)
+    document.addEventListener('themechange', function(e) {
+        const theme = e.detail.theme;
+        $(`#navbar-theme-${theme}`).prop('checked', true);
+        $('#navbar-theme-toggle .btn').removeClass('active');
+        $(`#navbar-theme-toggle label[for="navbar-theme-${theme}"]`).addClass('active');
+    });
 }
 
 async function loadInterfaces() {

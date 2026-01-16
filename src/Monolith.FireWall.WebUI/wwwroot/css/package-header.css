@@ -1,0 +1,199 @@
+/* Page Header Styles - Used for both package and internal pages */
+.page-header {
+    background: rgba(55, 65, 81, 0.6); /* Grey-ish with transparency */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(75, 85, 99, 0.4);
+    padding: 1rem 0;
+    margin: 0 1rem 1rem 1rem;
+    margin-top: 0;
+    border-radius: 0 0 1rem 1rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Light theme adjustments */
+[data-bs-theme="light"] .page-header {
+    background: rgba(243, 244, 246, 0.9);
+    border-bottom: 1px solid rgba(209, 213, 219, 0.8);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+[data-bs-theme="light"] .page-header .page-title {
+    color: #1f2937;
+}
+
+[data-bs-theme="light"] .page-header .module-title {
+    color: #1f2937;
+}
+
+[data-bs-theme="light"] .page-header .page-subtitle {
+    color: #6b7280;
+}
+
+[data-bs-theme="light"] .page-header .page-icon {
+    background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+}
+
+[data-bs-theme="light"] .page-header .breadcrumb-link {
+    color: #4b5563;
+}
+
+[data-bs-theme="light"] .page-header .breadcrumb-link:hover {
+    color: #2563eb;
+    background: rgba(37, 99, 235, 0.1);
+}
+
+[data-bs-theme="light"] .page-header .breadcrumb-current {
+    color: #111827;
+}
+
+[data-bs-theme="light"] .page-header .breadcrumb-separator {
+    color: #9ca3af;
+}
+
+.page-header .container-fluid {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.page-header-title {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #f1f5f9;
+}
+
+.page-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    background: rgba(75, 85, 99, 0.6);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border-radius: 0.5rem;
+    color: white;
+    font-size: 1.25rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+.title-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.module-title {
+    font-size: 1.5rem;
+    line-height: 1.2;
+    color: #f1f5f9;
+}
+
+.page-subtitle {
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: #94a3b8;
+    text-transform: capitalize;
+}
+
+.page-header-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: #94a3b8;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+.breadcrumb-link {
+    color: #cbd5e1;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    transition: color 0.2s;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+}
+
+.breadcrumb-link:hover {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.1);
+}
+
+.breadcrumb-link i {
+    font-size: 0.75rem;
+}
+
+.breadcrumb-separator {
+    color: #475569;
+    user-select: none;
+}
+
+.breadcrumb-current {
+    color: #e2e8f0;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.breadcrumb-current .package-name {
+    color: #60a5fa;
+}
+
+.breadcrumb-current .module-name {
+    color: #34d399;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .page-header .container-fluid {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .page-header-breadcrumb {
+        width: 100%;
+        margin-left: 0;
+    }
+    
+    .page-title {
+        font-size: 1.25rem;
+    }
+    
+    .module-title {
+        font-size: 1.25rem;
+    }
+    
+    .page-icon {
+        width: 2rem;
+        height: 2rem;
+        font-size: 1rem;
+    }
+}
+
+/* Ensure header doesn't interfere with page content */
+.package-page,
+.page-content {
+    margin-top: 0;
+}
+
+.package-page .container-fluid,
+.page-content .container-fluid {
+    padding-top: 1.5rem;
+}

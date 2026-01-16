@@ -59,15 +59,23 @@ public class RazorPartialRenderer
     {
         try
         {
+            string pageContent;
+            
             // If it's already a route (starts with /), use it directly
             if (pageRoute.StartsWith("/"))
             {
-                return await RenderPageByRouteAsync(httpContext, pageRoute);
+                pageContent = await RenderPageByRouteAsync(httpContext, pageRoute);
+            }
+            else
+            {
+                // If not a route, it's an invalid page route
+                _logger.LogWarning($"Invalid page route format: {pageRoute}. Routes must start with '/'");
+                throw new ArgumentException($"Invalid page route: {pageRoute}. Routes must start with '/'");
             }
             
-            // If not a route, it's an invalid page route
-            _logger.LogWarning($"Invalid page route format: {pageRoute}. Routes must start with '/'");
-            throw new ArgumentException($"Invalid page route: {pageRoute}. Routes must start with '/'");
+            // Wrap with standardized header for internal pages
+            var headerHtml = GenerateInternalPageHeaderAsync(pageRoute);
+            return headerHtml + "\n" + pageContent;
         }
         catch (Exception ex)
         {
@@ -245,7 +253,11 @@ public class RazorPartialRenderer
                         new HtmlHelperOptions());
                     
                     await page.ExecuteAsync();
-                    return sw.ToString();
+                    var pageContent = sw.ToString();
+                    
+                    // Wrap with standardized header
+                    var headerHtml = await GeneratePackagePageHeaderAsync(httpContext, packageId, moduleId, pageId);
+                    return headerHtml + "\n" + pageContent;
                 }
                 else
                 {
@@ -303,7 +315,11 @@ public class RazorPartialRenderer
                             new HtmlHelperOptions());
                         
                         await page.ExecuteAsync();
-                        return sw.ToString();
+                        var pageContent = sw.ToString();
+                        
+                        // Wrap with standardized header
+                        var headerHtml = await GeneratePackagePageHeaderAsync(httpContext, packageId, moduleId, pageId);
+                        return headerHtml + "\n" + pageContent;
                     }
                 }
             }
@@ -318,6 +334,265 @@ public class RazorPartialRenderer
             $"Tried compiled Razor Page classes: AspNetCoreGeneratedDocument.Pages_{modulePascal}_{pagePascal}, " +
             $"AspNetCoreGeneratedDocument.Pages_{modulePascal}_Config. " +
             $"Assembly {assemblyName} may not be registered or pages not compiled correctly.");
+    }
+    
+    /// <summary>
+    /// Generates a standardized header/navbar for package pages
+    /// </summary>
+    private async Task<string> GeneratePackagePageHeaderAsync(
+        HttpContext httpContext,
+        string packageId,
+        string moduleId,
+        string pageId)
+    {
+        try
+        {
+            // Get package info from Core API
+            var coreClient = httpContext.RequestServices.GetRequiredService<CoreApiClient>();
+            var request = JsonSerializer.Serialize(new { action = "get-packages" });
+            var responseJson = await coreClient.SendRequestAsync(request);
+            var response = JsonSerializer.Deserialize<JsonElement>(responseJson);
+            
+            string packageName = packageId;
+            string moduleName = moduleId;
+            
+            if (response.TryGetProperty("Success", out var success) && success.GetBoolean())
+            {
+                if (response.TryGetProperty("Data", out var data))
+                {
+                    var packages = JsonSerializer.Deserialize<List<JsonElement>>(data.GetRawText()) ?? new List<JsonElement>();
+                    var package = packages.FirstOrDefault(p => 
+                        p.TryGetProperty("id", out var id) && 
+                        id.GetString()?.Equals(packageId, StringComparison.OrdinalIgnoreCase) == true);
+                    
+                    if (package.TryGetProperty("name", out var nameEl))
+                    {
+                        packageName = nameEl.GetString() ?? packageId;
+                    }
+                    
+                    if (package.TryGetProperty("modules", out var modulesEl))
+                    {
+                        var modules = JsonSerializer.Deserialize<List<JsonElement>>(modulesEl.GetRawText()) ?? new List<JsonElement>();
+                        var module = modules.FirstOrDefault(m => 
+                            m.TryGetProperty("id", out var mid) && 
+                            mid.GetString()?.Equals(moduleId, StringComparison.OrdinalIgnoreCase) == true);
+                        
+                        if (module.TryGetProperty("name", out var moduleNameEl))
+                        {
+                            moduleName = moduleNameEl.GetString() ?? moduleId;
+                        }
+                    }
+                }
+            }
+            
+            // Format names nicely
+            var formattedPackageName = System.Text.RegularExpressions.Regex.Replace(
+                packageName.Replace("Monolith ", "").Replace("monolith-", ""), 
+                @"\b\w", 
+                m => m.Value.ToUpper());
+            var formattedModuleName = moduleName;
+            var formattedPageName = char.ToUpper(pageId[0]) + pageId.Substring(1);
+            
+            // Generate header HTML - title on left, breadcrumb on right
+            var headerHtml = $@"
+<nav class=""page-header navbar navbar-expand-lg"">
+    <div class=""container-fluid"">
+        <div class=""page-header-title"">
+            <h1 class=""page-title"">
+                <span class=""page-icon"">
+                    <i class=""fas fa-cube""></i>
+                </span>
+                <span class=""title-text"">
+                    <span class=""module-title"">{formattedModuleName}</span>
+                    <span class=""page-subtitle"">{formattedPageName}</span>
+                </span>
+            </h1>
+        </div>
+        <div class=""page-header-breadcrumb"">
+            <a href=""#"" class=""breadcrumb-link"" data-route=""/dashboard"" onclick=""Monolith.UI.navigate('/dashboard'); return false;"">
+                <i class=""fas fa-home""></i>
+                <span>Dashboard</span>
+            </a>
+            <span class=""breadcrumb-separator"">/</span>
+            <a href=""#"" class=""breadcrumb-link"" data-route=""/system/packages"" onclick=""Monolith.UI.navigate('/system/packages'); return false;"">
+                <span>Packages</span>
+            </a>
+            <span class=""breadcrumb-separator"">/</span>
+            <span class=""breadcrumb-current"">
+                <span class=""package-name"">{formattedPackageName}</span>
+                <span class=""module-name"">{formattedModuleName}</span>
+            </span>
+        </div>
+    </div>
+</nav>";
+            
+            return headerHtml;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning($"Failed to generate package page header: {ex.Message}");
+            // Return minimal header on error
+            return $@"
+<nav class=""page-header navbar navbar-expand-lg"">
+    <div class=""container-fluid"">
+        <div class=""page-header-title"">
+            <h1 class=""page-title"">
+                <span class=""title-text"">
+                    <span class=""module-title"">{moduleId}</span>
+                    <span class=""page-subtitle"">{pageId}</span>
+                </span>
+            </h1>
+        </div>
+        <div class=""page-header-breadcrumb"">
+            <a href=""#"" class=""breadcrumb-link"" data-route=""/dashboard"" onclick=""Monolith.UI.navigate('/dashboard'); return false;"">
+                <i class=""fas fa-home""></i>
+                <span>Dashboard</span>
+            </a>
+            <span class=""breadcrumb-separator"">/</span>
+            <span class=""breadcrumb-current"">
+                <span class=""package-name"">{packageId}</span>
+                <span class=""module-name"">{moduleId}</span>
+            </span>
+        </div>
+    </div>
+</nav>";
+        }
+    }
+    
+    /// <summary>
+    /// Generates a standardized header for internal pages (firewall, system, etc.)
+    /// </summary>
+    private string GenerateInternalPageHeaderAsync(string pageRoute)
+    {
+        // Parse route to get page name and breadcrumb
+        var routeParts = pageRoute.TrimStart('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        
+        string pageTitle = "Page";
+        string breadcrumbPath = "";
+        string icon = "fa-file";
+        
+        // Determine page title and breadcrumb based on route
+        if (routeParts.Length > 0)
+        {
+            var section = routeParts[0].ToLowerInvariant();
+            var page = routeParts.Length > 1 ? routeParts[1] : routeParts[0];
+            
+            switch (section)
+            {
+                case "firewall":
+                    breadcrumbPath = "Firewall";
+                    switch (page.ToLowerInvariant())
+                    {
+                        case "rules": pageTitle = "Firewall Rules"; icon = "fa-shield-halved"; break;
+                        case "aliases": pageTitle = "Aliases"; icon = "fa-list-check"; break;
+                        case "nat": pageTitle = "NAT"; icon = "fa-right-left"; break;
+                        case "virtual-ips": pageTitle = "Virtual IPs"; icon = "fa-circle-nodes"; break;
+                        case "traffic-shaper": pageTitle = "Traffic Shaper"; icon = "fa-wave-square"; break;
+                        case "schedules": pageTitle = "Schedules"; icon = "fa-calendar-days"; break;
+                        default: pageTitle = char.ToUpper(page[0]) + page.Substring(1); break;
+                    }
+                    break;
+                case "schedules":
+                    breadcrumbPath = "Firewall";
+                    pageTitle = "Schedules";
+                    icon = "fa-calendar-days";
+                    break;
+                case "system":
+                    breadcrumbPath = "System";
+                    switch (page.ToLowerInvariant())
+                    {
+                        case "settings": pageTitle = "Settings"; icon = "fa-gear"; break;
+                        case "advanced": pageTitle = "Advanced Settings"; icon = "fa-sliders"; break;
+                        case "packages": pageTitle = "Packages"; icon = "fa-box-open"; break;
+                        case "modules": pageTitle = "Modules"; icon = "fa-puzzle-piece"; break;
+                        case "routing": pageTitle = "Routing"; icon = "fa-route"; break;
+                        case "logs": pageTitle = "System Logs"; icon = "fa-clipboard-list"; break;
+                        case "updates": pageTitle = "Updates"; icon = "fa-download"; break;
+                        case "backup": pageTitle = "Backup"; icon = "fa-floppy-disk"; break;
+                        default: pageTitle = char.ToUpper(page[0]) + page.Substring(1); break;
+                    }
+                    break;
+                case "interfaces":
+                    breadcrumbPath = "Interfaces";
+                    if (routeParts.Length > 1)
+                    {
+                        var interfaceName = routeParts[1];
+                        pageTitle = char.ToUpper(interfaceName[0]) + interfaceName.Substring(1);
+                    }
+                    else
+                    {
+                        pageTitle = page.ToLowerInvariant() == "network-cards" ? "Network Cards" : "Interfaces";
+                    }
+                    icon = "fa-network-wired";
+                    break;
+                case "status":
+                    breadcrumbPath = "Status";
+                    switch (page.ToLowerInvariant())
+                    {
+                        case "system": pageTitle = "System Status"; icon = "fa-gauge-high"; break;
+                        case "interfaces": pageTitle = "Interface Status"; icon = "fa-network-wired"; break;
+                        case "services": pageTitle = "Services"; icon = "fa-server"; break;
+                        case "logs": pageTitle = "System Logs"; icon = "fa-clipboard-list"; break;
+                        default: pageTitle = char.ToUpper(page[0]) + page.Substring(1); break;
+                    }
+                    break;
+                case "users":
+                    pageTitle = "Users"; icon = "fa-user-gear"; breadcrumbPath = "System";
+                    break;
+                case "groups":
+                    pageTitle = "User Groups"; icon = "fa-users"; breadcrumbPath = "System";
+                    break;
+                case "permissions":
+                    pageTitle = "Permissions"; icon = "fa-key"; breadcrumbPath = "System";
+                    break;
+                case "profile":
+                    pageTitle = "My Profile"; icon = "fa-user"; breadcrumbPath = "";
+                    break;
+                case "dashboard":
+                    pageTitle = "Dashboard"; icon = "fa-gauge-high"; breadcrumbPath = "";
+                    break;
+                default:
+                    pageTitle = char.ToUpper(section[0]) + section.Substring(1);
+                    if (routeParts.Length > 1)
+                    {
+                        pageTitle += " - " + char.ToUpper(page[0]) + page.Substring(1);
+                    }
+                    break;
+            }
+        }
+        
+        // Build breadcrumb
+        var breadcrumbHtml = "<a href=\"#\" class=\"breadcrumb-link\" data-route=\"/dashboard\" onclick=\"Monolith.UI.navigate('/dashboard'); return false;\"><i class=\"fas fa-home\"></i><span>Dashboard</span></a>";
+        
+        if (!string.IsNullOrEmpty(breadcrumbPath))
+        {
+            breadcrumbHtml += $"<span class=\"breadcrumb-separator\">/</span>";
+            var breadcrumbRoute = "/" + (routeParts[0] == "system" ? "system" : routeParts[0]);
+            breadcrumbHtml += $"<a href=\"#\" class=\"breadcrumb-link\" data-route=\"{breadcrumbRoute}\" onclick=\"Monolith.UI.navigate('{breadcrumbRoute}'); return false;\"><span>{breadcrumbPath}</span></a>";
+        }
+        
+        breadcrumbHtml += $"<span class=\"breadcrumb-separator\">/</span>";
+        breadcrumbHtml += $"<span class=\"breadcrumb-current\"><span class=\"module-name\">{pageTitle}</span></span>";
+        
+        // Generate header HTML
+        return $@"
+<nav class=""page-header navbar navbar-expand-lg"">
+    <div class=""container-fluid"">
+        <div class=""page-header-title"">
+            <h1 class=""page-title"">
+                <span class=""page-icon"">
+                    <i class=""fas {icon}""></i>
+                </span>
+                <span class=""title-text"">
+                    <span class=""module-title"">{pageTitle}</span>
+                </span>
+            </h1>
+        </div>
+        <div class=""page-header-breadcrumb"">
+            {breadcrumbHtml}
+        </div>
+    </div>
+</nav>";
     }
     
     // Helper class for empty view

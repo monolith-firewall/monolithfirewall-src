@@ -178,7 +178,7 @@ class Program
         var interfaceConfigManager = new InterfaceConfigManager();
         var settingsCommandRunner = new Services.Platform.PlatformCommandRunner();
         var settingsManager = new SystemSettingsManager(new SystemSettingsStore(), settingsCommandRunner);
-        var firewallManager = new Services.Firewall.FirewallManager(commandRunner, interfaceAssignmentStore);
+        var firewallManager = new Services.Firewall.FirewallManager(commandRunner, interfaceAssignmentStore, logger);
         var tuneablesManager = new SystemTuneablesManager(
             new SystemTuneablesStore(),
             commandRunner);

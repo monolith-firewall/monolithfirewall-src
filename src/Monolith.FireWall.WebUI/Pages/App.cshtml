@@ -18,6 +18,21 @@
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css" />
     <link href="/css/monolith-theme.css?v=20260111" rel="stylesheet" />
     <link href="/css/app.css?v=20260103" rel="stylesheet" />
+    <link href="/css/package-header.css?v=20260116" rel="stylesheet" />
+    <script src="/js/core/theme-manager.js?v=20260116"></script>
+    <script>
+        // Initialize theme immediately to prevent flash
+        (function() {
+            const savedTheme = localStorage.getItem('monolith-theme') || 'dark';
+            const html = document.documentElement;
+            if (savedTheme === 'auto') {
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                html.setAttribute('data-bs-theme', prefersDark ? 'dark' : 'light');
+            } else {
+                html.setAttribute('data-bs-theme', savedTheme);
+            }
+        })();
+    </script>
 </head>
 <body>
     <nav class="navbar navbar-expand-lg top-navbar sticky-top" id="top-navbar">
@@ -97,6 +112,28 @@
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><a class="dropdown-item" href="/profile" data-route="/profile">My Profile</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <div class="dropdown-item-text">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span>Theme</span>
+                                        <div class="btn-group btn-group-sm" role="group" id="navbar-theme-toggle">
+                                            <input type="radio" class="btn-check" name="navbar-theme" id="navbar-theme-light" value="light" autocomplete="off">
+                                            <label class="btn btn-outline-secondary" for="navbar-theme-light" title="Light">
+                                                <i class="fas fa-sun"></i>
+                                            </label>
+                                            <input type="radio" class="btn-check" name="navbar-theme" id="navbar-theme-dark" value="dark" autocomplete="off">
+                                            <label class="btn btn-outline-secondary" for="navbar-theme-dark" title="Dark">
+                                                <i class="fas fa-moon"></i>
+                                            </label>
+                                            <input type="radio" class="btn-check" name="navbar-theme" id="navbar-theme-auto" value="auto" autocomplete="off">
+                                            <label class="btn btn-outline-secondary" for="navbar-theme-auto" title="Auto">
+                                                <i class="fas fa-adjust"></i>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item text-danger" href="#" id="btn-logout">Logout</a></li>
                         </ul>

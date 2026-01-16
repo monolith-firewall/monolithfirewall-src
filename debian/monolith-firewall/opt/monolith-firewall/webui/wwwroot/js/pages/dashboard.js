@@ -149,8 +149,7 @@ Monolith.Pages.Dashboard = {
         const container = $('#dashboard-container');
         container.html(`
             <div class="container-fluid dashboard-page">
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h1 class="dashboard-title">Dashboard</h1>
+                <div class="d-flex justify-content-end align-items-center mb-4">
                     <div class="btn-group" role="group">
                         <button class="btn btn-sm btn-outline-secondary" id="add-widget-btn" 
                                 data-bs-toggle="tooltip" data-bs-placement="bottom" 
