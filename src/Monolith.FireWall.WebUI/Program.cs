@@ -419,8 +419,16 @@ static bool IsPrivateIpAddress(string host)
     if (string.IsNullOrWhiteSpace(host))
         return false;
 
+    // Remove port if present (host:port format)
+    var hostOnly = host;
+    var colonIndex = host.IndexOf(':');
+    if (colonIndex > 0)
+    {
+        hostOnly = host.Substring(0, colonIndex);
+    }
+
     // Try to parse as IP address
-    if (!System.Net.IPAddress.TryParse(host, out var ipAddress))
+    if (!System.Net.IPAddress.TryParse(hostOnly, out var ipAddress))
         return false;
 
     var bytes = ipAddress.GetAddressBytes();
@@ -472,18 +480,27 @@ static async Task<string> DownloadPackageAsync(string packageId, string download
 
     if (!string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase))
     {
-        var isLocalhost =
-            string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(uri.Host, "::1", StringComparison.OrdinalIgnoreCase);
+        // Extract host without port (Uri.Host already excludes port, but be safe)
+        var host = uri.Host;
+        if (string.IsNullOrWhiteSpace(host) && !string.IsNullOrWhiteSpace(uri.Authority))
+        {
+            // Fallback: extract host from authority (host:port format)
+            var authorityParts = uri.Authority.Split(':');
+            host = authorityParts[0];
+        }
 
-        var isPrivateIp = IsPrivateIpAddress(uri.Host);
+        var isLocalhost =
+            string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase);
+
+        var isPrivateIp = IsPrivateIpAddress(host);
 
         // Allow HTTP for localhost and private IPs (they're on local network, trusted)
         // For public IPs, require allowInsecureHttp to be true
         if (!allowInsecureHttp && !isLocalhost && !isPrivateIp)
         {
-            throw new Exception("Only HTTPS downloads are allowed for public addresses. Use HTTP only for localhost or private IP addresses.");
+            throw new Exception($"Only HTTPS downloads are allowed for public addresses. Use HTTP only for localhost or private IP addresses. (Host: {host}, isPrivateIp: {isPrivateIp}, allowInsecureHttp: {allowInsecureHttp})");
         }
     }
 
