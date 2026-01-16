@@ -471,6 +471,46 @@ static bool IsPrivateIpAddress(string host)
     return false;
 }
 
+static void CleanupOldCacheFiles(string cacheDir, TimeSpan maxAge)
+{
+    try
+    {
+        if (!Directory.Exists(cacheDir))
+            return;
+
+        var cutoffTime = DateTime.UtcNow - maxAge;
+        var files = Directory.GetFiles(cacheDir, "*.mfwpkg");
+        
+        foreach (var file in files)
+        {
+            try
+            {
+                var fileInfo = new FileInfo(file);
+                if (fileInfo.LastWriteTimeUtc < cutoffTime)
+                {
+                    // Try to delete, but don't fail if file is locked
+                    try
+                    {
+                        File.Delete(file);
+                    }
+                    catch (IOException)
+                    {
+                        // File might be in use, skip it
+                    }
+                }
+            }
+            catch
+            {
+                // Skip files we can't access
+            }
+        }
+    }
+    catch
+    {
+        // Best effort cleanup, don't throw
+    }
+}
+
 static async Task<string> DownloadPackageAsync(string packageId, string downloadUrl, string? expectedSha256, bool allowInsecureHttp, string updateServerBaseUrl, CancellationToken cancellationToken)
 {
     if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri))
@@ -516,8 +556,20 @@ static async Task<string> DownloadPackageAsync(string packageId, string download
 
     var cacheDir = "/var/lib/monolith-firewall/packages-cache";
     Directory.CreateDirectory(cacheDir);
-    var fileName = $"{packageId}-{DateTime.UtcNow:yyyyMMddHHmmss}.mfwpkg";
+    
+    // Use GUID to ensure unique filename and avoid conflicts
+    var fileName = $"{packageId}-{Guid.NewGuid():N}.mfwpkg";
     var targetPath = Path.Combine(cacheDir, fileName);
+
+    // Clean up old cache files (older than 1 hour) to prevent disk space issues
+    try
+    {
+        CleanupOldCacheFiles(cacheDir, TimeSpan.FromHours(1));
+    }
+    catch
+    {
+        // Best effort cleanup, don't fail if cleanup fails
+    }
 
     using var client = new HttpClient();
     using var response = await client.GetAsync(uri, cancellationToken);
@@ -526,8 +578,10 @@ static async Task<string> DownloadPackageAsync(string packageId, string download
         throw new Exception($"Download failed: {response.StatusCode}");
     }
 
-    await using var fs = File.Create(targetPath);
+    // Use FileStream with FileShare.None to ensure exclusive access
+    await using var fs = new FileStream(targetPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
     await response.Content.CopyToAsync(fs, cancellationToken);
+    await fs.FlushAsync(cancellationToken);
 
     if (!string.IsNullOrWhiteSpace(expectedSha256))
     {
@@ -542,7 +596,16 @@ static async Task<string> DownloadPackageAsync(string packageId, string download
 
         if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
         {
-            try { File.Delete(targetPath); } catch { /* best effort */ }
+            try 
+            { 
+                // Wait a bit and retry deletion in case file is still open
+                await Task.Delay(100, cancellationToken);
+                File.Delete(targetPath); 
+            } 
+            catch 
+            { 
+                // Best effort cleanup
+            }
             throw new Exception("Package checksum verification failed");
         }
     }
