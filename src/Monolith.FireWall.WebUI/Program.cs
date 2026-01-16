@@ -471,7 +471,7 @@ static bool IsPrivateIpAddress(string host)
     return false;
 }
 
-static async Task<string> DownloadPackageAsync(string packageId, string downloadUrl, string? expectedSha256, bool allowInsecureHttp, CancellationToken cancellationToken)
+static async Task<string> DownloadPackageAsync(string packageId, string downloadUrl, string? expectedSha256, bool allowInsecureHttp, string updateServerBaseUrl, CancellationToken cancellationToken)
 {
     if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri))
     {
@@ -496,11 +496,21 @@ static async Task<string> DownloadPackageAsync(string packageId, string download
 
         var isPrivateIp = IsPrivateIpAddress(host);
 
-        // Allow HTTP for localhost and private IPs (they're on local network, trusted)
-        // For public IPs, require allowInsecureHttp to be true
-        if (!allowInsecureHttp && !isLocalhost && !isPrivateIp)
+        // Check if this is the configured update server (trusted source)
+        var isUpdateServer = false;
+        if (!string.IsNullOrWhiteSpace(updateServerBaseUrl) && Uri.TryCreate(updateServerBaseUrl, UriKind.Absolute, out var updateServerUri))
         {
-            throw new Exception($"Only HTTPS downloads are allowed for public addresses. Use HTTP only for localhost or private IP addresses. (Host: {host}, isPrivateIp: {isPrivateIp}, allowInsecureHttp: {allowInsecureHttp})");
+            isUpdateServer = string.Equals(host, updateServerUri.Host, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Allow HTTP for:
+        // 1. Localhost
+        // 2. Private IPs (local network)
+        // 3. Configured update server (trusted source)
+        // 4. Any address if allowInsecureHttp is true
+        if (!allowInsecureHttp && !isLocalhost && !isPrivateIp && !isUpdateServer)
+        {
+            throw new Exception($"Only HTTPS downloads are allowed for public addresses. Use HTTP only for localhost, private IP addresses, or the configured update server. (Host: {host}, isPrivateIp: {isPrivateIp}, isUpdateServer: {isUpdateServer}, allowInsecureHttp: {allowInsecureHttp})");
         }
     }
 
@@ -1676,8 +1686,9 @@ app.MapPost("/api/packages/install", async (HttpContext context, CoreApiClient c
         var sourcePath = root.TryGetProperty("sourcePath", out var pathEl) ? pathEl.GetString() : null;
         var overwrite = !root.TryGetProperty("overwrite", out var overwriteEl) || overwriteEl.GetBoolean();
         var restartServices = !root.TryGetProperty("restartServices", out var restartEl) || restartEl.GetBoolean();
-        var allowInsecureHttp = context.RequestServices.GetRequiredService<IConfiguration>()
-            .GetValue<bool>("PackageUpdates:AllowInsecureHttp");
+        var config = context.RequestServices.GetRequiredService<IConfiguration>();
+        var allowInsecureHttp = config.GetValue<bool>("PackageUpdates:AllowInsecureHttp");
+        var updateServerBaseUrl = config["PackageUpdates:BaseUrl"] ?? "https://updates.monolithfirewall.com/api/v1/packages";
 
         if (string.IsNullOrWhiteSpace(packageId))
         {
@@ -1691,7 +1702,7 @@ app.MapPost("/api/packages/install", async (HttpContext context, CoreApiClient c
                 return Results.Json(new { Success = false, Data = (object?)null, Error = "downloadUrl or sourcePath is required" }, statusCode: 400);
             }
 
-            sourcePath = await DownloadPackageAsync(packageId, downloadUrl, sha256, allowInsecureHttp, context.RequestAborted);
+            sourcePath = await DownloadPackageAsync(packageId, downloadUrl, sha256, allowInsecureHttp, updateServerBaseUrl, context.RequestAborted);
         }
 
         var coreRequest = new
