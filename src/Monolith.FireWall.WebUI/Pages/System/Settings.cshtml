@@ -1,0 +1,14 @@
+@page "/system/settings"
+@{
+    Layout = null;
+    ViewData["Title"] = "General Settings";
+}
+
+<div id="settings-container"></div>
+
+@section Scripts {
+    <script src="/js/pages/settings.js" data-module-js="settings"></script>
+    <script src="/js/pages/settings-system.js" data-module-js="settings-system"></script>
+    <script src="/js/pages/settings-webui.js" data-module-js="settings-webui"></script>
+    <script src="/js/pages/settings-advanced.js" data-module-js="settings-advanced"></script>
+}

@@ -1,14 +1,19 @@
 // Status Pages
 var Status = {
     init: function() {
-        const hash = window.location.hash;
-        if (hash.includes('/status/system')) {
+        console.log('Initializing Status module...');
+    },
+
+    renderPage: function() {
+        console.log('Rendering Status page...');
+        const path = window.location.pathname || '';
+        if (path.startsWith('/status/system')) {
             this.renderSystem();
-        } else if (hash.includes('/status/interfaces')) {
+        } else if (path.startsWith('/status/interfaces')) {
             this.renderInterfaces();
-        } else if (hash.includes('/status/services')) {
+        } else if (path.startsWith('/status/services')) {
             this.renderServices();
-        } else if (hash.includes('/status/logs')) {
+        } else if (path.startsWith('/status/logs')) {
             this.renderLogs();
         } else {
             this.renderSystem();
@@ -16,7 +21,9 @@ var Status = {
     },
 
     renderSystem: function() {
-        const container = $('#page-content');
+        const container = $('#status-system-container, #page-content').first();
+        if (!container.length) return;
+        
         container.html(`
             <div class="container-fluid">
                 <div class="row">
@@ -37,7 +44,9 @@ var Status = {
     },
 
     renderInterfaces: function() {
-        const container = $('#page-content');
+        const container = $('#status-interfaces-container, #page-content').first();
+        if (!container.length) return;
+
         container.html(`
             <div class="container-fluid">
                 <div class="row">
@@ -58,7 +67,9 @@ var Status = {
     },
 
     renderServices: function() {
-        const container = $('#page-content');
+        const container = $('#status-services-container, #page-content').first();
+        if (!container.length) return;
+
         container.html(`
             <div class="container-fluid">
                 <div class="row">
@@ -79,7 +90,9 @@ var Status = {
     },
 
     renderLogs: function() {
-        const container = $('#page-content');
+        const container = $('#status-logs-container, #page-content').first();
+        if (!container.length) return;
+
         container.html(`
             <div class="container-fluid">
                 <div class="row">

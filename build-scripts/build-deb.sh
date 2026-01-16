@@ -65,6 +65,9 @@ chmod +x debian/postinst
 chmod +x debian/prerm
 chmod +x debian/postrm
 
+# Clean the temporary directories
+sudo rm -rf debian/tmp debian/.debhelper
+
 # Build the package
 dpkg-buildpackage -us -uc -b
 

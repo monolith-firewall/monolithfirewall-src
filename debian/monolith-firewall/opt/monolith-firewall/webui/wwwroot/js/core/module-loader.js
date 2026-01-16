@@ -13,7 +13,18 @@ Monolith.ModuleLoader = {
     /**
      * Load a module script (loads once, caches)
      */
-    loadScript: function(src, moduleId) {
+    loadScript: function(src, moduleId, options) {
+        const force = options && options.force;
+
+        if (force) {
+            this.scriptPromises.delete(moduleId);
+            this.loadedScripts.delete(moduleId);
+            const existingScript = document.querySelector(`script[data-module-js="${moduleId}"]`);
+            if (existingScript && existingScript.parentNode) {
+                existingScript.parentNode.removeChild(existingScript);
+            }
+        }
+
         // Return existing promise if already loading
         if (this.scriptPromises.has(moduleId)) {
             return this.scriptPromises.get(moduleId);
@@ -93,6 +104,29 @@ Monolith.ModuleLoader = {
 
         document.head.appendChild(link);
         this.loadedStyles.add(moduleId);
+    },
+
+    /**
+     * Unload a module script
+     */
+    unloadScript: function(moduleId) {
+        const existingScript = document.querySelector(`script[data-module-js="${moduleId}"]`);
+        if (existingScript && existingScript.parentNode) {
+            existingScript.parentNode.removeChild(existingScript);
+        }
+        this.loadedScripts.delete(moduleId);
+        this.scriptPromises.delete(moduleId);
+    },
+
+    /**
+     * Unload a module stylesheet
+     */
+    unloadStyle: function(moduleId) {
+        const existingLink = document.querySelector(`link[data-module-css="${moduleId}"]`);
+        if (existingLink && existingLink.parentNode) {
+            existingLink.parentNode.removeChild(existingLink);
+        }
+        this.loadedStyles.delete(moduleId);
     },
 
     /**

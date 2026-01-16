@@ -328,6 +328,28 @@ public sealed class FirewallDefaultsEntity
     public DateTime UpdatedAt { get; set; }
 }
 
+[SQLiteTable("firewall_interface_settings")]
+public sealed class FirewallInterfaceSettingsEntity
+{
+    [SQLiteColumn(IsPrimaryKey = true, IsAutoIncrement = true)]
+    public int Id { get; set; }
+
+    [SQLiteColumn(IsNotNull = true, IsUnique = true, DataType = SQLiteDataType.TEXT, Size = 64)]
+    public string InterfaceName { get; set; } = string.Empty;
+
+    [SQLiteColumn(IsNotNull = true, DataType = SQLiteDataType.TEXT, Size = 16)]
+    public string DefaultAction { get; set; } = "block";
+
+    [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "0")]
+    public bool BlockReserved { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "0")]
+    public bool BlockBogon { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.DATETIME)]
+    public DateTime UpdatedAt { get; set; }
+}
+
 public sealed class FirewallRuleView
 {
     public int Id { get; set; }
@@ -406,4 +428,29 @@ public sealed class FirewallDefaultsRequest
     public string? OptDefaultAction { get; set; }
     public bool BlockReservedOnWan { get; set; }
     public bool AllowManagementWebUi { get; set; }
+}
+
+public sealed class FirewallInterfaceSettingsRequest
+{
+    public string InterfaceName { get; set; } = string.Empty;
+    public string? DefaultAction { get; set; }
+    public bool BlockReserved { get; set; }
+    public bool BlockBogon { get; set; }
+}
+
+public sealed class FirewallInterfaceSettingsUpdateRequest
+{
+    public string? DefaultAction { get; set; }
+    public bool BlockReserved { get; set; }
+    public bool BlockBogon { get; set; }
+}
+
+public sealed class FirewallInterfaceSettingsView
+{
+    public int Id { get; set; }
+    public string InterfaceName { get; set; } = string.Empty;
+    public string DefaultAction { get; set; } = "block";
+    public bool BlockReserved { get; set; }
+    public bool BlockBogon { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }

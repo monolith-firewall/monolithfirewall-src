@@ -23,6 +23,9 @@ public sealed class StaticRouteEntity
     [SQLiteColumn(DataType = SQLiteDataType.TEXT)]
     public string? Description { get; set; }
 
+    [SQLiteColumn(DataType = SQLiteDataType.TEXT, Size = 16)]
+    public string AddressFamily { get; set; } = "ipv4";
+
     [SQLiteColumn(DataType = SQLiteDataType.DATETIME)]
     public DateTime CreatedAt { get; set; }
 
@@ -32,12 +35,24 @@ public sealed class StaticRouteEntity
 
 public sealed class GatewayView
 {
+    public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
-    public string Interface { get; set; } = string.Empty;
-    public string Source { get; set; } = string.Empty;
+    public string AddressFamily { get; set; } = string.Empty;
+    public string? Interface { get; set; }
     public int? Metric { get; set; }
     public bool IsDefault { get; set; }
+    public bool IsDynamic { get; set; }
+    public string? Description { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public DateTime? LastSeenAt { get; set; }
+    public string? Source { get; set; }
+}
+
+public sealed class GatewayDeleteRequest
+{
+    public int Id { get; set; }
 }
 
 public sealed class StaticRouteView
@@ -49,6 +64,7 @@ public sealed class StaticRouteView
     public int? Metric { get; set; }
     public string? Description { get; set; }
     public bool Active { get; set; }
+    public string AddressFamily { get; set; } = "ipv4";
 }
 
 public sealed class StaticRouteRequest
@@ -81,4 +97,5 @@ public sealed class RouteSummaryView
     public string? Protocol { get; set; }
     public int? Metric { get; set; }
     public bool IsDefault { get; set; }
+    public string AddressFamily { get; set; } = "ipv4";
 }

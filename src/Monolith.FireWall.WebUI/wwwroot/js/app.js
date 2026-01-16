@@ -2,13 +2,15 @@
  * Monolith Firewall Main Application
  */
 $(document).ready(function() {
-    // Initialize router first (needed for login page)
-    Monolith.Router.init();
-    
+    const path = window.location.pathname || '/';
+    if (path.startsWith('/setup') || path.startsWith('/login')) {
+        return;
+    }
+
     // Initialize authentication
     Monolith.Auth.init().then(async isAuthenticated => {
         if (!isAuthenticated) {
-            window.location.hash = '#/login';
+            window.location.href = '/login';
         } else {
             // Check if setup is needed (skip if already on setup page)
             if (!window.location.pathname.startsWith('/setup')) {
@@ -26,27 +28,24 @@ $(document).ready(function() {
 
             // Update user info in navbar
             updateUserInfo();
-            // Navigate to dashboard if no hash is set
-            if (!window.location.hash || window.location.hash === '#') {
-                window.location.hash = '#/dashboard';
+            
+            // Initialize menu system (optional - menu-manager.js may not exist)
+            if (Monolith.Menu && typeof Monolith.Menu.init === 'function') {
+                try {
+                    await Monolith.Menu.init();
+                } catch (error) {
+                    console.warn('Menu initialization failed (menu-manager.js may be missing):', error);
+                }
             }
-        }
-    });
-
-    // Handle login form submission
-    $(document).on('submit', '#login-form', async function(e) {
-        e.preventDefault();
-        
-        const username = $('#username').val();
-        const password = $('#password').val();
-        
-        const success = await Monolith.Auth.login(username, password);
-        
-        if (success) {
-            updateUserInfo();
-            window.location.hash = '#/dashboard';
-        } else {
-            $('#login-error').text('Invalid credentials').show();
+            
+            if (Monolith.CmsRouter && !Monolith.CmsRouter.initialized) {
+                console.log('CmsRouter found, initializing...');
+                await Monolith.CmsRouter.init();
+                console.log('CmsRouter initialized.');
+                await loadInterfaces();
+            } else {
+                console.error('CmsRouter not found!');
+            }
         }
     });
 
@@ -66,26 +65,59 @@ $(document).ready(function() {
         showAddGroupModal();
     });
 
+    // Guard tab behavior: ensure only the target pane is visible
+    $(document).on('shown.bs.tab', '[data-bs-toggle="tab"]', function (e) {
+        const targetSelector = $(e.target).attr('data-bs-target') || $(e.target).attr('href');
+        if (!targetSelector) return;
+        const $target = $(targetSelector);
+        const $content = $target.closest('.tab-content');
+        if ($content.length) {
+            $content.find('.tab-pane').removeClass('show active');
+            $target.addClass('show active');
+        }
+    });
+
+    // Initialize NAT page when it's loaded
+    function initNatPageIfNeeded() {
+        const natPage = $('[data-init-nat="true"]');
+        if (natPage.length && typeof Nat !== 'undefined' && typeof Nat.initializePage === 'function') {
+            // Check if already initialized
+            if (!natPage.data('nat-initialized')) {
+                console.log('Initializing NAT page...');
+                Nat.initializePage();
+                natPage.data('nat-initialized', true);
+            }
+        }
+    }
+
+    // Check on page load
+    initNatPageIfNeeded();
+
+    // Also check when page content changes (for SPA navigation)
+    const observer = new MutationObserver(function(mutations) {
+        initNatPageIfNeeded();
+    });
+
+    // Observe the page content container
+    const pageContent = document.getElementById('page-content');
+    if (pageContent) {
+        observer.observe(pageContent, {
+            childList: true,
+            subtree: true
+        });
+    }
+
+    // Also listen for CMS router navigation events
+    $(document).on('cms:page:loaded', function() {
+        setTimeout(initNatPageIfNeeded, 100);
+    });
+
 });
 
 function updateUserInfo() {
     if (Monolith.Auth.currentUser) {
         $('#user-info').text(Monolith.Auth.currentUser.username);
-        // Load package menus after authentication
-        loadPackageMenus();
         startMonitoringUi();
-    }
-}
-
-async function loadPackageMenus() {
-    try {
-        // Load interfaces
-        await loadInterfaces();
-        
-        // Load packages/modules
-        await loadPackagesMenu();
-    } catch (error) {
-        console.error('Error loading menus:', error);
     }
 }
 
@@ -137,7 +169,7 @@ function renderInterfacesMenu(interfaces) {
             : '<span class="badge bg-secondary me-2" style="width: 8px; height: 8px; padding: 0; border-radius: 50%;"></span>';
         
         html += `
-            <li><a class="dropdown-item" href="#/interfaces/${iface.interface}" data-route="/interfaces/${iface.interface}">
+            <li><a class="dropdown-item" href="/interfaces/${iface.interface}" data-route="/interfaces/${iface.interface}">
                 ${statusDot}
                 <strong>${iface.name}</strong>
                 <small class="text-muted d-block ms-3">${iface.ip || 'No IP assigned'}</small>
@@ -147,16 +179,6 @@ function renderInterfacesMenu(interfaces) {
     
     if (html) {
         container.replaceWith(html);
-    }
-}
-
-async function loadPackagesMenu() {
-    // Use new Menu manager
-    if (Monolith.Menu) {
-        await Monolith.Menu.init();
-    } else {
-        console.error('Menu manager not available');
-        $('#packages-menu').html('<li><span class="dropdown-item-text text-muted small">Menu system not initialized</span></li>');
     }
 }
 

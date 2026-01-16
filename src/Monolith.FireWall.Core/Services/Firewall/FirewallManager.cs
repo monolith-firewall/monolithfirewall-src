@@ -10,14 +10,16 @@ public sealed class FirewallManager
         Nat = new FirewallNatManager();
         NatSettings = new FirewallNatSettingsManager();
         Defaults = new FirewallDefaultsManager();
+        InterfaceSettings = new FirewallInterfaceSettingsManager();
         Rules = new FirewallRulesManager(interfaceStore);
-        ApplyManager = new FirewallApplyManager(Aliases, Nat, NatSettings, Rules, Defaults, interfaceStore, commandRunner);
+        ApplyManager = new FirewallApplyManager(Aliases, Nat, NatSettings, Rules, Defaults, InterfaceSettings, interfaceStore, commandRunner);
     }
 
     public FirewallAliasManager Aliases { get; }
     public FirewallNatManager Nat { get; }
     public FirewallNatSettingsManager NatSettings { get; }
     public FirewallDefaultsManager Defaults { get; }
+    public FirewallInterfaceSettingsManager InterfaceSettings { get; }
     public FirewallRulesManager Rules { get; }
     public FirewallApplyManager ApplyManager { get; }
 }

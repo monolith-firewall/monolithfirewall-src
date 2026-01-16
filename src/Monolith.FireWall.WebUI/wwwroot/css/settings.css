@@ -1,0 +1,26 @@
+/* Settings Page Styles */
+#settings-tabs {
+    border-bottom: 2px solid #e2e8f0;
+}
+
+#settings-tabs .nav-link {
+    border: none;
+    color: #64748b;
+    font-weight: 500;
+    padding: 1rem 1.5rem;
+    transition: all 0.2s ease;
+}
+
+#settings-tabs .nav-link:hover {
+    color: #0f172a;
+}
+
+#settings-tabs .nav-link.active {
+    color: #3b82f6;
+    background: transparent;
+    border-bottom: 2px solid #3b82f6;
+}
+
+#settings-tab-content {
+    padding-top: 1rem;
+}

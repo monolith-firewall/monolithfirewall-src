@@ -1,0 +1,41 @@
+@page "/p/{package}/{module}/{page?}"
+@using Monolith.FireWall.WebUI.Services
+@inject RazorPartialRenderer RazorRenderer
+@{
+    Layout = null;
+    var package = RouteData.Values["package"]?.ToString() ?? "";
+    var module = RouteData.Values["module"]?.ToString() ?? "";
+    var pageId = RouteData.Values["page"]?.ToString() ?? "config";
+    ViewData["Title"] = $"{package}/{module}";
+}
+
+@* This wrapper page renders package pages from RCLs *@
+@* If a package has its own page directive matching this route, Razor Pages will use that instead *@
+@* Otherwise, this page will render the package content via RazorPartialRenderer *@
+
+@{
+    try
+    {
+        var html = await RazorRenderer.RenderPackagePageAsync(HttpContext, package, module, pageId);
+        if (!string.IsNullOrWhiteSpace(html) && html.Length > 100)
+        {
+            @Html.Raw(html)
+        }
+        else
+        {
+            <div class="alert alert-warning">
+                <h5>Package Page Not Found</h5>
+                <p>Package: <strong>@package</strong>, Module: <strong>@module</strong>, Page: <strong>@pageId</strong></p>
+                <p class="small text-muted mb-0">Make sure the package has a Razor page with a page directive matching this route.</p>
+            </div>
+        }
+    }
+    catch (Exception ex)
+    {
+        <div class="alert alert-danger">
+            <h5>Error Loading Package Page</h5>
+            <p><strong>@ex.Message</strong></p>
+            <p class="small text-muted mb-0">Package: @package, Module: @module, Page: @pageId</p>
+        </div>
+    }
+}

@@ -9,7 +9,8 @@ public sealed class PackagesHandler : ICoreRequestHandler
     private static readonly HashSet<string> Actions = new(StringComparer.OrdinalIgnoreCase)
     {
         "packages.install",
-        "packages.uninstall"
+        "packages.uninstall",
+        "packages.list"
     };
 
     public bool CanHandle(string action) => Actions.Contains(action);
@@ -62,6 +63,10 @@ public sealed class PackagesHandler : ICoreRequestHandler
                 return uninstallResult.Success
                     ? new ApiResponse(true, new { packageId = uninstallRequest.PackageId }, null)
                     : new ApiResponse(false, null, uninstallResult.Error);
+
+            case "packages.list":
+                var packages = await context.PackageStateStore.GetPackagesAsync();
+                return new ApiResponse(true, packages, null);
         }
 
         return new ApiResponse(false, null, $"Unhandled action: {action}");

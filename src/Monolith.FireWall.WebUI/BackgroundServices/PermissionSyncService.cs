@@ -51,7 +51,7 @@ public class PermissionSyncService : BackgroundService
             // Get all menus (which include permissions)
             var menusRequest = System.Text.Json.JsonSerializer.Serialize(new { action = "get-menus" });
             var menusResponse = await _coreClient.SendRequestAsync(menusRequest);
-            var menusJson = System.Text.Json.JsonDocument.Parse(menusResponse);
+            using var menusJson = System.Text.Json.JsonDocument.Parse(menusResponse);
 
             var permissions = new HashSet<string>();
 
@@ -68,7 +68,7 @@ public class PermissionSyncService : BackgroundService
             // Also get packages and extract permissions from modules
             var packagesRequest = System.Text.Json.JsonSerializer.Serialize(new { action = "get-packages" });
             var packagesResponse = await _coreClient.SendRequestAsync(packagesRequest);
-            var packagesJson = System.Text.Json.JsonDocument.Parse(packagesResponse);
+            using var packagesJson = System.Text.Json.JsonDocument.Parse(packagesResponse);
 
             if (packagesJson.RootElement.TryGetProperty("Data", out var packagesData) &&
                 packagesData.ValueKind == System.Text.Json.JsonValueKind.Array)

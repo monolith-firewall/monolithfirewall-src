@@ -199,7 +199,7 @@ public class SchedulesManager
             Name = entity.Name,
             Description = entity.Description,
             TimeRanges = JsonSerializer.Deserialize<List<ScheduleTimeRange>>(entity.TimeRanges) ?? new(),
-            Enabled = entity.Enabled == 1,
+            Enabled = entity.Enabled,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };
@@ -213,7 +213,7 @@ public class SchedulesManager
             Name = schedule.Name,
             Description = schedule.Description,
             TimeRanges = JsonSerializer.Serialize(schedule.TimeRanges),
-            Enabled = schedule.Enabled ? 1 : 0
+            Enabled = schedule.Enabled
         };
     }
 }

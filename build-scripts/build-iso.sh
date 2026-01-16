@@ -36,7 +36,7 @@ VERSION="${1:-1.0.0}"
 BUILD_OUTPUT_DIR="${ROOT_DIR}/build-output"
 mkdir -p "$BUILD_OUTPUT_DIR"
 ISO_OUTPUT="${BUILD_OUTPUT_DIR}/monolith-firewall-${VERSION}-amd64.iso"
-DEBIAN_VERSION="13.2.0"
+DEBIAN_VERSION="13.3.0"
 
 # Check dependencies
 echo "→ Checking dependencies..."

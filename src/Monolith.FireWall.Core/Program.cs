@@ -95,6 +95,7 @@ class Program
             else
             {
                 await sqlite.TableSyncService.SyncTableAsync<InterfaceAssignmentEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<GatewayEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<StaticRouteEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<PackageInstallationEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<ModuleStateEntity>();
@@ -108,8 +109,10 @@ class Program
                 await sqlite.TableSyncService.SyncTableAsync<FirewallAliasEntryEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<FirewallNatRuleEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<FirewallNatSettingsEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<FirewallRuleEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<FirewallDefaultsEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<FirewallInterfaceSettingsEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<FirewallScheduleEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<FirewallRuleEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<WebUiSettingsEntity>();
                 
                 // Sync DHCP tables (from monolith-network package)
@@ -186,8 +189,12 @@ class Program
             commandRunner,
             settingsManager,
             tuneablesManager);
+        var gatewayStore = new GatewayStore();
+        var gatewayManager = new GatewayManager(gatewayStore, commandRunner);
+        var gatewaySyncService = new GatewaySyncService(gatewayManager);
         var routingManager = new RoutingManager(
             new RoutingStore(),
+            gatewayManager,
             commandRunner,
             networkInventory);
         var monitoringStore = new MonitoringStore();
@@ -295,6 +302,9 @@ class Program
                     // Register modules
                     moduleRegistry.RegisterPackage(packageInfo);
 
+                    // Ensure modules are enabled by default (if not already set)
+                    await EnsureModulesEnabledAsync(packageInfo, packageStateStore, logger);
+
                     // Sync database tables for this package (if not already done during installation)
                     await SyncPackageTablesAsync(packageInfo, sqlite, logger);
 
@@ -337,6 +347,8 @@ class Program
         Console.WriteLine("→ Starting Unix socket listener...");
         socketListener.Start();
         Console.WriteLine("✓ Unix socket listener started");
+        gatewaySyncService.Start(cts.Token);
+        Console.WriteLine("✓ Gateway sync service started");
         monitoringManager.Start(cts.Token);
         Console.WriteLine("✓ Monitoring scheduler started");
         coreLogger.Info("Core components started");
@@ -477,6 +489,37 @@ class Program
             "opt" => InterfaceRole.Opt,
             _ => InterfaceRole.Opt
         };
+    }
+
+    /// <summary>
+    /// Ensures all modules in a package are enabled by default (if not already set in database).
+    /// </summary>
+    private static async Task EnsureModulesEnabledAsync(
+        PackageInfo packageInfo,
+        PackageStateStore stateStore,
+        Monolith.FireWall.Common.Interfaces.ILogger logger)
+    {
+        try
+        {
+            var modules = packageInfo.Definition.GetModules();
+            foreach (var module in modules)
+            {
+                // Check if module state exists
+                var existingState = await stateStore.GetModuleStateAsync(packageInfo.Definition.Id, module.Id);
+                if (existingState == null)
+                {
+                    // No state exists, enable by default
+                    await stateStore.SetModuleEnabledAsync(packageInfo.Definition.Id, module.Id, enabled: true);
+                    logger.LogInformation($"Enabled module: {packageInfo.Definition.Id}/{module.Id}");
+                }
+                // If state exists, leave it as-is (user may have disabled it)
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning($"Failed to ensure modules enabled for package {packageInfo.Definition.Id}: {ex.Message}");
+            // Don't fail package loading if module enabling fails
+        }
     }
 
     /// <summary>

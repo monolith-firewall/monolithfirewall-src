@@ -81,8 +81,11 @@ var Routing = {
                     <div class="tab-pane fade" id="routing-gateways" role="tabpanel">
                         <div class="card mb-4">
                             <div class="card-header d-flex justify-content-between align-items-center">
-                                <span>Gateways</span>
-                                <span class="text-muted small" id="gateway-count">0 gateways</span>
+                                <span class="fw-semibold">Gateways</span>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="text-muted small" id="gateway-count">0 gateways</span>
+                                    <button class="btn btn-sm btn-primary" id="routing-add-gateway">Add Gateway</button>
+                                </div>
                             </div>
                             <div class="table-responsive">
                                 <table class="table table-hover align-middle mb-0">
@@ -91,42 +94,16 @@ var Routing = {
                                             <th>Name</th>
                                             <th>Gateway</th>
                                             <th>Interface</th>
+                                            <th>Family</th>
                                             <th>Source</th>
                                             <th>Metric</th>
+                                            <th class="text-end">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody id="gateways-body">
-                                        <tr><td colspan="5" class="text-center text-muted py-4">Loading gateways...</td></tr>
+                                        <tr><td colspan="7" class="text-center text-muted py-4">Loading gateways...</td></tr>
                                     </tbody>
                                 </table>
-                            </div>
-                        </div>
-                        
-                        <!-- Gateway Configuration Card -->
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="mb-0">Gateway Configuration</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="mb-3">
-                                    <label class="form-label">Current Default Gateway</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="routing-gateway-address" 
-                                               placeholder="e.g., 10.100.0.1">
-                                        <span class="input-group-text">via</span>
-                                        <input type="text" class="form-control" id="routing-gateway-interface" 
-                                               placeholder="e.g., ens18">
-                                    </div>
-                                    <small class="text-muted">Gateway IP address and interface (leave empty to use DHCP)</small>
-                                </div>
-                                <div class="btn-group">
-                                    <button type="button" class="btn btn-sm btn-primary" id="routing-set-gateway">
-                                        Set Default Gateway
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="routing-test-gateway">
-                                        Test Gateway Connectivity
-                                    </button>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -144,6 +121,7 @@ var Routing = {
                                         <tr>
                                             <th>Destination</th>
                                             <th>Gateway</th>
+                                            <th>Family</th>
                                             <th>Interface</th>
                                             <th>Metric</th>
                                             <th>Status</th>
@@ -152,7 +130,7 @@ var Routing = {
                                         </tr>
                                     </thead>
                                     <tbody id="routes-body">
-                                        <tr><td colspan="7" class="text-center text-muted py-4">Loading routes...</td></tr>
+                                        <tr><td colspan="8" class="text-center text-muted py-4">Loading routes...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -196,6 +174,7 @@ var Routing = {
         $('#routing-refresh').on('click', () => this.loadData());
         $('#routing-status-refresh').on('click', () => this.loadRoutingStatus());
         $('#routing-add-route').on('click', () => this.showRouteModal());
+        $('#routing-add-gateway').on('click', () => this.showGatewayModal());
         
         // IP forwarding toggle
         $(document).off('click', '#routing-apply-ip-forwarding');
@@ -207,17 +186,6 @@ var Routing = {
         $(document).off('click', '#routing-enable-masquerade');
         $(document).on('click', '#routing-enable-masquerade', () => {
             this.enableNatMasquerade();
-        });
-
-        // Gateway configuration
-        $(document).off('click', '#routing-set-gateway');
-        $(document).on('click', '#routing-set-gateway', () => {
-            this.setDefaultGateway();
-        });
-
-        $(document).off('click', '#routing-test-gateway');
-        $(document).on('click', '#routing-test-gateway', () => {
-            this.testGateway();
         });
 
         // Routing tests
@@ -306,40 +274,46 @@ var Routing = {
         count.text(`${this.gateways.length} gateways`);
 
         if (isError) {
-            tbody.html('<tr><td colspan="5" class="text-center text-danger py-4">Failed to load gateways</td></tr>');
+            tbody.html('<tr><td colspan="7" class="text-center text-danger py-4">Failed to load gateways</td></tr>');
             return;
         }
 
         if (!this.gateways.length) {
-            tbody.html('<tr><td colspan="5" class="text-center text-muted py-4">No gateways detected</td></tr>');
+            tbody.html('<tr><td colspan="7" class="text-center text-muted py-4">No gateways detected</td></tr>');
             return;
-        }
-
-        // Find default gateway and populate configuration fields
-        const defaultGateway = this.gateways.find(gw => gw.IsDefault || gw.isDefault);
-        if (defaultGateway) {
-            $('#routing-gateway-address').val(defaultGateway.Address || defaultGateway.address || '');
-            $('#routing-gateway-interface').val(defaultGateway.Interface || defaultGateway.interface || '');
         }
 
         let html = '';
         this.gateways.forEach(gw => {
-            const source = (gw.Source || gw.source || '').toLowerCase();
-            const sourceBadge = source === 'dhcp'
-                ? '<span class="badge bg-info-subtle text-info border">DHCP</span>'
+            const source = gw.IsDynamic || gw.isDynamic ? 'dynamic' : (gw.Source || gw.source || 'static');
+            const sourceBadge = source === 'dynamic'
+                ? '<span class="badge bg-info-subtle text-info border">Dynamic</span>'
                 : '<span class="badge bg-light text-muted border">Static</span>';
             const metric = gw.Metric !== undefined ? gw.Metric : gw.metric;
+            const isDefault = gw.IsDefault || gw.isDefault;
+            const family = (gw.AddressFamily || gw.addressFamily || '').toLowerCase();
+            const familyBadge = family === 'ipv6'
+                ? '<span class="badge bg-primary-subtle text-primary border">IPv6</span>'
+                : '<span class="badge bg-secondary-subtle text-secondary border">IPv4</span>';
+            const defaultBadge = isDefault ? '<span class="badge bg-success-subtle text-success border ms-1">Default</span>' : '';
+            const canDelete = !(gw.IsDynamic || gw.isDynamic);
 
             html += `
                 <tr>
                     <td>
                         <div class="fw-semibold">${gw.Name || gw.name}</div>
-                        ${gw.IsDefault || gw.isDefault ? '<div class="text-muted small">Default</div>' : ''}
+                        ${defaultBadge}
                     </td>
                     <td><code>${gw.Address || gw.address}</code></td>
                     <td>${gw.Interface || gw.interface || '-'}</td>
+                    <td>${familyBadge}</td>
                     <td>${sourceBadge}</td>
                     <td>${metric !== undefined && metric !== null ? metric : '-'}</td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-danger" ${canDelete ? '' : 'disabled'} onclick="Routing.deleteGateway(${gw.Id || gw.id})">
+                            Delete
+                        </button>
+                    </td>
                 </tr>
             `;
         });
@@ -350,12 +324,12 @@ var Routing = {
     renderRoutes: function(isError) {
         const tbody = $('#routes-body');
         if (isError) {
-            tbody.html('<tr><td colspan="7" class="text-center text-danger py-4">Failed to load routes</td></tr>');
+            tbody.html('<tr><td colspan="8" class="text-center text-danger py-4">Failed to load routes</td></tr>');
             return;
         }
 
         if (!this.routes.length) {
-            tbody.html('<tr><td colspan="7" class="text-center text-muted py-4">No static routes configured</td></tr>');
+            tbody.html('<tr><td colspan="8" class="text-center text-muted py-4">No static routes configured</td></tr>');
             return;
         }
 
@@ -366,11 +340,16 @@ var Routing = {
                 ? '<span class="badge bg-success">Active</span>'
                 : '<span class="badge bg-secondary">Inactive</span>';
             const metric = route.Metric !== undefined ? route.Metric : route.metric;
+            const family = (route.AddressFamily || route.addressFamily || 'ipv4').toLowerCase();
+            const familyBadge = family === 'ipv6'
+                ? '<span class="badge bg-primary-subtle text-primary border">IPv6</span>'
+                : '<span class="badge bg-secondary-subtle text-secondary border">IPv4</span>';
 
             html += `
                 <tr>
                     <td><code>${route.Destination || route.destination}</code></td>
                     <td>${route.Gateway || route.gateway || '-'}</td>
+                    <td>${familyBadge}</td>
                     <td>${route.Interface || route.interface || '-'}</td>
                     <td>${metric !== undefined && metric !== null ? metric : '-'}</td>
                     <td>${statusBadge}</td>
@@ -383,6 +362,112 @@ var Routing = {
         });
 
         tbody.html(html);
+    },
+
+    showGatewayModal: function() {
+        const interfaceOptions = this.buildOptions(this.interfaces, '', 'Select interface (optional)');
+
+        const body = `
+            <form id="gateway-form">
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-control" id="gateway-name" placeholder="ISP Gateway">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Gateway Address</label>
+                    <input type="text" class="form-control" id="gateway-address" placeholder="192.0.2.1 or 2001:db8::1">
+                    <div class="form-text">Supports IPv4 or IPv6.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Interface</label>
+                    <select class="form-select" id="gateway-interface">
+                        ${interfaceOptions}
+                    </select>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Metric</label>
+                        <input type="number" class="form-control" id="gateway-metric" min="0" placeholder="Optional">
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="gateway-default">
+                            <label class="form-check-label" for="gateway-default">Set as default</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <input type="text" class="form-control" id="gateway-description" placeholder="Optional">
+                </div>
+            </form>
+        `;
+
+        const footer = `
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="gateway-save-btn">Add Gateway</button>
+        `;
+
+        const modal = Monolith.UI.showModal('Add Gateway', body, { size: 'lg', footerHtml: footer, staticBackdrop: true });
+        modal.element.find('#gateway-save-btn').on('click', async () => {
+            const name = modal.element.find('#gateway-name').val()?.trim();
+            const address = modal.element.find('#gateway-address').val()?.trim();
+            const iface = modal.element.find('#gateway-interface').val();
+            const metricVal = modal.element.find('#gateway-metric').val();
+            const isDefault = modal.element.find('#gateway-default').is(':checked');
+            const description = modal.element.find('#gateway-description').val()?.trim();
+
+            if (!name) {
+                Monolith.UI.toast('Name is required', 'warning');
+                return;
+            }
+
+            if (!address) {
+                Monolith.UI.toast('Gateway address is required', 'warning');
+                return;
+            }
+
+            const payload = {
+                name,
+                address,
+                interface: iface || null,
+                metric: metricVal ? parseInt(metricVal, 10) : null,
+                isDefault: isDefault,
+                description: description || null
+            };
+
+            try {
+                const response = await Monolith.API.post('/routing/gateways', payload);
+                if (!(response.Success || response.success)) {
+                    throw new Error(response.Error || response.error || 'Failed to add gateway');
+                }
+                Monolith.UI.toast('Gateway added', 'success');
+                modal.instance.hide();
+                this.loadGateways();
+            } catch (error) {
+                console.error('Add gateway failed:', error);
+                Monolith.UI.toast(error.message || 'Failed to add gateway', 'error');
+            }
+        });
+    },
+
+    deleteGateway: function(id) {
+        if (!confirm('Delete this gateway?')) {
+            return;
+        }
+
+        Monolith.API.delete(`/routing/gateways/${id}`)
+            .then(response => {
+                if (!(response.Success || response.success)) {
+                    throw new Error(response.Error || response.error || 'Failed to delete gateway');
+                }
+                Monolith.UI.toast('Gateway deleted', 'success');
+                this.loadGateways();
+            })
+            .catch(error => {
+                console.error('Failed to delete gateway:', error);
+                Monolith.UI.toast(error.message || 'Failed to delete gateway', 'error');
+            });
     },
 
     showRouteModal: function() {
@@ -404,6 +489,14 @@ var Routing = {
                         ${interfaceOptions}
                     </select>
                     <div class="form-text">Gateway or interface is required.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Address Family</label>
+                    <select class="form-select" id="route-family">
+                        <option value="auto" selected>Auto (from CIDR)</option>
+                        <option value="ipv4">IPv4</option>
+                        <option value="ipv6">IPv6</option>
+                    </select>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Metric</label>
@@ -428,6 +521,7 @@ var Routing = {
             const iface = modal.element.find('#route-interface').val();
             const metric = modal.element.find('#route-metric').val();
             const description = modal.element.find('#route-description').val();
+            const family = modal.element.find('#route-family').val();
 
             if (!destination) {
                 Monolith.UI.toast('Destination is required', 'warning');
@@ -444,7 +538,8 @@ var Routing = {
                 gateway: gateway || null,
                 interface: iface || null,
                 metric: metric ? parseInt(metric, 10) : null,
-                description: description || null
+                description: description || null,
+                addressFamily: family && family !== 'auto' ? family : null
             };
 
             try {
@@ -600,7 +695,7 @@ var Routing = {
                             Apply IP Forwarding Setting
                         </button>
                         <div class="mt-2">
-                            <small class="text-muted">For more advanced routing settings, visit <a href="#/system/advanced">Advanced Settings</a></small>
+                            <small class="text-muted">For more advanced routing settings, visit <a href="/system/advanced" data-route="/system/advanced">Advanced Settings</a></small>
                         </div>
                     </div>
                 </div>
@@ -659,63 +754,6 @@ var Routing = {
             Monolith.UI.toast(`Failed to enable NAT Masquerade: ${error.message || 'Unknown error'}`, 'error');
         } finally {
             button.prop('disabled', false).text(originalText);
-        }
-    },
-
-    setDefaultGateway: async function() {
-        const gateway = $('#routing-gateway-address').val()?.trim() || '';
-        const iface = $('#routing-gateway-interface').val()?.trim() || '';
-
-        if (!gateway && !iface) {
-            Monolith.UI.toast('Please specify either gateway address or interface', 'warning');
-            return;
-        }
-
-        if (gateway && !this.isValidIp(gateway)) {
-            Monolith.UI.toast('Invalid gateway IP address', 'error');
-            return;
-        }
-
-        try {
-            // Gateway configuration should be set through interface configuration
-            Monolith.UI.toast('Gateway configuration should be set through interface configuration. Please use the Interfaces page to configure gateway for WAN interface.', 'info');
-        } catch (error) {
-            console.error('Failed to set gateway:', error);
-            Monolith.UI.toast(`Failed to set gateway: ${error.message || 'Unknown error'}`, 'error');
-        }
-    },
-
-    testGateway: async function() {
-        const gateway = $('#routing-gateway-address').val()?.trim() || '';
-        
-        if (!gateway) {
-            Monolith.UI.toast('Please enter a gateway address to test', 'warning');
-            return;
-        }
-
-        if (!this.isValidIp(gateway)) {
-            Monolith.UI.toast('Invalid gateway IP address', 'error');
-            return;
-        }
-
-        $('#routing-test-results').show();
-        $('#routing-test-output').text(`Testing gateway ${gateway}...\n`);
-
-        try {
-            const response = await Monolith.API.post('/api/system/command', {
-                command: 'ping',
-                args: ['-c', '3', '-W', '2', gateway]
-            });
-
-            if (response.Success || response.success) {
-                const output = response.Data?.StdOut || response.Data?.stdOut || response.Data || '';
-                $('#routing-test-output').text(`Gateway Test Results for ${gateway}:\n\n${output}`);
-            } else {
-                $('#routing-test-output').text(`Gateway test failed: ${response.Error || response.error || 'Unknown error'}`);
-            }
-        } catch (error) {
-            console.error('Failed to test gateway:', error);
-            $('#routing-test-output').text(`Gateway test error: ${error.message || 'Unknown error'}`);
         }
     },
 
@@ -798,6 +836,13 @@ var Routing = {
         const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
         const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
         return ipv4Regex.test(ip) || ipv6Regex.test(ip);
+    },
+
+    renderFamilyBadge: function(family) {
+        const fam = (family || 'ipv4').toLowerCase();
+        return fam === 'ipv6'
+            ? '<span class="badge bg-primary-subtle text-primary border">IPv6</span>'
+            : '<span class="badge bg-secondary-subtle text-secondary border">IPv4</span>';
     },
 
     buildOptions: function(items, selected, placeholder) {

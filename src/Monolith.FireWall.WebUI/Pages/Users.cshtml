@@ -1,0 +1,18 @@
+@page "/users"
+@{
+    Layout = null;
+    ViewData["Title"] = "User Manager";
+}
+
+<div class="container-fluid p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>User Manager</h2>
+        <button class="btn btn-primary" id="btn-add-user">Add User</button>
+    </div>
+    <div id="users-table-container"></div>
+    <div id="user-modal-container"></div>
+</div>
+
+@section Scripts {
+    <script src="/js/pages/users.js" data-module-js="users"></script>
+}

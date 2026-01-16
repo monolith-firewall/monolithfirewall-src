@@ -1,0 +1,481 @@
+{
+  "defaultRouteId": "dashboard",
+  "loginRouteId": "login",
+  "routes": [
+    {
+      "id": "login",
+      "path": "/login",
+      "title": "Login",
+      "kind": "login",
+      "requiresAuth": false
+    },
+    {
+      "id": "dashboard",
+      "path": "/dashboard",
+      "title": "Dashboard",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"dashboard-container\"></div>",
+      "assets": {
+        "js": [
+          "dashboard"
+        ],
+        "css": [
+          "dashboard"
+        ]
+      }
+    },
+    {
+      "id": "users",
+      "path": "/users",
+      "title": "User Manager",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div class=\"container-fluid p-4\"><div class=\"d-flex justify-content-between align-items-center mb-4\"><h2>User Manager</h2><button class=\"btn btn-primary\" id=\"btn-add-user\">Add User</button></div><div id=\"users-table-container\"></div><div id=\"user-modal-container\"></div></div>",
+      "assets": {
+        "js": [
+          "users"
+        ]
+      }
+    },
+    {
+      "id": "groups",
+      "path": "/groups",
+      "title": "User Groups",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div class=\"container-fluid p-4\"><div class=\"d-flex justify-content-between align-items-center mb-4\"><h2>User Groups</h2><button class=\"btn btn-primary\" id=\"btn-add-group\">Add Group</button></div><div id=\"groups-table-container\"></div><div id=\"group-modal-container\"></div></div>",
+      "assets": {
+        "js": [
+          "groups"
+        ]
+      }
+    },
+    {
+      "id": "permissions",
+      "path": "/permissions",
+      "title": "Permissions",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"permissions-container\"></div>",
+      "assets": {
+        "js": [
+          "permissions"
+        ]
+      }
+    },
+    {
+      "id": "profile",
+      "path": "/profile",
+      "title": "My Profile",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"profile-container\"></div>",
+      "assets": {
+        "js": [
+          "profile"
+        ]
+      }
+    },
+    {
+      "id": "system.packages",
+      "path": "/system/packages",
+      "title": "Package Manager",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"packages-container\"></div>",
+      "assets": {
+        "js": [
+          "packages"
+        ],
+        "css": [
+          "packages"
+        ]
+      }
+    },
+    {
+      "id": "system.modules",
+      "path": "/system/modules",
+      "title": "Module Manager",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"modules-container\"></div>",
+      "assets": {
+        "js": [
+          "modules"
+        ],
+        "css": [
+          "modules"
+        ]
+      }
+    },
+    {
+      "id": "system.updates",
+      "path": "/system/updates",
+      "title": "Update Manager",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"updates-container\"></div>",
+      "assets": {
+        "js": [
+          "updates"
+        ]
+      }
+    },
+    {
+      "id": "system.settings",
+      "path": "/system/settings",
+      "title": "General Settings",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"settings-container\"></div>",
+      "assets": {
+        "js": [
+          "settings"
+        ],
+        "extraJs": [
+          "settings-system",
+          "settings-webui",
+          "settings-advanced"
+        ]
+      }
+    },
+    {
+      "id": "system.advanced",
+      "path": "/system/advanced",
+      "title": "Advanced Settings",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"advanced-settings-container\"></div>",
+      "assets": {
+        "js": [
+          "advanced-settings"
+        ],
+        "css": [
+          "advanced-settings"
+        ]
+      }
+    },
+    {
+      "id": "system.routing",
+      "path": "/system/routing",
+      "title": "Routing",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"routing-container\"></div>",
+      "assets": {
+        "js": [
+          "routing"
+        ],
+        "css": [
+          "routing"
+        ]
+      }
+    },
+    {
+      "id": "system.logs",
+      "path": "/system/logs",
+      "title": "System Logs",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"system-logs-container\"></div>",
+      "assets": {
+        "js": [
+          "system-logs"
+        ],
+        "css": [
+          "system-logs"
+        ]
+      }
+    },
+    {
+      "id": "system.backup",
+      "path": "/system/backup",
+      "title": "Backup & Restore",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"backup-container\"></div>",
+      "assets": {
+        "js": [
+          "backup"
+        ]
+      }
+    },
+    {
+      "id": "about",
+      "path": "/about",
+      "title": "About Monolith Firewall",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"about-container\"></div>",
+      "assets": {
+        "js": [
+          "about"
+        ]
+      }
+    },
+    {
+      "id": "interfaces",
+      "path": "/interfaces",
+      "title": "Interfaces",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"interfaces-container\"></div>",
+      "assets": {
+        "js": [
+          "interfaces"
+        ]
+      }
+    },
+    {
+      "id": "interfaces.detail",
+      "path": "/interfaces/{interface}",
+      "title": "Interface",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"interfaces-container\"></div>",
+      "assets": {
+        "js": [
+          "interfaces"
+        ]
+      }
+    },
+    {
+      "id": "interfaces.networkCards",
+      "path": "/interfaces/network-cards",
+      "title": "Network Cards",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"network-cards-container\"></div>",
+      "assets": {
+        "js": [
+          "network-cards"
+        ]
+      }
+    },
+    {
+      "id": "status.system",
+      "path": "/status/system",
+      "title": "System Status",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"status-container\"></div>",
+      "assets": {
+        "js": [
+          "status"
+        ]
+      }
+    },
+    {
+      "id": "status.interfaces",
+      "path": "/status/interfaces",
+      "title": "Interface Status",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"status-container\"></div>",
+      "assets": {
+        "js": [
+          "status"
+        ]
+      }
+    },
+    {
+      "id": "status.services",
+      "path": "/status/services",
+      "title": "Services Status",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"status-container\"></div>",
+      "assets": {
+        "js": [
+          "status"
+        ]
+      }
+    },
+    {
+      "id": "status.logs",
+      "path": "/status/logs",
+      "title": "System Logs",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"status-container\"></div>",
+      "assets": {
+        "js": [
+          "status"
+        ]
+      }
+    },
+    {
+      "id": "setup.router",
+      "path": "/setup/router",
+      "title": "Setup Router",
+      "kind": "setup",
+      "requiresAuth": false
+    },
+    {
+      "id": "setup.network",
+      "path": "/setup/network",
+      "title": "Setup Network",
+      "kind": "setup",
+      "requiresAuth": false
+    },
+    {
+      "id": "setup.root",
+      "path": "/setup",
+      "title": "Setup",
+      "kind": "setup",
+      "requiresAuth": false
+    }
+  ],
+  "menu": [
+    {
+      "label": "Status",
+      "children": [
+        {
+          "label": "System",
+          "routeId": "status.system",
+          "icon": "fa-solid fa-gauge-high"
+        },
+        {
+          "label": "Interfaces",
+          "routeId": "status.interfaces",
+          "icon": "fa-solid fa-network-wired"
+        },
+        {
+          "label": "Services",
+          "routeId": "status.services",
+          "icon": "fa-solid fa-server"
+        },
+        {
+          "label": "Logs",
+          "routeId": "status.logs",
+          "icon": "fa-solid fa-clipboard-list"
+        }
+      ]
+    },
+    {
+      "label": "Firewall",
+      "children": [
+        {
+          "label": "Rules",
+          "routeId": "firewall.rules",
+          "icon": "fa-solid fa-shield-halved"
+        },
+        {
+          "label": "Aliases",
+          "routeId": "firewall.aliases",
+          "icon": "fa-solid fa-list-check"
+        },
+        {
+          "label": "NAT",
+          "routeId": "firewall.nat",
+          "icon": "fa-solid fa-right-left"
+        },
+        {
+          "label": "Virtual IPs",
+          "routeId": "firewall.virtual-ips",
+          "icon": "fa-solid fa-circle-nodes"
+        },
+        {
+          "label": "Traffic Shaper",
+          "routeId": "firewall.traffic-shaper",
+          "icon": "fa-solid fa-wave-square"
+        },
+        {
+          "label": "Schedules",
+          "routeId": "firewall.schedules",
+          "icon": "fa-solid fa-calendar-days"
+        }
+      ]
+    },
+    {
+      "label": "Interfaces",
+      "children": [
+        {
+          "label": "Overview",
+          "routeId": "interfaces",
+          "icon": "fa-solid fa-network-wired"
+        },
+        {
+          "label": "Network Cards",
+          "routeId": "interfaces.network-cards",
+          "icon": "fa-solid fa-microchip"
+        }
+      ]
+    },
+    {
+      "label": "System",
+      "children": [
+        {
+          "label": "Settings",
+          "routeId": "system.settings",
+          "icon": "fa-solid fa-gear"
+        },
+        {
+          "label": "Advanced",
+          "routeId": "system.advanced",
+          "icon": "fa-solid fa-sliders"
+        },
+        {
+          "label": "Routing",
+          "routeId": "system.routing",
+          "icon": "fa-solid fa-route"
+        },
+        {
+          "label": "divider"
+        },
+        {
+          "label": "Users",
+          "routeId": "users",
+          "icon": "fa-solid fa-users"
+        },
+        {
+          "label": "Groups",
+          "routeId": "groups",
+          "icon": "fa-solid fa-user-group"
+        },
+        {
+          "label": "Permissions",
+          "routeId": "permissions",
+          "icon": "fa-solid fa-key"
+        },
+        {
+          "label": "divider"
+        },
+        {
+          "label": "Packages",
+          "routeId": "system.packages",
+          "icon": "fa-solid fa-box-open"
+        },
+        {
+          "label": "Modules",
+          "routeId": "system.modules",
+          "icon": "fa-solid fa-puzzle-piece"
+        },
+        {
+          "label": "Updates",
+          "routeId": "system.updates",
+          "icon": "fa-solid fa-arrows-rotate"
+        },
+        {
+          "label": "divider"
+        },
+        {
+          "label": "Logs",
+          "routeId": "system.logs",
+          "icon": "fa-solid fa-clipboard-list"
+        },
+        {
+          "label": "Backup",
+          "routeId": "system.backup",
+          "icon": "fa-solid fa-cloud-arrow-up"
+        },
+        {
+          "label": "About",
+          "routeId": "about",
+          "icon": "fa-solid fa-circle-info"
+        }
+      ]
+    }
+  ]
+}

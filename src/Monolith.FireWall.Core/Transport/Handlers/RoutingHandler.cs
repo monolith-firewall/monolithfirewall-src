@@ -9,6 +9,8 @@ public sealed class RoutingHandler : ICoreRequestHandler
     private static readonly HashSet<string> Actions = new(StringComparer.OrdinalIgnoreCase)
     {
         "routing.gateways.list",
+        "routing.gateways.create",
+        "routing.gateways.delete",
         "routing.routes.list",
         "routing.routes.add",
         "routing.routes.remove",
@@ -26,6 +28,28 @@ public sealed class RoutingHandler : ICoreRequestHandler
             case "routing.gateways.list":
                 var gateways = await context.RoutingManager.GetGatewaysAsync(cancellationToken);
                 return new ApiResponse(true, gateways, null);
+
+            case "routing.gateways.create":
+                if (!CoreRequestParsing.TryGetPayload(request, out GatewayRequest gatewayRequest, out var gatewayError))
+                {
+                    return new ApiResponse(false, null, gatewayError);
+                }
+
+                var createResult = await context.RoutingManager.CreateGatewayAsync(gatewayRequest, cancellationToken);
+                return createResult.Success
+                    ? new ApiResponse(true, createResult.Gateway, null)
+                    : new ApiResponse(false, null, createResult.Error);
+
+            case "routing.gateways.delete":
+                if (!CoreRequestParsing.TryGetPayload(request, out GatewayDeleteRequest gatewayDelete, out var gatewayDeleteError))
+                {
+                    return new ApiResponse(false, null, gatewayDeleteError);
+                }
+
+                var deleteResult = await context.RoutingManager.DeleteGatewayAsync(gatewayDelete.Id, cancellationToken);
+                return deleteResult.Success
+                    ? new ApiResponse(true, new { id = gatewayDelete.Id }, null)
+                    : new ApiResponse(false, null, deleteResult.Error);
 
             case "routing.routes.list":
                 var routes = await context.RoutingManager.GetStaticRoutesAsync(cancellationToken);

@@ -67,7 +67,7 @@ Monolith.Auth = {
             // Ignore errors
         }
         this.currentUser = null;
-        window.location.hash = '#/login';
+        window.location.href = '/login';
     },
 
     /**

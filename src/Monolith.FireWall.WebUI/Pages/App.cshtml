@@ -1,0 +1,143 @@
+@page "/"
+@{
+    var isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+    if (isAjax) { return; }
+    Layout = null;
+    ViewData["Title"] = "Monolith Firewall";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"]</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+
+    <link href="/css/bootstrap.min.css?v=20260103" rel="stylesheet" />
+    <link href="/vendor/fontawesome/css/all.min.css?v=7.1.0" rel="stylesheet" />
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css" />
+    <link href="/css/monolith-theme.css?v=20260111" rel="stylesheet" />
+    <link href="/css/app.css?v=20260103" rel="stylesheet" />
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg top-navbar sticky-top" id="top-navbar">
+        <div class="container-fluid navbar-container">
+            <a class="navbar-brand" href="/" data-route="/">
+                <span class="brand-icon">🛡️</span>
+                <span class="brand-text">Monolith Firewall</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="nav-icon fa-solid fa-gear"></i>
+                            System
+                        </a>
+                        <ul class="dropdown-menu" id="menu-system">
+                            <li><span class="dropdown-item-text text-muted small">Loading...</span></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="nav-icon fa-solid fa-network-wired"></i>
+                            Interfaces
+                        </a>
+                        <ul class="dropdown-menu" id="interfaces-menu">
+                            <li><a class="dropdown-item" href="/interfaces" data-route="/interfaces"><i class="dropdown-icon fa-solid fa-network-wired"></i> Overview</a></li>
+                            <li><a class="dropdown-item" href="/interfaces/network-cards" data-route="/interfaces/network-cards"><i class="dropdown-icon fa-solid fa-microchip"></i> Network Cards</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><span class="dropdown-item-text text-muted small">Loading interfaces...</span></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="nav-icon fa-solid fa-shield-halved"></i>
+                            Firewall
+                        </a>
+                        <ul class="dropdown-menu" id="menu-firewall">
+                            <li><a class="dropdown-item" href="/firewall/rules" data-route="/firewall/rules"><i class="dropdown-icon fa-solid fa-shield-halved"></i> Rules</a></li>
+                            <li><a class="dropdown-item" href="/firewall/aliases" data-route="/firewall/aliases"><i class="dropdown-icon fa-solid fa-list-check"></i> Aliases</a></li>
+                            <li><a class="dropdown-item" href="/firewall/nat" data-route="/firewall/nat"><i class="dropdown-icon fa-solid fa-right-left"></i> NAT</a></li>
+                            <li><a class="dropdown-item" href="/firewall/virtual-ips" data-route="/firewall/virtual-ips"><i class="dropdown-icon fa-solid fa-circle-nodes"></i> Virtual IPs</a></li>
+                            <li><a class="dropdown-item" href="/firewall/traffic-shaper" data-route="/firewall/traffic-shaper"><i class="dropdown-icon fa-solid fa-wave-square"></i> Traffic Shaper</a></li>
+                            <li><a class="dropdown-item" href="/firewall/schedules" data-route="/firewall/schedules"><i class="dropdown-icon fa-solid fa-calendar-days"></i> Schedules</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="nav-icon fa-solid fa-box-open"></i>
+                            Packages
+                        </a>
+                        <ul class="dropdown-menu" id="packages-menu">
+                            <li><span class="dropdown-item-text text-muted small">Loading packages...</span></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="nav-icon fa-solid fa-chart-line"></i>
+                            Status
+                        </a>
+                        <ul class="dropdown-menu" id="menu-status">
+                            <li><a class="dropdown-item" href="/status/system" data-route="/status/system"><i class="dropdown-icon fa-solid fa-gauge-high"></i> System</a></li>
+                            <li><a class="dropdown-item" href="/status/interfaces" data-route="/status/interfaces"><i class="dropdown-icon fa-solid fa-network-wired"></i> Interfaces</a></li>
+                            <li><a class="dropdown-item" href="/status/services" data-route="/status/services"><i class="dropdown-icon fa-solid fa-server"></i> Services</a></li>
+                            <li><a class="dropdown-item" href="/status/logs" data-route="/status/logs"><i class="dropdown-icon fa-solid fa-clipboard-list"></i> System Logs</a></li>
+                        </ul>
+                    </li>
+                </ul>
+                <div class="user-menu ms-auto d-flex align-items-center gap-2">
+                    <div class="dropdown">
+                        <a href="#" class="user-dropdown" data-bs-toggle="dropdown">
+                            <i class="user-icon fa-solid fa-user"></i>
+                            <span class="user-info" id="user-info">User</span>
+                            <i class="dropdown-arrow fa-solid fa-chevron-down"></i>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/profile" data-route="/profile">My Profile</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="#" id="btn-logout">Logout</a></li>
+                        </ul>
+                    </div>
+                    <div class="dropdown">
+                        <a href="#" class="nav-icon-button" data-bs-toggle="dropdown" aria-label="System status">
+                            <span class="status-indicator status-unknown" id="monitoring-status-indicator"></span>
+                            <i class="fa-solid fa-circle-check fa-lg"></i>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" id="monitoring-status-menu">
+                            <li><span class="dropdown-item-text text-muted small">Loading system status...</span></li>
+                        </ul>
+                    </div>
+                    <div class="dropdown">
+                        <a href="#" class="nav-icon-button position-relative" data-bs-toggle="dropdown" aria-label="System notifications">
+                            <i class="fa-solid fa-bell fa-lg"></i>
+                            <span class="badge bg-danger nav-badge d-none" id="notifications-badge">0</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" id="notifications-menu">
+                            <li><span class="dropdown-item-text text-muted small">Loading notifications...</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <div class="container-fluid content-container" id="page-content"></div>
+    </div>
+
+    <script src="/js/jquery.min.js?v=20260101"></script>
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+    <script src="/js/bootstrap.bundle.min.js?v=20260103"></script>
+    <script src="/js/core/monolith.api.js?v=20260104"></script>
+    <script src="/js/core/monolith.ui.js?v=20260104"></script>
+    <script src="/js/core/monolith.auth.js?v=20260104"></script>
+    <script src="/js/core/module-loader.js?v=20260101170000"></script>
+    <script src="/js/core/cms-client.js?v=20260115090000"></script>
+    <script src="/js/core/cms-router.js?v=20260115090000"></script>
+    <script src="/js/nat.js?v=20260115"></script>
+    <script src="/js/app.js?v=20260115"></script>
+</body>
+</html>

@@ -80,8 +80,18 @@ public class PackageScanner
         var backendDir = Path.Combine(packageDir, "backend");
         if (!Directory.Exists(backendDir))
         {
-            _logger.LogWarning($"No backend directory found in {packageDir}");
-            return null;
+            // Fallback: Check for build output (dev environment)
+            var devBackendDir = Path.Combine(packageDir, "bin", "Release", "net10.0");
+            if (Directory.Exists(devBackendDir))
+            {
+                _logger.LogDebug($"Using dev build directory for package {packageDir}: {devBackendDir}");
+                backendDir = devBackendDir;
+            }
+            else
+            {
+                _logger.LogWarning($"No backend directory found in {packageDir}");
+                return null;
+            }
         }
 
         // Find main DLL

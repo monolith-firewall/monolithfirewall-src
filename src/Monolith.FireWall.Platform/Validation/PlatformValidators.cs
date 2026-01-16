@@ -28,6 +28,40 @@ public static class PlatformValidators
         return HostnameRegex.IsMatch(hostname);
     }
 
+    public static bool IsValidIpv4(string value)
+    {
+        if (!IPAddress.TryParse(value, out var ip))
+        {
+            return false;
+        }
+
+        return ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork;
+    }
+
+    public static bool IsValidIpv6(string value)
+    {
+        if (!IPAddress.TryParse(value, out var ip))
+        {
+            return false;
+        }
+
+        return ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6;
+    }
+
+    public static string? GetAddressFamily(string value)
+    {
+        if (!IPAddress.TryParse(value, out var ip))
+        {
+            return null;
+        }
+
+        return ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+            ? "ipv4"
+            : ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                ? "ipv6"
+                : null;
+    }
+
     public static bool TryParseCidr(string cidr, out IPAddress address, out int prefixLength)
     {
         address = IPAddress.None;
@@ -61,6 +95,36 @@ public static class PlatformValidators
         }
 
         return true;
+    }
+
+    public static bool TryParseCidrV4(string cidr, out IPAddress address, out int prefixLength)
+    {
+        if (!TryParseCidr(cidr, out address, out prefixLength))
+        {
+            return false;
+        }
+
+        if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            return false;
+        }
+
+        return prefixLength >= 0 && prefixLength <= 32;
+    }
+
+    public static bool TryParseCidrV6(string cidr, out IPAddress address, out int prefixLength)
+    {
+        if (!TryParseCidr(cidr, out address, out prefixLength))
+        {
+            return false;
+        }
+
+        if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            return false;
+        }
+
+        return prefixLength >= 0 && prefixLength <= 128;
     }
 
     public static bool IsValidIp(string value)

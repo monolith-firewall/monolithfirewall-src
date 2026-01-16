@@ -1,0 +1,76 @@
+@page "/login"
+@{
+    Layout = null;
+    ViewData["Title"] = "Login";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - Monolith Firewall</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link href="/css/bootstrap.min.css?v=20260103" rel="stylesheet" />
+    <link href="/css/monolith-theme.css?v=20260111" rel="stylesheet" />
+    <link href="/css/app.css?v=20260103" rel="stylesheet" />
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-left">
+            <div class="login-brand">
+                <div class="login-brand-icon">🛡️</div>
+                <h1>Monolith Firewall</h1>
+                <p>Secure networking made simple.</p>
+            </div>
+        </div>
+        <div class="login-right">
+            <div class="login-card">
+                <div class="login-card-header">
+                    <h3>Sign in</h3>
+                    <p>Use your administrator credentials to continue.</p>
+                </div>
+                <div class="login-card-body">
+                    <form id="login-form" class="login-form">
+                        <div class="form-floating">
+                            <input type="text" class="form-control" id="username" placeholder="Username" required autofocus>
+                            <label for="username">Username</label>
+                        </div>
+                        <div class="form-floating">
+                            <input type="password" class="form-control" id="password" placeholder="Password" required>
+                            <label for="password">Password</label>
+                        </div>
+                        <div id="login-error" class="alert alert-danger d-none"></div>
+                        <button type="submit" class="btn btn-primary btn-login">Sign In</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/js/jquery.min.js?v=20260101"></script>
+    <script src="/js/bootstrap.bundle.min.js?v=20260103"></script>
+    <script src="/js/core/monolith.api.js?v=20260104"></script>
+    <script src="/js/core/monolith.auth.js?v=20260104"></script>
+    <script>
+        $(document).ready(function() {
+            $('#login-form').on('submit', async function(e) {
+                e.preventDefault();
+                const username = $('#username').val();
+                const password = $('#password').val();
+                const errorDiv = $('#login-error');
+                
+                try {
+                    const success = await Monolith.Auth.login(username, password);
+                    if (success) {
+                        window.location.href = '/';
+                    } else {
+                        errorDiv.text('Login failed').removeClass('d-none');
+                    }
+                } catch (error) {
+                    errorDiv.text(error.message || 'Login failed').removeClass('d-none');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

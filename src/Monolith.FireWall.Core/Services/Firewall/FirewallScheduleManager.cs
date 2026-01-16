@@ -156,14 +156,28 @@ public sealed class FirewallScheduleManager
 /// <summary>
 /// Firewall schedule entity (matches WebUI entity)
 /// </summary>
+[CL.SQLite.Models.SQLiteTable("firewall_schedules")]
 public sealed class FirewallScheduleEntity
 {
+    [CL.SQLite.Models.SQLiteColumn(IsPrimaryKey = true, IsAutoIncrement = true)]
     public int Id { get; set; }
+
+    [CL.SQLite.Models.SQLiteColumn(IsNotNull = true, DataType = CL.SQLite.Models.SQLiteDataType.TEXT, Size = 128)]
     public string Name { get; set; } = string.Empty;
+
+    [CL.SQLite.Models.SQLiteColumn(DataType = CL.SQLite.Models.SQLiteDataType.TEXT, Size = 256)]
     public string Description { get; set; } = string.Empty;
+
+    [CL.SQLite.Models.SQLiteColumn(DataType = CL.SQLite.Models.SQLiteDataType.TEXT)]
     public string TimeRanges { get; set; } = string.Empty; // JSON array
+
+    [CL.SQLite.Models.SQLiteColumn(DataType = CL.SQLite.Models.SQLiteDataType.BOOLEAN, DefaultValue = "1")]
     public bool Enabled { get; set; } = true;
+
+    [CL.SQLite.Models.SQLiteColumn(DataType = CL.SQLite.Models.SQLiteDataType.DATETIME)]
     public DateTime CreatedAt { get; set; }
+
+    [CL.SQLite.Models.SQLiteColumn(DataType = CL.SQLite.Models.SQLiteDataType.DATETIME)]
     public DateTime UpdatedAt { get; set; }
 }
 

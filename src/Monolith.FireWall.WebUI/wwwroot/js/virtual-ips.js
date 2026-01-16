@@ -4,6 +4,10 @@ var VirtualIps = {
 
     init: function() {
         console.log('Initializing Virtual IPs module...');
+    },
+
+    renderPage: function() {
+        console.log('Rendering Virtual IPs page...');
         this.loadVirtualIps();
         this.attachEventHandlers();
     },
@@ -11,10 +15,11 @@ var VirtualIps = {
     loadVirtualIps: async function() {
         try {
             const response = await Monolith.API.get('/firewall/virtual-ips');
-            if (response.success) {
-                const data = response.data || {};
+            if (response.success || response.Success) {
+                const data = response.data || response.Data || {};
                 const items = data.items || data || [];
-                this.virtualIps = items.map(v => this.normalizeVirtualIp(v));
+                const vipArray = Array.isArray(items) ? items : [];
+                this.virtualIps = vipArray.map(v => this.normalizeVirtualIp(v));
             } else {
                 this.virtualIps = [];
             }
@@ -45,6 +50,8 @@ var VirtualIps = {
 
     renderVirtualIps: function() {
         const tbody = $('#virtualIpsTable tbody');
+        if (!tbody.length) return;
+
         if (this.virtualIps.length === 0) {
             tbody.html('<tr><td colspan="7" class="text-center text-muted">No virtual IPs configured</td></tr>');
             return;
@@ -65,8 +72,8 @@ var VirtualIps = {
                     <td>${vip.description || '-'}</td>
                     <td>${statusBadge}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-primary me-1" onclick="VirtualIps.editVirtualIp(${vip.id})">Edit</button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="VirtualIps.deleteVirtualIp(${vip.id})">Delete</button>
+                        <button class="btn btn-sm btn-outline-primary me-1" data-action="edit-vip" data-id="${vip.id}">Edit</button>
+                        <button class="btn btn-sm btn-outline-danger" data-action="delete-vip" data-id="${vip.id}">Delete</button>
                     </td>
                 </tr>
             `;
@@ -78,6 +85,18 @@ var VirtualIps = {
         $(document).off('click', '#btn-add-virtual-ip');
         $(document).on('click', '#btn-add-virtual-ip', () => {
             this.showAddVirtualIpModal();
+        });
+
+        $(document).off('click', '[data-action="edit-vip"]');
+        $(document).on('click', '[data-action="edit-vip"]', (e) => {
+            const id = $(e.currentTarget).data('id');
+            this.editVirtualIp(id);
+        });
+
+        $(document).off('click', '[data-action="delete-vip"]');
+        $(document).on('click', '[data-action="delete-vip"]', (e) => {
+            const id = $(e.currentTarget).data('id');
+            this.deleteVirtualIp(id);
         });
     },
 
@@ -106,7 +125,7 @@ var VirtualIps = {
                                 </div>
                                 <div class="mb-3">
                                     <label for="vipType" class="form-label">Type <span class="text-danger">*</span></label>
-                                    <select class="form-select" id="vipType" required onchange="VirtualIps.onTypeChange()">
+                                    <select class="form-select" id="vipType" required>
                                         <option value="ipalias" ${vip && vip.type === 'ipalias' ? 'selected' : ''}>IP Alias</option>
                                         <option value="carp" ${vip && vip.type === 'carp' ? 'selected' : ''}>CARP</option>
                                         <option value="proxyarp" ${vip && vip.type === 'proxyarp' ? 'selected' : ''}>Proxy ARP</option>
@@ -168,7 +187,7 @@ var VirtualIps = {
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                            <button type="button" class="btn btn-primary" onclick="VirtualIps.saveVirtualIp(${vip ? vip.id : 'null'})">${isEdit ? 'Update' : 'Create'}</button>
+                            <button type="button" class="btn btn-primary" data-action="save-vip-submit">${isEdit ? 'Update' : 'Create'}</button>
                         </div>
                     </div>
                 </div>
@@ -179,6 +198,13 @@ var VirtualIps = {
         $('body').append(modalHtml);
         const modal = new bootstrap.Modal(document.getElementById('virtualIpModal'));
         modal.show();
+
+        $('#vipType').on('change', () => this.onTypeChange());
+
+        $(document).off('click', '[data-action="save-vip-submit"]');
+        $(document).on('click', '[data-action="save-vip-submit"]', () => {
+            this.saveVirtualIp(vip ? vip.id : null);
+        });
         
         $('#virtualIpModal').on('hidden.bs.modal', function() {
             $(this).remove();
@@ -193,8 +219,8 @@ var VirtualIps = {
     editVirtualIp: async function(id) {
         try {
             const response = await Monolith.API.get(`/firewall/virtual-ips/${id}`);
-            if (response.success || response.success) {
-                const vip = this.normalizeVirtualIp(response.data || response.data);
+            if (response.success || response.Success) {
+                const vip = this.normalizeVirtualIp(response.data || response.Data);
                 this.showVirtualIpModal(vip);
             } else {
                 this.showMessage('Failed to load virtual IP', 'error');
@@ -207,8 +233,8 @@ var VirtualIps = {
 
     saveVirtualIp: async function(id) {
         const form = document.getElementById('virtualIpForm');
-        if (!form.checkValidity()) {
-            form.reportValidity();
+        if (!form || !form.checkValidity()) {
+            if (form) form.reportValidity();
             return;
         }
 
@@ -238,13 +264,17 @@ var VirtualIps = {
                 response = await Monolith.API.post('/firewall/virtual-ips', vip);
             }
 
-            if (response.success || response.success) {
-                bootstrap.Modal.getInstance(document.getElementById('virtualIpModal')).hide();
+            if (response.success || response.Success) {
+                const modalEl = document.getElementById('virtualIpModal');
+                if (modalEl) {
+                    const modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                }
                 this.showMessage(id ? 'Virtual IP updated successfully' : 'Virtual IP created successfully', 'success');
                 this.loadVirtualIps();
                 this.markPendingChanges();
             } else {
-                this.showMessage(response.error || response.error || 'Failed to save virtual IP', 'error');
+                this.showMessage(response.error || response.Error || 'Failed to save virtual IP', 'error');
             }
         } catch (error) {
             console.error('Error saving virtual IP:', error);
@@ -259,12 +289,12 @@ var VirtualIps = {
 
         try {
             const response = await Monolith.API.delete(`/firewall/virtual-ips/${id}`);
-            if (response.success || response.success) {
+            if (response.success || response.Success) {
                 this.showMessage('Virtual IP deleted successfully', 'success');
                 this.loadVirtualIps();
                 this.markPendingChanges();
             } else {
-                this.showMessage(response.error || response.error || 'Failed to delete virtual IP', 'error');
+                this.showMessage(response.error || response.Error || 'Failed to delete virtual IP', 'error');
             }
         } catch (error) {
             console.error('Error deleting virtual IP:', error);
@@ -283,11 +313,11 @@ var VirtualIps = {
 
         try {
             const response = await Monolith.API.post('/firewall/apply', {});
-            if (response.success || response.success) {
+            if (response.success || response.Success) {
                 this.showMessage('Changes applied successfully', 'success');
                 $('#applyChangesBanner').addClass('d-none');
             } else {
-                this.showMessage(response.error || response.error || 'Failed to apply changes', 'error');
+                this.showMessage(response.error || response.Error || 'Failed to apply changes', 'error');
             }
         } catch (error) {
             console.error('Error applying changes:', error);
@@ -302,12 +332,12 @@ var VirtualIps = {
 
         try {
             const response = await Monolith.API.post('/firewall/discard', {});
-            if (response.success || response.success) {
+            if (response.success || response.Success) {
                 this.showMessage('Changes discarded', 'info');
                 $('#applyChangesBanner').addClass('d-none');
                 this.loadVirtualIps();
             } else {
-                this.showMessage(response.error || response.error || 'Failed to discard changes', 'error');
+                this.showMessage(response.error || response.Error || 'Failed to discard changes', 'error');
             }
         } catch (error) {
             console.error('Error discarding changes:', error);
@@ -317,6 +347,7 @@ var VirtualIps = {
 
     showMessage: function(message, type) {
         const alert = $('#virtualIpsStatusMessage');
+        if (!alert.length) return;
         alert.removeClass('d-none alert-success alert-danger alert-warning alert-info')
              .addClass(`alert-${type}`)
              .text(message);
@@ -324,25 +355,9 @@ var VirtualIps = {
     }
 };
 
-if (typeof Monolith !== 'undefined') {
-    Monolith.Pages = Monolith.Pages || {};
-    Monolith.Pages.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.FirewallVirtualIps = VirtualIps;
-}
-
 // Register with Monolith.Pages
 if (typeof Monolith !== 'undefined') {
     Monolith.Pages = Monolith.Pages || {};
     Monolith.Pages.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.Firewall = Monolith.Pages.Firewall.Firewall || {};
-    Monolith.Pages.Firewall.Firewall.VirtualIps = VirtualIps;
-// Register with Monolith.Pages
-if (typeof Monolith !== 'undefined') {
-    Monolith.Pages = Monolith.Pages || {};
-    Monolith.Pages.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.Firewall = Monolith.Pages.Firewall.Firewall || {};
-    Monolith.Pages.Firewall.Firewall.VirtualIps = VirtualIps;
+    Monolith.Pages.Firewall.VirtualIps = VirtualIps;
 }

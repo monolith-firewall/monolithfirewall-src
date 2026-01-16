@@ -239,6 +239,16 @@ public sealed class MonitoringManager
                 }),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
+            },
+            new()
+            {
+                Key = "gateway-sync",
+                Name = "Gateway Sync",
+                Type = "gateway-sync",
+                IntervalSeconds = 60,
+                Enabled = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             }
         };
 
@@ -297,6 +307,7 @@ public sealed class MonitoringManager
             "gateway" => await RunGatewayMonitorAsync(definition, cancellationToken),
             "system" => await RunSystemMonitorAsync(definition, cancellationToken),
             "services" => await RunServiceMonitorAsync(definition, cancellationToken),
+            "gateway-sync" => await RunGatewaySyncMonitorAsync(definition, cancellationToken),
             _ => new MonitorExecutionResult
             {
                 Status = "unknown",
@@ -435,6 +446,39 @@ public sealed class MonitoringManager
             Status = "ok",
             Message = "Core services running"
         });
+    }
+
+    private async Task<MonitorExecutionResult> RunGatewaySyncMonitorAsync(
+        MonitorDefinitionEntity definition,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _routingManager.SyncGatewaysAsync(cancellationToken);
+            var gateways = await _routingManager.GetGatewaysAsync(cancellationToken);
+            if (gateways.Count == 0)
+            {
+                return new MonitorExecutionResult
+                {
+                    Status = "warning",
+                    Message = "No gateways detected after sync"
+                };
+            }
+
+            return new MonitorExecutionResult
+            {
+                Status = "ok",
+                Message = $"Synced gateways ({gateways.Count} found)"
+            };
+        }
+        catch (Exception ex)
+        {
+            return new MonitorExecutionResult
+            {
+                Status = "error",
+                Message = $"Gateway sync failed: {ex.Message}"
+            };
+        }
     }
 
     private async Task HandleStatusChangeAsync(

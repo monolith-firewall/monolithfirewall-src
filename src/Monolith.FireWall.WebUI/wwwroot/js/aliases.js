@@ -4,6 +4,10 @@ var Aliases = {
 
     init: function() {
         console.log('Initializing Aliases module...');
+    },
+
+    renderPage: function() {
+        console.log('Rendering Aliases page...');
         this.loadAliases();
         this.attachEventHandlers();
     },
@@ -14,7 +18,8 @@ var Aliases = {
             if (response.Success || response.success) {
                 const data = response.Data || response.data || {};
                 const items = data.items || data || [];
-                this.aliases = items.map(a => this.normalizeAlias(a));
+                const aliasArray = Array.isArray(items) ? items : [];
+                this.aliases = aliasArray.map(a => this.normalizeAlias(a));
             } else {
                 this.aliases = [];
             }
@@ -29,6 +34,8 @@ var Aliases = {
 
     renderAliases: function() {
         const tbody = $('#aliasesTable tbody');
+        if (!tbody.length) return;
+
         if (this.aliases.length === 0) {
             tbody.html('<tr><td colspan="6" class="text-center text-muted">No aliases configured</td></tr>');
             return;
@@ -52,12 +59,12 @@ var Aliases = {
                     <td>${alias.description || '-'}</td>
                     <td>${statusBadge}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-primary me-1" onclick="Aliases.editAlias(${alias.id})" title="Edit alias">
+                        <button class="btn btn-sm btn-outline-primary me-1" data-action="edit-alias" data-id="${alias.id}" title="Edit alias">
                             <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
                                 <path d="M12.854.146a.5.5 0 0 0-.707 0L11.5 1.793 14.207 4.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5h.5v.5a.5.5 0 0 1 .5.5h.5v.5a.5.5 0 0 1 .5.5h.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.179a.499.499 0 0 1-.032-.175z"/>
                             </svg>
                         </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="Aliases.deleteAlias(${alias.id})" title="Delete alias">
+                        <button class="btn btn-sm btn-outline-danger" data-action="delete-alias" data-id="${alias.id}" title="Delete alias">
                             <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
                                 <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
                                 <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
@@ -74,6 +81,18 @@ var Aliases = {
         $(document).off('click', '#btnAddAlias');
         $(document).on('click', '#btnAddAlias', () => {
             this.showAddAliasModal();
+        });
+
+        $(document).off('click', '[data-action="edit-alias"]');
+        $(document).on('click', '[data-action="edit-alias"]', (e) => {
+            const id = $(e.currentTarget).data('id');
+            this.editAlias(id);
+        });
+
+        $(document).off('click', '[data-action="delete-alias"]');
+        $(document).on('click', '[data-action="delete-alias"]', (e) => {
+            const id = $(e.currentTarget).data('id');
+            this.deleteAlias(id);
         });
 
         $(document).off('click', '#btnApplyChanges');
@@ -142,7 +161,7 @@ var Aliases = {
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                            <button type="button" class="btn btn-primary" onclick="Aliases.saveAlias(${alias ? alias.id : 'null'})">${isEdit ? 'Update' : 'Create'}</button>
+                            <button type="button" class="btn btn-primary" data-action="save-alias-submit">${isEdit ? 'Update' : 'Create'}</button>
                         </div>
                     </div>
                 </div>
@@ -154,6 +173,11 @@ var Aliases = {
         $('body').append(modalHtml);
         const modal = new bootstrap.Modal(document.getElementById('aliasModal'));
         modal.show();
+
+        $(document).off('click', '[data-action="save-alias-submit"]');
+        $(document).on('click', '[data-action="save-alias-submit"]', () => {
+            this.saveAlias(alias ? alias.id : null);
+        });
         
         // Clean up on hide
         $('#aliasModal').on('hidden.bs.modal', function() {
@@ -189,8 +213,8 @@ var Aliases = {
 
     saveAlias: async function(id) {
         const form = document.getElementById('aliasForm');
-        if (!form.checkValidity()) {
-            form.reportValidity();
+        if (!form || !form.checkValidity()) {
+            if (form) form.reportValidity();
             return;
         }
 
@@ -295,6 +319,7 @@ var Aliases = {
 
     showMessage: function(message, type) {
         const alert = $('#aliasesStatusMessage');
+        if (!alert.length) return;
         alert.removeClass('d-none alert-success alert-danger alert-warning alert-info')
              .addClass(`alert-${type}`)
              .text(message);

@@ -4,6 +4,10 @@ var TrafficShaper = {
 
     init: function() {
         console.log('Initializing Traffic Shaper module...');
+    },
+
+    renderPage: function() {
+        console.log('Rendering Traffic Shaper page...');
         this.loadRules();
         this.attachEventHandlers();
     },
@@ -11,9 +15,11 @@ var TrafficShaper = {
     loadRules: async function() {
         try {
             const response = await Monolith.API.get('/firewall/traffic-shaper');
-            if (response.success || response.success) {
-                const data = response.data || {}; const items = data.items || data || [];
-                this.rules = items.map(r => this.normalizeRule(r));
+            if (response.success || response.Success) {
+                const data = response.data || response.Data || {};
+                const items = data.items || data || [];
+                const rulesArray = Array.isArray(items) ? items : (Array.isArray(data) ? data : []);
+                this.rules = rulesArray.map(r => this.normalizeRule(r));
             } else {
                 this.rules = [];
             }
@@ -41,6 +47,8 @@ var TrafficShaper = {
 
     renderRules: function() {
         const tbody = $('#trafficShaperRulesTable tbody');
+        if (!tbody.length) return;
+        
         if (this.rules.length === 0) {
             tbody.html('<tr><td colspan="8" class="text-center text-muted">No traffic shaper rules configured</td></tr>');
             return;
@@ -62,8 +70,8 @@ var TrafficShaper = {
                     <td>${rule.description || '-'}</td>
                     <td>${statusBadge}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-primary me-1" onclick="TrafficShaper.editRule(${rule.id})">Edit</button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="TrafficShaper.deleteRule(${rule.id})">Delete</button>
+                        <button class="btn btn-sm btn-outline-primary me-1" data-action="edit-shaper" data-id="${rule.id}">Edit</button>
+                        <button class="btn btn-sm btn-outline-danger" data-action="delete-shaper" data-id="${rule.id}">Delete</button>
                     </td>
                 </tr>
             `;
@@ -82,6 +90,18 @@ var TrafficShaper = {
         $(document).off('click', '#btn-add-shaper-rule');
         $(document).on('click', '#btn-add-shaper-rule', () => {
             this.showAddRuleModal();
+        });
+
+        $(document).off('click', '[data-action="edit-shaper"]');
+        $(document).on('click', '[data-action="edit-shaper"]', (e) => {
+            const id = $(e.currentTarget).data('id');
+            this.editRule(id);
+        });
+
+        $(document).off('click', '[data-action="delete-shaper"]');
+        $(document).on('click', '[data-action="delete-shaper"]', (e) => {
+            const id = $(e.currentTarget).data('id');
+            this.deleteRule(id);
         });
     },
 
@@ -153,7 +173,7 @@ var TrafficShaper = {
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                            <button type="button" class="btn btn-primary" onclick="TrafficShaper.saveRule(${rule ? rule.id : 'null'})">${isEdit ? 'Update' : 'Create'}</button>
+                            <button type="button" class="btn btn-primary" data-action="save-shaper-submit">${isEdit ? 'Update' : 'Create'}</button>
                         </div>
                     </div>
                 </div>
@@ -164,6 +184,11 @@ var TrafficShaper = {
         $('body').append(modalHtml);
         const modal = new bootstrap.Modal(document.getElementById('trafficShaperRuleModal'));
         modal.show();
+
+        $(document).off('click', '[data-action="save-shaper-submit"]');
+        $(document).on('click', '[data-action="save-shaper-submit"]', () => {
+            this.saveRule(rule ? rule.id : null);
+        });
         
         $('#trafficShaperRuleModal').on('hidden.bs.modal', function() {
             $(this).remove();
@@ -173,8 +198,8 @@ var TrafficShaper = {
     editRule: async function(id) {
         try {
             const response = await Monolith.API.get(`/firewall/traffic-shaper/${id}`);
-            if (response.success || response.success) {
-                const rule = this.normalizeRule(response.data || response.data);
+            if (response.success || response.Success) {
+                const rule = this.normalizeRule(response.data || response.Data);
                 this.showRuleModal(rule);
             } else {
                 this.showMessage('Failed to load traffic shaper rule', 'error');
@@ -187,8 +212,8 @@ var TrafficShaper = {
 
     saveRule: async function(id) {
         const form = document.getElementById('trafficShaperRuleForm');
-        if (!form.checkValidity()) {
-            form.reportValidity();
+        if (!form || !form.checkValidity()) {
+            if (form) form.reportValidity();
             return;
         }
 
@@ -210,13 +235,17 @@ var TrafficShaper = {
                 response = await Monolith.API.post('/firewall/traffic-shaper', rule);
             }
 
-            if (response.success || response.success) {
-                bootstrap.Modal.getInstance(document.getElementById('trafficShaperRuleModal')).hide();
+            if (response.success || response.Success) {
+                const modalEl = document.getElementById('trafficShaperRuleModal');
+                if (modalEl) {
+                    const modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                }
                 this.showMessage(id ? 'Traffic shaper rule updated successfully' : 'Traffic shaper rule created successfully', 'success');
                 this.loadRules();
                 this.markPendingChanges();
             } else {
-                this.showMessage(response.error || response.error || 'Failed to save traffic shaper rule', 'error');
+                this.showMessage(response.error || response.Error || 'Failed to save traffic shaper rule', 'error');
             }
         } catch (error) {
             console.error('Error saving traffic shaper rule:', error);
@@ -231,12 +260,12 @@ var TrafficShaper = {
 
         try {
             const response = await Monolith.API.delete(`/firewall/traffic-shaper/${id}`);
-            if (response.success || response.success) {
+            if (response.success || response.Success) {
                 this.showMessage('Traffic shaper rule deleted successfully', 'success');
                 this.loadRules();
                 this.markPendingChanges();
             } else {
-                this.showMessage(response.error || response.error || 'Failed to delete traffic shaper rule', 'error');
+                this.showMessage(response.error || response.Error || 'Failed to delete traffic shaper rule', 'error');
             }
         } catch (error) {
             console.error('Error deleting traffic shaper rule:', error);
@@ -248,47 +277,9 @@ var TrafficShaper = {
         $('#applyChangesBanner').removeClass('d-none');
     },
 
-    applyChanges: async function() {
-        if (!confirm('Apply all pending firewall changes? This will update the system configuration.')) {
-            return;
-        }
-
-        try {
-            const response = await Monolith.API.post('/firewall/apply', {});
-            if (response.success || response.success) {
-                this.showMessage('Changes applied successfully', 'success');
-                $('#applyChangesBanner').addClass('d-none');
-            } else {
-                this.showMessage(response.error || response.error || 'Failed to apply changes', 'error');
-            }
-        } catch (error) {
-            console.error('Error applying changes:', error);
-            this.showMessage('Failed to apply changes', 'error');
-        }
-    },
-
-    discardChanges: async function() {
-        if (!confirm('Discard all pending changes? This will revert all unsaved modifications.')) {
-            return;
-        }
-
-        try {
-            const response = await Monolith.API.post('/firewall/discard', {});
-            if (response.success || response.success) {
-                this.showMessage('Changes discarded', 'info');
-                $('#applyChangesBanner').addClass('d-none');
-                this.loadRules();
-            } else {
-                this.showMessage(response.error || response.error || 'Failed to discard changes', 'error');
-            }
-        } catch (error) {
-            console.error('Error discarding changes:', error);
-            this.showMessage('Failed to discard changes', 'error');
-        }
-    },
-
     showMessage: function(message, type) {
         const alert = $('#trafficShaperStatusMessage');
+        if (!alert.length) return;
         alert.removeClass('d-none alert-success alert-danger alert-warning alert-info')
              .addClass(`alert-${type}`)
              .text(message);
@@ -296,25 +287,9 @@ var TrafficShaper = {
     }
 };
 
-if (typeof Monolith !== 'undefined') {
-    Monolith.Pages = Monolith.Pages || {};
-    Monolith.Pages.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.FirewallTrafficShaper = TrafficShaper;
-}
-
 // Register with Monolith.Pages
 if (typeof Monolith !== 'undefined') {
     Monolith.Pages = Monolith.Pages || {};
     Monolith.Pages.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.Firewall = Monolith.Pages.Firewall.Firewall || {};
-    Monolith.Pages.Firewall.Firewall.TrafficShaper = TrafficShaper;
-// Register with Monolith.Pages
-if (typeof Monolith !== 'undefined') {
-    Monolith.Pages = Monolith.Pages || {};
-    Monolith.Pages.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.Firewall = Monolith.Pages.Firewall || {};
-    Monolith.Pages.Firewall.Firewall = Monolith.Pages.Firewall.Firewall || {};
-    Monolith.Pages.Firewall.Firewall.TrafficShaper = TrafficShaper;
+    Monolith.Pages.Firewall.TrafficShaper = TrafficShaper;
 }

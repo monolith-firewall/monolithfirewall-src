@@ -10,16 +10,19 @@ namespace Monolith.FireWall.Core.Services;
 public sealed class RoutingManager
 {
     private readonly RoutingStore _store;
+    private readonly GatewayManager _gatewayManager;
     private readonly PlatformCommandRunner _commandRunner;
     private readonly NetworkInventoryService _inventory;
     private readonly LoggingManager _loggingManager;
 
     public RoutingManager(
         RoutingStore store,
+        GatewayManager gatewayManager,
         PlatformCommandRunner commandRunner,
         NetworkInventoryService inventory)
     {
         _store = store;
+        _gatewayManager = gatewayManager;
         _commandRunner = commandRunner;
         _inventory = inventory;
         _loggingManager = LoggingManager.Instance;
@@ -27,33 +30,24 @@ public sealed class RoutingManager
 
     public async Task<List<GatewayView>> GetGatewaysAsync(CancellationToken cancellationToken)
     {
-        var routes = await ListSystemRoutesAsync(cancellationToken);
-        var gateways = new List<GatewayView>();
+        return await _gatewayManager.GetGatewaysAsync(cancellationToken);
+    }
 
-        foreach (var route in routes)
-        {
-            if (!route.IsDefault)
-            {
-                continue;
-            }
+    public Task<(bool Success, string? Error, GatewayView? Gateway)> CreateGatewayAsync(
+        GatewayRequest request,
+        CancellationToken cancellationToken)
+    {
+        return _gatewayManager.CreateStaticGatewayAsync(request, cancellationToken);
+    }
 
-            if (string.IsNullOrWhiteSpace(route.Gateway))
-            {
-                continue;
-            }
+    public Task<(bool Success, string? Error)> DeleteGatewayAsync(int id, CancellationToken cancellationToken)
+    {
+        return _gatewayManager.DeleteGatewayAsync(id, cancellationToken);
+    }
 
-            gateways.Add(new GatewayView
-            {
-                Name = $"Default ({route.Interface ?? "unknown"})",
-                Address = route.Gateway ?? string.Empty,
-                Interface = route.Interface ?? string.Empty,
-                Source = ResolveGatewaySource(route.Protocol),
-                Metric = route.Metric,
-                IsDefault = true
-            });
-        }
-
-        return gateways;
+    public Task SyncGatewaysAsync(CancellationToken cancellationToken)
+    {
+        return _gatewayManager.SyncDynamicGatewaysAsync(cancellationToken);
     }
 
     public async Task<List<StaticRouteView>> GetStaticRoutesAsync(CancellationToken cancellationToken)
@@ -70,6 +64,7 @@ public sealed class RoutingManager
             Interface = route.Interface,
             Metric = route.Metric,
             Description = route.Description,
+            AddressFamily = route.AddressFamily,
             Active = activeSet.Contains(BuildRouteKey(route.DestinationCidr, route.Gateway, route.Interface))
         }).ToList();
     }
@@ -84,10 +79,13 @@ public sealed class RoutingManager
         }
 
         var destination = NormalizeDestination(request.Destination);
-        if (!PlatformValidators.TryParseCidr(destination, out _, out _))
+        if (!PlatformValidators.TryParseCidr(destination, out var cidrAddress, out _))
         {
             return (false, "Invalid destination CIDR", null);
         }
+        var addressFamily = cidrAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+            ? "ipv6"
+            : "ipv4";
 
         if (string.IsNullOrWhiteSpace(request.Gateway) && string.IsNullOrWhiteSpace(request.Interface))
         {
@@ -122,7 +120,7 @@ public sealed class RoutingManager
             return (false, "Route already exists", null);
         }
 
-        var addResult = await RunRouteCommandAsync("add", destination, request.Gateway, request.Interface, request.Metric, cancellationToken);
+        var addResult = await RunRouteCommandAsync("add", destination, request.Gateway, request.Interface, request.Metric, addressFamily, cancellationToken);
         if (!addResult.Success)
         {
             return (false, addResult.Error, null);
@@ -135,6 +133,7 @@ public sealed class RoutingManager
             Interface = string.IsNullOrWhiteSpace(request.Interface) ? null : request.Interface,
             Metric = request.Metric,
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+            AddressFamily = addressFamily,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -177,7 +176,7 @@ public sealed class RoutingManager
             return (false, "Route not found");
         }
 
-        var deleteResult = await RunRouteCommandAsync("del", route.DestinationCidr, route.Gateway, route.Interface, route.Metric, cancellationToken);
+        var deleteResult = await RunRouteCommandAsync("del", route.DestinationCidr, route.Gateway, route.Interface, route.Metric, route.AddressFamily, cancellationToken);
         if (!deleteResult.Success)
         {
             return (false, deleteResult.Error);
@@ -214,7 +213,8 @@ public sealed class RoutingManager
             Interface = r.Interface,
             Protocol = r.Protocol,
             Metric = r.Metric,
-            IsDefault = r.IsDefault
+            IsDefault = r.IsDefault,
+            AddressFamily = r.AddressFamily
         }).ToList();
 
         var status = new RoutingStatusView
@@ -296,46 +296,8 @@ public sealed class RoutingManager
     private async Task<List<RouteEntry>> ListSystemRoutesAsync(CancellationToken cancellationToken)
     {
         var routes = new List<RouteEntry>();
-        if (!_commandRunner.CommandExists("ip"))
-        {
-            return routes;
-        }
-
-        var command = new PlatformCommand
-        {
-            FileName = "ip",
-            Arguments = "-j route show",
-            UseSudo = false,
-            TimeoutMs = 5000
-        };
-
-        var result = await _commandRunner.RunAsync(command, cancellationToken);
-        if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut))
-        {
-            return routes;
-        }
-
-        using var doc = JsonDocument.Parse(result.StdOut);
-        foreach (var route in doc.RootElement.EnumerateArray())
-        {
-            var destination = route.TryGetProperty("dst", out var dstEl) ? dstEl.GetString() ?? "default" : "default";
-            var gateway = route.TryGetProperty("gateway", out var gwEl) ? gwEl.GetString() : null;
-            var dev = route.TryGetProperty("dev", out var devEl) ? devEl.GetString() : null;
-            var protocol = route.TryGetProperty("protocol", out var protoEl) ? protoEl.GetString() : null;
-            var metric = route.TryGetProperty("metric", out var metricEl) && metricEl.ValueKind == JsonValueKind.Number
-                ? metricEl.GetInt32()
-                : (int?)null;
-
-            routes.Add(new RouteEntry
-            {
-                Destination = destination,
-                Gateway = gateway,
-                Interface = dev,
-                Protocol = protocol,
-                Metric = metric
-            });
-        }
-
+        routes.AddRange(await ParseRoutesAsync("-j route show", "ipv4", cancellationToken));
+        routes.AddRange(await ParseRoutesAsync("-6 -j route show", "ipv6", cancellationToken));
         return routes;
     }
 
@@ -345,9 +307,11 @@ public sealed class RoutingManager
         string? gateway,
         string? iface,
         int? metric,
+        string addressFamily,
         CancellationToken cancellationToken)
     {
-        var args = $"route {verb} {destination}";
+        var familyFlag = string.Equals(addressFamily, "ipv6", StringComparison.OrdinalIgnoreCase) ? "-6 " : string.Empty;
+        var args = $"{familyFlag}route {verb} {destination}";
         if (!string.IsNullOrWhiteSpace(gateway))
         {
             args += $" via {gateway}";
@@ -381,16 +345,6 @@ public sealed class RoutingManager
         return (true, null);
     }
 
-    private static string ResolveGatewaySource(string? protocol)
-    {
-        if (string.IsNullOrWhiteSpace(protocol))
-        {
-            return "static";
-        }
-
-        return protocol.Contains("dhcp", StringComparison.OrdinalIgnoreCase) ? "dhcp" : protocol;
-    }
-
     private static string NormalizeDestination(string destination)
     {
         if (string.Equals(destination.Trim(), "default", StringComparison.OrdinalIgnoreCase))
@@ -411,6 +365,53 @@ public sealed class RoutingManager
         return $"{NormalizeDestination(destination)}|{gateway ?? ""}|{iface ?? ""}";
     }
 
+    private async Task<List<RouteEntry>> ParseRoutesAsync(string arguments, string family, CancellationToken cancellationToken)
+    {
+        var routes = new List<RouteEntry>();
+        if (!_commandRunner.CommandExists("ip"))
+        {
+            return routes;
+        }
+
+        var command = new PlatformCommand
+        {
+            FileName = "ip",
+            Arguments = arguments,
+            UseSudo = false,
+            TimeoutMs = 5000
+        };
+
+        var result = await _commandRunner.RunAsync(command, cancellationToken);
+        if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut))
+        {
+            return routes;
+        }
+
+        using var doc = JsonDocument.Parse(result.StdOut);
+        foreach (var route in doc.RootElement.EnumerateArray())
+        {
+            var destination = route.TryGetProperty("dst", out var dstEl) ? dstEl.GetString() ?? "default" : "default";
+            var gateway = route.TryGetProperty("gateway", out var gwEl) ? gwEl.GetString() : null;
+            var dev = route.TryGetProperty("dev", out var devEl) ? devEl.GetString() : null;
+            var protocol = route.TryGetProperty("protocol", out var protoEl) ? protoEl.GetString() : null;
+            var metric = route.TryGetProperty("metric", out var metricEl) && metricEl.ValueKind == JsonValueKind.Number
+                ? metricEl.GetInt32()
+                : (int?)null;
+
+            routes.Add(new RouteEntry
+            {
+                Destination = destination,
+                Gateway = gateway,
+                Interface = dev,
+                Protocol = protocol,
+                Metric = metric,
+                AddressFamily = family
+            });
+        }
+
+        return routes;
+    }
+
     private sealed class RouteEntry
     {
         public string Destination { get; set; } = string.Empty;
@@ -418,6 +419,7 @@ public sealed class RoutingManager
         public string? Interface { get; set; }
         public string? Protocol { get; set; }
         public int? Metric { get; set; }
+        public string AddressFamily { get; set; } = "ipv4";
         public bool IsDefault =>
             string.Equals(Destination, "default", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(Destination, "0.0.0.0/0", StringComparison.OrdinalIgnoreCase) ||

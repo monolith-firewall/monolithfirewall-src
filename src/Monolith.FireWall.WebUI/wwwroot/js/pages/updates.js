@@ -206,7 +206,7 @@ var Updates = {
                                 <div class="fw-semibold">${name}</div>
                                 <div class="text-muted small">${fromV} → ${toV}</div>
                             </div>
-                            <a class="btn btn-sm btn-outline-primary" href="#/system/packages">Update</a>
+                            <a class="btn btn-sm btn-outline-primary" href="/system/packages" data-route="/system/packages">Update</a>
                         </div>
                     `;
                 });

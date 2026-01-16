@@ -13,11 +13,11 @@ Monolith.API = {
     get: async function(endpoint) {
         try {
             const response = await fetch(`${this.baseUrl}${endpoint}`, {
-                method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
                     'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
+                    'Pragma': 'no-cache',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 cache: 'no-cache',
                 credentials: 'same-origin'
@@ -45,8 +45,10 @@ Monolith.API = {
                 headers: {
                     'Content-Type': 'application/json',
                     'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
+                    'Pragma': 'no-cache',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
+
                 body: JSON.stringify(data),
                 cache: 'no-cache',
                 credentials: 'same-origin'
@@ -74,7 +76,8 @@ Monolith.API = {
                 headers: {
                     'Content-Type': 'application/json',
                     'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
+                    'Pragma': 'no-cache',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify(data),
                 cache: 'no-cache',
@@ -103,7 +106,8 @@ Monolith.API = {
                 headers: {
                     'Content-Type': 'application/json',
                     'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
+                    'Pragma': 'no-cache',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 cache: 'no-cache',
                 credentials: 'same-origin'

@@ -18,6 +18,18 @@ using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure logging - enable Debug level for detailed diagnostics
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole(options =>
+{
+    options.FormatterName = "simple";
+});
+builder.Logging.AddDebug();
+builder.Logging.SetMinimumLevel(LogLevel.Debug);
+builder.Logging.AddFilter("Microsoft", LogLevel.Warning); // Reduce Microsoft noise
+builder.Logging.AddFilter("System", LogLevel.Warning); // Reduce System noise
+builder.Logging.AddFilter("Monolith.FireWall", LogLevel.Debug); // Full debug for our code
+
 // Load WebUI settings from database via Core API (with file fallback)
 var webUiSettings = await LoadWebUiSettingsAsync();
 var certificate = LoadOrCreateCertificate();
@@ -140,9 +152,14 @@ builder.Services.AddHostedService<Monolith.FireWall.WebUI.BackgroundServices.Per
 // Configure Razor view engine to look for views in package assemblies
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.Razor.RazorViewEngineOptions>(options =>
 {
-    // Add view location formats for package views
+    // Add view location formats for package views (RCL assemblies)
     options.ViewLocationFormats.Add("/_content/{0}/Pages/{1}" + Microsoft.AspNetCore.Mvc.Razor.RazorViewEngine.ViewExtension);
     options.ViewLocationFormats.Add("/_content/{0}/Views/{1}" + Microsoft.AspNetCore.Mvc.Razor.RazorViewEngine.ViewExtension);
+    
+    // Add file system view locations for package pages (when not in RCL)
+    // Note: These need to be registered as physical file providers to work
+    // For now, we handle file system pages directly in RazorPartialRenderer
+    options.ViewLocationFormats.Add("/packages/{0}/Pages/{1}" + Microsoft.AspNetCore.Mvc.Razor.RazorViewEngine.ViewExtension);
     
     // Also add area view locations
     options.AreaViewLocationFormats.Add("/_content/{2}/Areas/{1}/Views/{0}" + Microsoft.AspNetCore.Mvc.Razor.RazorViewEngine.ViewExtension);
@@ -1087,6 +1104,45 @@ app.MapGet("/api/routing/gateways", async (HttpContext context, CoreApiClient co
     }
 });
 
+app.MapPost("/api/routing/gateways", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        using var doc = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+        var coreRequest = new
+        {
+            action = "routing.gateways.create",
+            payload = doc.RootElement
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapDelete("/api/routing/gateways/{id:int}", async (int id, CoreApiClient coreClient) =>
+{
+    try
+    {
+        var coreRequest = new
+        {
+            action = "routing.gateways.delete",
+            payload = new { Id = id }
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
 app.MapGet("/api/routing/routes", async (HttpContext context, CoreApiClient coreClient) =>
 {
     try
@@ -1686,12 +1742,25 @@ app.MapGet("/api/logs/security", async (HttpContext context, SystemLogsManager l
     }
 });
 
-// Default route to index.html
-app.MapGet("/", async context =>
-{
-    context.Response.ContentType = "text/html";
-    await context.Response.SendFileAsync("wwwroot/index.html");
-});
+// Default SPA shell (fallback) - only for non-API routes to avoid ambiguity with controllers
+app.MapWhen(
+    ctx => !ctx.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase),
+    branch =>
+    {
+        branch.UseRouting();
+        branch.UseEndpoints(endpoints =>
+        {
+            var fallbackEndpoint = endpoints.MapFallbackToPage("/App");
+            fallbackEndpoint.Add(builder =>
+            {
+                if (builder is Microsoft.AspNetCore.Routing.RouteEndpointBuilder routeBuilder)
+                {
+                    // Ensure this stays lower priority than controller routes
+                    routeBuilder.Order = int.MaxValue;
+                }
+            });
+        });
+    });
 
 app.Run();
 

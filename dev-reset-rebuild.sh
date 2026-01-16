@@ -141,6 +141,31 @@ else
     print_error "Debian package file not found: $DEB_FILE"
 fi
 
+print_step "Step 12a: Writing core configuration (packages directory)"
+mkdir -p /var/lib/monolith-firewall/codelogic
+mkdir -p /var/lib/monolith-firewall/data
+cat > /var/lib/monolith-firewall/codelogic/core-config.json <<'EOF'
+{
+  "Version": "1.0.0",
+  "PackagesDirectory": "/var/lib/monolith-firewall/packages",
+  "PipeName": "monolith-core",
+  "SocketPath": "/var/lib/monolith-firewall/run/monolith-core.sock",
+  "PlatformPolicyPath": "/etc/monolith-firewall/platform-policy.json",
+  "MaxConcurrentConnections": 10,
+  "EnableDebugMode": false,
+  "LogDirectory": "/var/log/monolith-firewall",
+  "Database": {
+    "Path": "/var/lib/monolith-firewall/data/core.db",
+    "ConnectionTimeoutSeconds": 30,
+    "MaxPoolSize": 10,
+    "UseWAL": true
+  }
+}
+EOF
+chown root:root /var/lib/monolith-firewall/codelogic/core-config.json
+chmod 644 /var/lib/monolith-firewall/codelogic/core-config.json
+print_success "core-config.json written with packages path /var/lib/monolith-firewall/packages"
+
 print_step "Step 13: Starting Core service (required for package installation)"
 systemctl start monolith-firewall-core || print_error "Failed to start Core service"
 

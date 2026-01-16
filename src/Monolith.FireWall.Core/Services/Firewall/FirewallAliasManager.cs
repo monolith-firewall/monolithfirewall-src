@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Monolith.FireWall.Platform.Validation;
 using CodeLogic;
 using CL.SQLite.Services;
 using Monolith.FireWall.Common.Services;
@@ -292,6 +293,11 @@ public sealed class FirewallAliasManager
             return (false, "Alias content is required");
         }
 
+        if (!ValidateAliasContent(request.Type, request.Content, out var error))
+        {
+            return (false, error);
+        }
+
         if (!string.IsNullOrWhiteSpace(request.Type))
         {
             var normalized = NormalizeType(request.Type);
@@ -302,6 +308,68 @@ public sealed class FirewallAliasManager
         }
 
         return (true, null);
+    }
+
+    private bool ValidateAliasContent(string? type, List<string> content, out string? error)
+    {
+        error = null;
+        var normalized = NormalizeType(type);
+        foreach (var entry in content)
+        {
+            var value = entry?.Trim();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                error = "Alias entries cannot be empty";
+                return false;
+            }
+
+            switch (normalized)
+            {
+                case "host":
+                    if (!PlatformValidators.IsValidIp(value) &&
+                        !PlatformValidators.TryParseCidr(value, out _, out _))
+                    {
+                        error = $"Invalid host or network entry: {value}";
+                        return false;
+                    }
+                    break;
+                case "network":
+                    if (!PlatformValidators.TryParseCidr(value, out _, out _))
+                    {
+                        error = $"Invalid network CIDR: {value}";
+                        return false;
+                    }
+                    break;
+                case "port":
+                    if (!ValidatePortEntry(value))
+                    {
+                        error = $"Invalid port entry: {value}";
+                        return false;
+                    }
+                    break;
+            }
+        }
+
+        return true;
+    }
+
+    private bool ValidatePortEntry(string value)
+    {
+        // allow single port or range N-M
+        if (int.TryParse(value, out var single))
+        {
+            return single >= 1 && single <= 65535;
+        }
+
+        var parts = value.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 2
+            && int.TryParse(parts[0], out var start)
+            && int.TryParse(parts[1], out var end))
+        {
+            return start >= 1 && end <= 65535 && start <= end;
+        }
+
+        return false;
     }
 
     private static string NormalizeType(string? type)

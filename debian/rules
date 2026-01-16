@@ -33,10 +33,10 @@ override_dh_auto_install:
 		mkdir -p $(CURDIR)/debian/tmp/opt/monolith-firewall/webui/wwwroot/p; \
 		cp -r src/Monolith.FireWall.WebUI/wwwroot/p/* $(CURDIR)/debian/tmp/opt/monolith-firewall/webui/wwwroot/p/; \
 	fi
-	# Ensure firewall SPA pages are available at runtime
-	if [ -d "src/Monolith.FireWall.WebUI/Pages/Firewall" ]; then \
+	# Ensure all SPA pages are available at runtime (dotnet publish should copy them, but ensure they're there)
+	if [ -d "src/Monolith.FireWall.WebUI/Pages" ]; then \
 		mkdir -p $(CURDIR)/debian/tmp/opt/monolith-firewall/webui/Pages; \
-		cp -r src/Monolith.FireWall.WebUI/Pages/Firewall $(CURDIR)/debian/tmp/opt/monolith-firewall/webui/Pages/; \
+		cp -r src/Monolith.FireWall.WebUI/Pages/* $(CURDIR)/debian/tmp/opt/monolith-firewall/webui/Pages/ 2>/dev/null || true; \
 	fi
 
 	# Build CLI tool
@@ -120,9 +120,8 @@ override_dh_builddeb:
 	chmod 755 $(CURDIR)/debian/monolith-firewall/DEBIAN
 	dh_builddeb
 
-override_dh_auto_clean:
-	dotnet clean || true
-	rm -rf $(CURDIR)/debian/tmp
+clean:
+	sudo dh_clean
 
 override_dh_auto_test:
 	# Skip tests for now

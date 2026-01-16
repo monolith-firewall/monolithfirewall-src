@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using System.IO;
+using Monolith.FireWall.Platform.Validation;
 using Monolith.FireWall.Common.Services;
 using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Platform;
@@ -14,6 +15,7 @@ public sealed class FirewallApplyManager
     private readonly FirewallAliasManager _aliasManager;
     private readonly FirewallNatManager _natManager;
     private readonly FirewallNatSettingsManager _natSettingsManager;
+    private readonly FirewallInterfaceSettingsManager _interfaceSettingsManager;
     private readonly FirewallRulesManager _rulesManager;
     private readonly FirewallDefaultsManager _defaultsManager;
     private readonly InterfaceAssignmentStore _interfaceStore;
@@ -31,6 +33,7 @@ public sealed class FirewallApplyManager
         FirewallNatSettingsManager natSettingsManager,
         FirewallRulesManager rulesManager,
         FirewallDefaultsManager defaultsManager,
+        FirewallInterfaceSettingsManager interfaceSettingsManager,
         InterfaceAssignmentStore interfaceStore,
         PlatformCommandRunner commandRunner)
     {
@@ -39,6 +42,7 @@ public sealed class FirewallApplyManager
         _natSettingsManager = natSettingsManager;
         _rulesManager = rulesManager;
         _defaultsManager = defaultsManager;
+        _interfaceSettingsManager = interfaceSettingsManager;
         _interfaceStore = interfaceStore;
         _commandRunner = commandRunner;
         _loggingManager = LoggingManager.Instance;
@@ -308,6 +312,7 @@ public sealed class FirewallApplyManager
         var natRules = await _natManager.ListRulesAsync();
         var natSettings = await _natSettingsManager.GetAsync();
         var defaults = await _defaultsManager.GetAsync();
+        var interfaceSettings = await _interfaceSettingsManager.GetAllAsync();
         var effectiveRules = await _rulesManager.GetEffectiveRulesAsync(defaults);
         var assignments = await _interfaceStore.GetAssignmentsAsync();
 
@@ -346,7 +351,7 @@ public sealed class FirewallApplyManager
             AppendNatTable(builder, "ip6", ipv6Rules, aliases, natSettings, assignments, warnings);
         }
 
-        AppendFilterTable(builder, effectiveRules, defaults, assignments, aliases, warnings);
+        AppendFilterTable(builder, effectiveRules, defaults, interfaceSettings, assignments, aliases, warnings);
 
         // Write to backup location first (we'll copy to /etc/nftables.conf in ApplyAsync)
         var backupConfigPath = "/var/lib/monolith-firewall/firewall.nft";
@@ -567,6 +572,7 @@ public sealed class FirewallApplyManager
         StringBuilder builder,
         List<FirewallRuleView> rules,
         FirewallDefaultsView defaults,
+        List<FirewallInterfaceSettingsEntity> interfaceSettings,
         List<InterfaceAssignmentEntity> assignments,
         List<FirewallAliasView> aliases,
         List<string> warnings)
@@ -596,11 +602,53 @@ public sealed class FirewallApplyManager
             builder.AppendLine("  }");
         }
 
-        foreach (var systemSet in aliasSets.SystemSets)
+        // Always ensure system sets are present if we need them for blocking
+        var systemSets = aliasSets.SystemSets.ToList();
+        if (!systemSets.Any(s => s.Name == "sys_rfc1918_v4"))
+        {
+            systemSets.Add(new RuleAliasSetDefinition
+            {
+                Name = "sys_rfc1918_v4",
+                Type = "ipv4_addr",
+                Values = new List<string> { "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16" },
+                Family = "ip"
+            });
+        }
+        if (!systemSets.Any(s => s.Name == "sys_reserved_v4"))
+        {
+            systemSets.Add(new RuleAliasSetDefinition
+            {
+                Name = "sys_reserved_v4",
+                Type = "ipv4_addr",
+                Values = new List<string> { "0.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "192.0.0.0/24", "192.0.2.0/24", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4" },
+                Family = "ip"
+            });
+        }
+        if (!systemSets.Any(s => s.Name == "sys_rfc4193_v6"))
+        {
+            systemSets.Add(new RuleAliasSetDefinition
+            {
+                Name = "sys_rfc4193_v6",
+                Type = "ipv6_addr",
+                Values = new List<string> { "fc00::/7" },
+                Family = "ip6"
+            });
+        }
+        if (!systemSets.Any(s => s.Name == "sys_reserved_v6"))
+        {
+            systemSets.Add(new RuleAliasSetDefinition
+            {
+                Name = "sys_reserved_v6",
+                Type = "ipv6_addr",
+                Values = new List<string> { "::/128", "::1/128", "::ffff:0:0/96", "100::/64", "2001:db8::/32", "2001:10::/28", "fe80::/10", "ff00::/8" },
+                Family = "ip6"
+            });
+        }
+
+        foreach (var systemSet in systemSets)
         {
             builder.AppendLine($"  set {systemSet.Name} {{");
             builder.AppendLine($"    type {systemSet.Type};");
-            // System sets always contain CIDR ranges, so add flags interval
             builder.AppendLine("    flags interval;");
             builder.AppendLine("    elements = { " + string.Join(", ", systemSet.Values) + " }");
             builder.AppendLine("  }");
@@ -661,10 +709,6 @@ public sealed class FirewallApplyManager
             }
         }
 
-        // NEW connections from WAN to LAN are NOT automatically allowed
-        // Port forward rules in NAT prerouting will create specific exceptions
-        // This prevents unsolicited WAN→LAN connections (SECURITY FIX)
-
         // Allow forwarding between LAN interfaces (for internal routing)
         if (lanInterfaces.Count > 1)
         {
@@ -701,7 +745,30 @@ public sealed class FirewallApplyManager
 
         foreach (var assignment in assignments)
         {
+            var settings = interfaceSettings.FirstOrDefault(s => s.InterfaceName.Equals(assignment.InterfaceName, StringComparison.OrdinalIgnoreCase));
+            
+            // Determine effective settings (specific > default > fallback)
+            var defaultAction = settings?.DefaultAction ?? GetDefaultAction(assignment.Role, defaults);
+            var blockReserved = settings?.BlockReserved ?? (assignment.Role == InterfaceRole.Wan && defaults.BlockReservedOnWan);
+            var blockBogon = settings?.BlockBogon ?? false;
+
             builder.AppendLine($"  chain input_{assignment.InterfaceName} {{");
+            
+            // Block Reserved (RFC1918) networks on WAN
+            if (blockReserved)
+            {
+                builder.AppendLine("    ip saddr @sys_rfc1918_v4 drop comment \"Block private networks (RFC 1918)\"");
+                builder.AppendLine("    ip saddr @sys_reserved_v4 drop comment \"Block reserved networks\"");
+                builder.AppendLine("    ip6 saddr @sys_rfc4193_v6 drop comment \"Block ULA networks (RFC 4193)\"");
+                builder.AppendLine("    ip6 saddr @sys_reserved_v6 drop comment \"Block reserved IPv6 networks\"");
+            }
+
+            // Block Bogon networks (not fully implemented list yet, re-using reserved for now as placeholder)
+            if (blockBogon)
+            {
+                // Placeholder for bogon blocking
+            }
+
             var interfaceRules = rules
                 .Where(r => r.Interface.Equals(assignment.InterfaceName, StringComparison.OrdinalIgnoreCase))
                 .Where(r => r.Direction == "in" && r.Enabled)
@@ -718,7 +785,6 @@ public sealed class FirewallApplyManager
                 }
             }
 
-            var defaultAction = GetDefaultAction(assignment.Role, defaults);
             builder.AppendLine($"    {BuildTerminalAction(defaultAction)}");
             builder.AppendLine("  }");
 
@@ -769,6 +835,7 @@ public sealed class FirewallApplyManager
 
     private List<string> BuildFilterRule(FirewallRuleView rule, RuleAliasSetCollection aliasSets, List<string> warnings)
     {
+        var family = (rule.AddressFamily ?? "ipv4").ToLowerInvariant();
         var lines = new List<string>();
 
         var baseMatch = new StringBuilder();
@@ -784,7 +851,7 @@ public sealed class FirewallApplyManager
             }
         }
 
-        var addressQualifier = rule.AddressFamily == "ipv6" ? "ip6" : "ip";
+        var addressQualifier = family == "ipv6" ? "ip6" : "ip";
 
         var sourceMatch = BuildRuleAddressMatch(addressQualifier, "saddr", rule.SourceType, rule.SourceValue, aliasSets, warnings, rule);
         if (!string.IsNullOrWhiteSpace(sourceMatch))
@@ -870,6 +937,18 @@ public sealed class FirewallApplyManager
         {
             warnings.Add($"Rule on {rule.Interface}: {direction} value is required");
             return string.Empty;
+        }
+
+        // Enforce address family alignment for direct addresses/networks
+        if (type == "address")
+        {
+            var family = (rule.AddressFamily ?? "ipv4").ToLowerInvariant();
+            var addressFamily = PlatformValidators.GetAddressFamily(value);
+            if (addressFamily != null && addressFamily != family && family != "inet")
+            {
+                warnings.Add($"Rule on {rule.Interface}: {direction} {value} is {addressFamily} but rule family is {family}");
+                return string.Empty;
+            }
         }
 
         if (type == "alias")

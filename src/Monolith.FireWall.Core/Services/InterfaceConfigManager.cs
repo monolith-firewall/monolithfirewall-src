@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Platform;
 using Monolith.FireWall.Platform.Models;
@@ -911,57 +912,28 @@ public sealed class InterfaceConfigManager
     {
         var lines = new List<string>
         {
-            $"# {assignment.Name} ({assignment.Type})"
+            $"# {assignment.Name} ({assignment.Type})",
+            $"auto {assignment.InterfaceName}"
         };
 
-        var method = assignment.IpMode switch
+        var hasIpv4 = assignment.IpMode != InterfaceIpMode.None;
+        var hasIpv6 = assignment.Ipv6Mode != InterfaceIpMode.None;
+
+        if (!hasIpv4 && !hasIpv6)
         {
-            InterfaceIpMode.Dhcp => "dhcp",
-            InterfaceIpMode.Static => "static",
-            _ => "manual"
-        };
-
-        lines.Add($"auto {assignment.InterfaceName}");
-        lines.Add($"iface {assignment.InterfaceName} inet {method}");
-
-        if (assignment.IpMode == InterfaceIpMode.Static && !string.IsNullOrWhiteSpace(assignment.IpAddress))
-        {
-            lines.Add($"  address {assignment.IpAddress}");
-            if (assignment.PrefixLength.HasValue)
-            {
-                lines.Add($"  netmask {PrefixToNetmask(assignment.PrefixLength.Value)}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(assignment.Gateway))
-            {
-                lines.Add($"  gateway {assignment.Gateway}");
-            }
+            // Preserve interface definition for link-layer settings even if no IP family is configured
+            lines.AddRange(BuildIpv4Stanza(assignment, dnsServers, forceManual: true));
+            return lines;
         }
 
-        if (assignment.IpMode != InterfaceIpMode.None && dnsServers != null && dnsServers.Count > 0)
+        if (hasIpv4)
         {
-            lines.Add($"  dns-nameservers {string.Join(' ', dnsServers)}");
+            lines.AddRange(BuildIpv4Stanza(assignment, dnsServers));
         }
 
-        if (assignment.Type == InterfaceAssignmentType.Vlan && !string.IsNullOrWhiteSpace(assignment.ParentInterface))
+        if (hasIpv6)
         {
-            lines.Add($"  vlan-raw-device {assignment.ParentInterface}");
-        }
-
-        if (assignment.Type == InterfaceAssignmentType.Bridge)
-        {
-            var ports = (assignment.BridgePorts ?? string.Empty)
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (ports.Length > 0)
-            {
-                lines.Add($"  bridge_ports {string.Join(' ', ports)}");
-            }
-
-            lines.Add($"  bridge_stp {(assignment.BridgeStp ? "on" : "off")}");
-            if (assignment.BridgeForwardDelay.HasValue)
-            {
-                lines.Add($"  bridge_fd {assignment.BridgeForwardDelay.Value}");
-            }
+            lines.AddRange(BuildIpv6Stanza(assignment, dnsServers));
         }
 
         return lines;
@@ -987,6 +959,148 @@ public sealed class InterfaceConfigManager
         }
 
         return string.Join('.', bytes);
+    }
+
+    private static List<string> BuildIpv4Stanza(
+        InterfaceAssignmentEntity assignment,
+        IReadOnlyList<string>? dnsServers,
+        bool forceManual = false)
+    {
+        var lines = new List<string>();
+        var method = forceManual
+            ? "manual"
+            : assignment.IpMode switch
+            {
+                InterfaceIpMode.Dhcp => "dhcp",
+                InterfaceIpMode.Static => "static",
+                _ => "manual"
+            };
+
+        lines.Add($"iface {assignment.InterfaceName} inet {method}");
+
+        if (assignment.IpMode == InterfaceIpMode.Static && !string.IsNullOrWhiteSpace(assignment.IpAddress))
+        {
+            lines.Add($"  address {assignment.IpAddress}");
+            if (assignment.PrefixLength.HasValue)
+            {
+                lines.Add($"  netmask {PrefixToNetmask(assignment.PrefixLength.Value)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(assignment.Gateway))
+            {
+                lines.Add($"  gateway {assignment.Gateway}");
+            }
+        }
+
+        var ipv4Dns = FilterDns(dnsServers, System.Net.Sockets.AddressFamily.InterNetwork);
+        if (!forceManual && assignment.IpMode != InterfaceIpMode.None && ipv4Dns.Count > 0)
+        {
+            lines.Add($"  dns-nameservers {string.Join(' ', ipv4Dns)}");
+        }
+
+        AppendLinkLayerOptions(lines, assignment);
+        return lines;
+    }
+
+    private static List<string> BuildIpv6Stanza(
+        InterfaceAssignmentEntity assignment,
+        IReadOnlyList<string>? dnsServers)
+    {
+        var lines = new List<string>();
+        var method = assignment.Ipv6Mode switch
+        {
+            InterfaceIpMode.Dhcp => "dhcp",
+            InterfaceIpMode.Static => "static",
+            _ => "manual"
+        };
+
+        lines.Add($"iface {assignment.InterfaceName} inet6 {method}");
+
+        if (assignment.Ipv6Mode == InterfaceIpMode.Static && !string.IsNullOrWhiteSpace(assignment.Ipv6Address))
+        {
+            lines.Add($"  address {assignment.Ipv6Address}");
+            if (assignment.Ipv6PrefixLength.HasValue)
+            {
+                lines.Add($"  netmask {assignment.Ipv6PrefixLength.Value}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(assignment.Ipv6Gateway))
+            {
+                lines.Add($"  gateway {assignment.Ipv6Gateway}");
+            }
+        }
+
+        if (assignment.Ipv6AcceptRa)
+        {
+            lines.Add("  accept_ra 1");
+        }
+
+        if (assignment.Ipv6Autoconf)
+        {
+            lines.Add("  autoconf 1");
+        }
+
+        var ipv6Dns = FilterDns(dnsServers, System.Net.Sockets.AddressFamily.InterNetworkV6);
+        if (assignment.Ipv6Mode != InterfaceIpMode.None && ipv6Dns.Count > 0)
+        {
+            lines.Add($"  dns-nameservers {string.Join(' ', ipv6Dns)}");
+        }
+
+        AppendLinkLayerOptions(lines, assignment);
+        return lines;
+    }
+
+    private static void AppendLinkLayerOptions(List<string> lines, InterfaceAssignmentEntity assignment)
+    {
+        if (assignment.Type == InterfaceAssignmentType.Vlan && !string.IsNullOrWhiteSpace(assignment.ParentInterface))
+        {
+            lines.Add($"  vlan-raw-device {assignment.ParentInterface}");
+        }
+
+        if (assignment.Type == InterfaceAssignmentType.Bridge)
+        {
+            var ports = (assignment.BridgePorts ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (ports.Length > 0)
+            {
+                lines.Add($"  bridge_ports {string.Join(' ', ports)}");
+            }
+
+            lines.Add($"  bridge_stp {(assignment.BridgeStp ? "on" : "off")}");
+            if (assignment.BridgeForwardDelay.HasValue)
+            {
+                lines.Add($"  bridge_fd {assignment.BridgeForwardDelay.Value}");
+            }
+        }
+    }
+
+    private static List<string> FilterDns(IReadOnlyList<string>? dnsServers, System.Net.Sockets.AddressFamily family)
+    {
+        var results = new List<string>();
+        if (dnsServers == null || dnsServers.Count == 0)
+        {
+            return results;
+        }
+
+        foreach (var server in dnsServers)
+        {
+            if (string.IsNullOrWhiteSpace(server))
+            {
+                continue;
+            }
+
+            if (!IPAddress.TryParse(server, out var ip))
+            {
+                continue;
+            }
+
+            if (ip.AddressFamily == family)
+            {
+                results.Add(server);
+            }
+        }
+
+        return results;
     }
 
     private static async Task<string?> BackupIfExistsAsync(string path, CancellationToken cancellationToken)

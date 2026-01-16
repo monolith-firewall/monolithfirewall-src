@@ -5,9 +5,14 @@ var SettingsWebUI = {
 
     init: function() {
         console.log('Initializing Web UI Settings tab...');
-        this.loadInterfaces();
-        this.render();
-        this.loadSettings();
+    },
+
+    renderPage: function() {
+        console.log('Rendering Web UI Settings tab...');
+        this.renderStructure();
+        this.loadInterfaces().then(() => {
+            this.loadSettings();
+        });
     },
 
     loadInterfaces: async function() {
@@ -43,8 +48,10 @@ var SettingsWebUI = {
         }
     },
 
-    render: function() {
+    renderStructure: function() {
         const container = $('#webui-tab-content');
+        if (!container.length) return;
+
         container.html(`
             <form id="webui-settings-form">
                 <div class="row">
@@ -134,89 +141,110 @@ var SettingsWebUI = {
         });
 
         $('#http-port, #https-port').on('change', () => {
-            this.checkPortChange();
+            $('#port-change-warning').show();
         });
-
-        $(document).off('click', '#add-binding-address');
-        $(document).on('click', '#add-binding-address', () => this.addBindingAddress());
-
-        $(document).off('click', '.binding-remove-btn');
-        $(document).on('click', '.binding-remove-btn', (e) => {
-            $(e.currentTarget).closest('.binding-address-row').remove();
+        
+        $('#add-binding-address').on('click', () => {
+            this.addBindingAddress('');
         });
     },
 
     loadSettings: async function() {
         try {
-            const response = await Monolith.API.get('/webui/settings');
+            const response = await Monolith.API.get('/system/settings/webui');
             const data = response.Data || response.data || {};
             this.settings = {
-                httpPort: data.httpPort || data.HttpPort || 80,
-                httpsPort: data.httpsPort || data.HttpsPort || 443,
-                bindToAllInterfaces: data.bindToAllInterfaces !== false,
-                bindingAddresses: data.bindingAddresses || data.BindingAddresses || []
+                httpPort: data.HttpPort || data.httpPort || 80,
+                httpsPort: data.HttpsPort || data.httpsPort || 443,
+                bindAll: data.BindAll !== false,
+                bindingAddresses: data.BindingAddresses || []
             };
         } catch (error) {
             console.error('Failed to load WebUI settings:', error);
             this.settings = {
                 httpPort: 80,
                 httpsPort: 443,
-                bindToAllInterfaces: true,
+                bindAll: true,
                 bindingAddresses: []
             };
-            Monolith.UI.toast('Failed to load WebUI settings', 'error');
         }
 
         $('#http-port').val(this.settings.httpPort);
         $('#https-port').val(this.settings.httpsPort);
-        $('#bind-all-interfaces').prop('checked', this.settings.bindToAllInterfaces);
-        $('#binding-addresses-section').toggle(!this.settings.bindToAllInterfaces);
+        $('#bind-all-interfaces').prop('checked', this.settings.bindAll).trigger('change');
+        
         this.renderBindingAddresses(this.settings.bindingAddresses);
-        this.updateCurrentStatus();
+        this.updateStatusDisplay();
+    },
+
+    updateStatusDisplay: function() {
+        $('#current-http-port').text(this.settings.httpPort);
+        $('#current-https-port').text(this.settings.httpsPort);
+        $('#current-binding').text(this.settings.bindAll ? 'All Interfaces' : `${this.settings.bindingAddresses.length} addresses`);
+    },
+
+    renderBindingAddresses: function(addresses) {
+        const container = $('#binding-addresses-list');
+        if (!container.length) return;
+        container.empty();
+        
+        if (addresses && addresses.length > 0) {
+            addresses.forEach(addr => this.addBindingAddress(addr));
+        } else if (!this.settings.bindAll) {
+            this.addBindingAddress('');
+        }
+    },
+
+    addBindingAddress: function(value) {
+        const container = $('#binding-addresses-list');
+        if (!container.length) return;
+
+        const row = $(`
+            <div class="input-group mb-2">
+                <select class="form-select binding-address-input">
+                    <option value="">Select Address...</option>
+                </select>
+                <button class="btn btn-outline-danger remove-binding-btn" type="button">Remove</button>
+            </div>
+        `);
+
+        const select = row.find('select');
+        this.availableInterfaces.forEach(iface => {
+            select.append(`<option value="${iface.ip}" ${iface.ip === value ? 'selected' : ''}>${iface.label}</option>`);
+        });
+
+        row.find('.remove-binding-btn').on('click', function() {
+            $(this).closest('.input-group').remove();
+        });
+
+        container.append(row);
+    },
+
+    getBindingAddresses: function() {
+        const addresses = [];
+        $('.binding-address-input').each(function() {
+            const val = $(this).val();
+            if (val) addresses.push(val);
+        });
+        return addresses;
     },
 
     saveSettings: async function() {
-        const httpPort = parseInt($('#http-port').val()) || 80;
-        const httpsPort = parseInt($('#https-port').val()) || 443;
-        const bindAll = $('#bind-all-interfaces').is(':checked');
-        const bindingAddresses = bindAll ? [] : this.getBindingAddresses();
-
-        // Validate ports
-        if (httpPort < 1 || httpPort > 65535) {
-            Monolith.UI.toast('HTTP port must be between 1 and 65535', 'error');
-            return;
-        }
-
-        if (httpsPort < 1 || httpsPort > 65535) {
-            Monolith.UI.toast('HTTPS port must be between 1 and 65535', 'error');
-            return;
-        }
-
         const payload = {
-            httpPort: httpPort,
-            httpsPort: httpsPort,
-            bindToAllInterfaces: bindAll,
-            bindingAddresses: bindingAddresses
+            httpPort: parseInt($('#http-port').val()),
+            httpsPort: parseInt($('#https-port').val()),
+            bindAll: $('#bind-all-interfaces').is(':checked'),
+            bindingAddresses: this.getBindingAddresses()
         };
 
         try {
-            const response = await Monolith.API.post('/webui/settings', payload);
+            const response = await Monolith.API.post('/system/settings/webui', payload);
             if (!(response.Success || response.success)) {
                 throw new Error(response.Error || response.error || 'Failed to save settings');
             }
 
-            const updateResult = response.Data || response.data || {};
-            if (updateResult.requiresRestart || updateResult.RequiresRestart) {
-                // Show confirmation for restart
-                if (confirm('WebUI settings have been saved. The WebUI service needs to be restarted for changes to take effect. Restart now?')) {
-                    await this.restartService();
-                } else {
-                    Monolith.UI.toast('Settings saved. Restart WebUI service to apply changes.', 'info');
-                }
-            } else {
-                Monolith.UI.toast('WebUI settings saved successfully', 'success');
-            }
-
+            Monolith.UI.toast('WebUI settings saved. Re-applying configuration...', 'success');
+            $('#port-change-warning').hide();
             await this.loadSettings();
         } catch (error) {
             console.error('Failed to save WebUI settings:', error);
@@ -224,144 +252,9 @@ var SettingsWebUI = {
         }
     },
 
-    restartService: async function() {
-        try {
-            Monolith.UI.toast('Restarting WebUI service...', 'info');
-            const response = await Monolith.API.post('/webui/service/restart');
-            if (response.Success || response.success) {
-                Monolith.UI.toast('WebUI service restarted successfully', 'success');
-                // Give it a moment, then reload page
-                setTimeout(() => {
-                    window.location.reload();
-                }, 2000);
-            } else {
-                throw new Error(response.Error || response.error || 'Failed to restart service');
-            }
-        } catch (error) {
-            console.error('Failed to restart WebUI service:', error);
-            Monolith.UI.toast('Failed to restart WebUI service', 'error');
-        }
-    },
-
     resetSettings: function() {
-        if (confirm('Reset WebUI settings to defaults (HTTP=80, HTTPS=443, all interfaces)?')) {
-            this.settings = {
-                httpPort: 80,
-                httpsPort: 443,
-                bindToAllInterfaces: true,
-                bindingAddresses: []
-            };
-            $('#http-port').val(80);
-            $('#https-port').val(443);
-            $('#bind-all-interfaces').prop('checked', true);
-            $('#binding-addresses-section').hide();
-            this.renderBindingAddresses([]);
-            Monolith.UI.toast('WebUI settings reset to defaults', 'info');
-        }
-    },
-
-    checkPortChange: function() {
-        const httpPort = parseInt($('#http-port').val()) || 80;
-        const httpsPort = parseInt($('#https-port').val()) || 443;
-        const currentHttp = this.settings.httpPort || 80;
-        const currentHttps = this.settings.httpsPort || 443;
-
-        if (httpPort !== currentHttp || httpsPort !== currentHttps) {
-            $('#port-change-warning').show();
-        } else {
-            $('#port-change-warning').hide();
-        }
-    },
-
-    renderBindingAddresses: function(addresses) {
-        const container = $('#binding-addresses-list');
-        const entries = Array.isArray(addresses) ? addresses.filter(a => a) : [];
-        const initial = entries.length > 0 ? entries : [''];
-        const rows = initial.map(value => this.buildBindingRow(value)).join('');
-        container.html(rows);
-        
-        // Bind select change handlers
-        container.find('.binding-address-select').on('change', function() {
-            const val = $(this).val();
-            const input = $(this).siblings('.binding-address-input');
-            if (val === 'custom') {
-                input.show().focus();
-            } else if (val) {
-                input.hide();
-                input.val(val);
-            } else {
-                input.hide();
-                input.val('');
-            }
-        });
-    },
-
-    buildBindingRow: function(value) {
-        const safeValue = value ? value.toString() : '';
-        const isCustom = safeValue && !this.availableInterfaces.find(i => i.ip === safeValue);
-        const options = this.availableInterfaces.map(iface => 
-            `<option value="${iface.ip}" ${iface.ip === safeValue ? 'selected' : ''}>${iface.label}</option>`
-        ).join('');
-        
-        return `
-            <div class="input-group binding-address-row">
-                <select class="form-select binding-address-select">
-                    <option value="">Select IP address...</option>
-                    ${options}
-                    <option value="custom" ${isCustom ? 'selected' : ''}>Custom IP...</option>
-                </select>
-                <input type="text" class="form-control binding-address-input" value="${isCustom ? safeValue : ''}" 
-                       placeholder="e.g., 192.168.1.1" 
-                       style="${isCustom ? '' : 'display: none;'}">
-                <button class="btn btn-outline-danger binding-remove-btn" type="button">Remove</button>
-            </div>
-        `;
-    },
-
-    addBindingAddress: function() {
-        const container = $('#binding-addresses-list');
-        container.append(this.buildBindingRow(''));
-        
-        // Handle select change for all selects
-        container.find('.binding-address-select').off('change').on('change', function() {
-            const val = $(this).val();
-            const input = $(this).siblings('.binding-address-input');
-            if (val === 'custom') {
-                input.show().focus();
-            } else if (val) {
-                input.hide();
-                input.val(val);
-            } else {
-                input.hide();
-                input.val('');
-            }
-        });
-    },
-
-    getBindingAddresses: function() {
-        const values = [];
-        $('#binding-addresses-list .binding-address-row').each((_, row) => {
-            const select = $(row).find('.binding-address-select');
-            const input = $(row).find('.binding-address-input');
-            let value = select.val();
-            if (value === 'custom') {
-                value = input.val();
-            }
-            if (value && value.trim()) {
-                values.push(value.trim());
-            }
-        });
-        return values;
-    },
-
-    updateCurrentStatus: function() {
-        $('#current-http-port').text(this.settings.httpPort || 80);
-        $('#current-https-port').text(this.settings.httpsPort || 443);
-        if (this.settings.bindToAllInterfaces) {
-            $('#current-binding').text('All interfaces');
-        } else {
-            const count = this.settings.bindingAddresses?.length || 0;
-            $('#current-binding').text(count > 0 ? `${count} address(es)` : 'Not configured');
+        if (confirm('Reset WebUI settings to defaults?')) {
+            this.loadSettings();
         }
     }
 };

@@ -12,6 +12,7 @@ public class NamedPipeListener
     private readonly ILogger _logger;
     private readonly ModuleRegistry _moduleRegistry;
     private readonly Services.Platform.PlatformExecutor _platformExecutor;
+    private readonly PackageStateStore _packageStateStore;
     private readonly string _pipeName;
     private readonly CancellationTokenSource _cts;
     private Task? _listenerTask;
@@ -20,11 +21,13 @@ public class NamedPipeListener
         ILogger logger,
         ModuleRegistry moduleRegistry,
         Services.Platform.PlatformExecutor platformExecutor,
+        PackageStateStore packageStateStore,
         string pipeName = "monolith-core")
     {
         _logger = logger;
         _moduleRegistry = moduleRegistry;
         _platformExecutor = platformExecutor;
+        _packageStateStore = packageStateStore;
         _pipeName = pipeName;
         _cts = new CancellationTokenSource();
     }
@@ -222,6 +225,11 @@ public class NamedPipeListener
                         // Core system actions
                         switch (coreAction)
                         {
+                            case "packages.list":
+                                var installed = await _packageStateStore.GetPackagesAsync();
+                                response = new ApiResponse(true, installed, null);
+                                break;
+
                             case "get-menus":
                                 var menusWithPackage = _moduleRegistry.GetAllModules()
                                     .SelectMany(m => m.Module.GetMenuItems().Select(menu => new

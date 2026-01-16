@@ -33,13 +33,19 @@ public class AuthenticationMiddleware
             return;
         }
         
-        if (path == "/" || 
-            path.StartsWith("/index.html") || 
+        if (path == "/" ||
+            path.StartsWith("/index.html") ||
+            path.StartsWith("/login") ||
+            path.StartsWith("/setup") ||
             path.StartsWith("/api/auth/login") ||
+            path.StartsWith("/api/cms/") ||
+            path.StartsWith("/api/ui/") ||
             path.StartsWith("/css/") ||
             path.StartsWith("/js/") ||
             path.StartsWith("/assets/") ||
-            path.StartsWith("/pages/"))
+            path.StartsWith("/_content/") ||
+            path.StartsWith("/pages/") ||
+            path.StartsWith("/favicon"))
         {
             await _next(context);
             return;

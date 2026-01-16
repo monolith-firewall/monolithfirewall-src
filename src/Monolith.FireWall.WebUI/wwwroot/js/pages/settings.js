@@ -5,12 +5,22 @@ var Settings = {
 
     init: function() {
         console.log('Initializing Settings...');
-        this.render();
-        this.loadTab('system');
     },
 
-    render: function() {
+    renderPage: function() {
+        console.log('Rendering Settings page...');
+        this.renderStructure();
+        
+        // Small delay to ensure sub-scripts are parsed
+        setTimeout(() => {
+            this.loadTab(this.currentTab || 'system', true);
+        }, 100);
+    },
+
+    renderStructure: function() {
         const container = $('#settings-container');
+        if (!container.length) return;
+
         container.html(`
             <div class="container-fluid">
                 <h1 class="mb-4">Settings</h1>
@@ -36,15 +46,6 @@ var Settings = {
                             Web UI
                         </button>
                     </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced-pane" 
-                                type="button" role="tab" aria-controls="advanced-pane" aria-selected="false">
-                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
-                                <path d="M8 1a1 1 0 0 1 1 1v1.05a5.5 5.5 0 0 1 2.243.93l.743-.743a1 1 0 0 1 1.414 1.414l-.743.743a5.5 5.5 0 0 1 .93 2.243H14a1 1 0 1 1 0 2h-1.05a5.5 5.5 0 0 1-.93 2.243l.743.743a1 1 0 0 1-1.414 1.414l-.743-.743a5.5 5.5 0 0 1-2.243.93V14a1 1 0 1 1-2 0v-1.05a5.5 5.5 0 0 1-2.243-.93l-.743.743a1 1 0 1 1-1.414-1.414l.743-.743a5.5 5.5 0 0 1-.93-2.243H2a1 1 0 1 1 0-2h1.05a5.5 5.5 0 0 1 .93-2.243l-.743-.743a1 1 0 1 1 1.414-1.414l.743.743A5.5 5.5 0 0 1 7 3.05V2a1 1 0 0 1 1-1zm0 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
-                            </svg>
-                            Advanced
-                        </button>
-                    </li>
                 </ul>
 
                 <!-- Tab Content -->
@@ -54,9 +55,6 @@ var Settings = {
                     </div>
                     <div class="tab-pane fade" id="webui-pane" role="tabpanel" aria-labelledby="webui-tab">
                         <div id="webui-tab-content"></div>
-                    </div>
-                    <div class="tab-pane fade" id="advanced-pane" role="tabpanel" aria-labelledby="advanced-tab">
-                        <div id="advanced-tab-content"></div>
                     </div>
                 </div>
             </div>
@@ -69,14 +67,12 @@ var Settings = {
                 this.loadTab('system');
             } else if (target === '#webui-pane') {
                 this.loadTab('webui');
-            } else if (target === '#advanced-pane') {
-                this.loadTab('advanced');
             }
         });
     },
 
-    loadTab: function(tabName) {
-        if (this.currentTab === tabName && this.tabs[tabName]) {
+    loadTab: function(tabName, forceRender = false, retryCount = 0) {
+        if (!forceRender && this.currentTab === tabName && this.tabs[tabName]) {
             return; // Already loaded
         }
 
@@ -85,17 +81,29 @@ var Settings = {
         // Load tab module if not already loaded
         if (!this.tabs[tabName]) {
             if (tabName === 'system') {
-                this.tabs[tabName] = SettingsSystem;
+                this.tabs[tabName] = typeof SettingsSystem !== 'undefined' ? SettingsSystem : null;
             } else if (tabName === 'webui') {
-                this.tabs[tabName] = SettingsWebUI;
-            } else if (tabName === 'advanced') {
-                this.tabs[tabName] = SettingsAdvanced;
+                this.tabs[tabName] = typeof SettingsWebUI !== 'undefined' ? SettingsWebUI : null;
             }
         }
 
-        // Initialize tab
-        if (this.tabs[tabName] && typeof this.tabs[tabName].init === 'function') {
-            this.tabs[tabName].init();
+        // Initialize and render tab
+        const tab = this.tabs[tabName];
+        if (tab) {
+            if (!tab.isInitialized && typeof tab.init === 'function') {
+                tab.init();
+                tab.isInitialized = true;
+            }
+            if (typeof tab.renderPage === 'function') {
+                tab.renderPage();
+            } else if (typeof tab.render === 'function') {
+                tab.render();
+            }
+        } else if (retryCount < 5) {
+            console.warn(`Tab module ${tabName} not found, retrying (${retryCount + 1}/5)...`);
+            setTimeout(() => {
+                this.loadTab(tabName, forceRender, retryCount + 1);
+            }, 200);
         }
     }
 };

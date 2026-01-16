@@ -2,9 +2,11 @@ var Rules = {
     interfaces: [],
     rules: [],
     defaults: null,
+    interfaceSettings: [],
     aliases: [],
     addressAliases: [],
     portAliases: [],
+    schedules: [],
     systemSets: [
         { value: 'rfc1918', label: 'RFC1918 (IPv4)' },
         { value: 'iana_reserved', label: 'IANA Reserved (IPv4)' },
@@ -14,6 +16,10 @@ var Rules = {
 
     init: function() {
         console.log('Initializing Firewall Rules page...');
+    },
+
+    renderPage: function() {
+        console.log('Rendering Firewall Rules page...');
         this.attachEventHandlers();
         this.loadData();
     },
@@ -22,6 +28,8 @@ var Rules = {
         await Promise.all([
             this.loadInterfaces(),
             this.loadDefaults(),
+            this.loadInterfaceSettings(),
+            this.loadSchedules(),
             this.loadRules(),
             this.loadAliases()
         ]);
@@ -33,8 +41,9 @@ var Rules = {
             const response = await Monolith.API.get('/interfaces/assignments');
             if (response.Success || response.success) {
                 const data = response.Data || response.data || {};
-                const assigned = data.Assigned || data.assigned || [];
-                this.interfaces = assigned.map(i => this.normalizeInterface(i));
+                const assigned = data.Assigned || data.assigned || data || [];
+                const items = Array.isArray(assigned) ? assigned : [];
+                this.interfaces = items.map(i => this.normalizeInterface(i));
             } else {
                 this.interfaces = [];
             }
@@ -44,16 +53,43 @@ var Rules = {
         }
     },
 
+    loadSchedules: async function() {
+        try {
+            const response = await Monolith.API.get('/firewall/schedules');
+            if (response.success || response.Success) {
+                const data = response.data || response.Data || {};
+                const items = data.items || data || [];
+                this.schedules = Array.isArray(items) ? items : [];
+            }
+        } catch (error) {
+            console.warn('Failed to load schedules:', error);
+        }
+    },
+
     loadDefaults: async function() {
         try {
             const response = await Monolith.API.get('/firewall/defaults');
             if (response.Success || response.success) {
                 this.defaults = response.Data || response.data || null;
-                this.renderDefaults();
             }
         } catch (error) {
             console.warn('Failed to load firewall defaults:', error);
             this.defaults = null;
+        }
+    },
+
+    loadInterfaceSettings: async function() {
+        try {
+            const response = await Monolith.API.get('/firewall/interface-settings');
+            if (response.Success || response.success) {
+                const data = response.Data || response.data || [];
+                this.interfaceSettings = Array.isArray(data) ? data : [];
+            } else {
+                this.interfaceSettings = [];
+            }
+        } catch (error) {
+            console.warn('Failed to load interface settings:', error);
+            this.interfaceSettings = [];
         }
     },
 
@@ -78,7 +114,8 @@ var Rules = {
             if (response.Success || response.success) {
                 const data = response.Data || response.data || {};
                 const items = data.items || data || [];
-                this.aliases = items.map(a => this.normalizeAlias(a));
+                const aliasArray = Array.isArray(items) ? items : [];
+                this.aliases = aliasArray.map(a => this.normalizeAlias(a));
             } else {
                 this.aliases = [];
             }
@@ -114,7 +151,7 @@ var Rules = {
             interface: rule.Interface || rule.interface,
             direction: rule.Direction || rule.direction,
             action: rule.Action || rule.action,
-            addressFamily: rule.AddressFamily || rule.addressFamily,
+            addressFamily: rule.AddressFamily || rule.addressFamily || 'ipv4',
             protocol: rule.Protocol || rule.protocol,
             sourceType: rule.SourceType || rule.sourceType,
             sourceValue: rule.SourceValue || rule.sourceValue,
@@ -144,6 +181,8 @@ var Rules = {
     renderTabs: function() {
         const tabs = $('#rulesTabs');
         const content = $('#rulesTabContent');
+        if (!tabs.length || !content.length) return;
+        
         tabs.empty();
         content.empty();
 
@@ -157,6 +196,12 @@ var Rules = {
             const tabId = `rules-${iface.interface}`;
             const activeClass = index === 0 ? 'active' : '';
             const roleLabel = this.roleLabel(iface.role);
+            
+            // Get per-interface settings
+            const settings = this.interfaceSettings.find(s => s.InterfaceName === iface.interface || s.interfaceName === iface.interface) || {};
+            const defaultAction = settings.DefaultAction || settings.defaultAction || this.defaultActionLabel(iface.role);
+            const blockReserved = settings.BlockReserved !== undefined ? settings.BlockReserved : (settings.blockReserved !== undefined ? settings.blockReserved : (iface.role === 2 && this.defaults?.BlockReservedOnWan));
+            const blockBogon = settings.BlockBogon !== undefined ? settings.BlockBogon : (settings.blockBogon !== undefined ? settings.blockBogon : false);
 
             tabs.append(`
                 <li class="nav-item" role="presentation">
@@ -168,12 +213,39 @@ var Rules = {
 
             content.append(`
                 <div class="tab-pane fade ${activeClass ? 'show active' : ''}" id="${tabId}" role="tabpanel">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <h5 class="mb-1">${iface.name} Rules</h5>
-                            <div class="text-muted small">Default policy: ${this.defaultActionLabel(iface.role)}</div>
+                    <div class="card mb-3">
+                        <div class="card-body py-2">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <label class="fw-bold me-2">Default Action:</label>
+                                    <select class="form-select form-select-sm d-inline-block w-auto" 
+                                            onchange="Rules.saveInterfaceSettings('${iface.interface}', this, 'action')">
+                                        <option value="pass" ${defaultAction === 'pass' ? 'selected' : ''}>Pass</option>
+                                        <option value="block" ${defaultAction === 'block' ? 'selected' : ''}>Block</option>
+                                        <option value="reject" ${defaultAction === 'reject' ? 'selected' : ''}>Reject</option>
+                                    </select>
+                                </div>
+                                <div class="col-auto">
+                                    <div class="form-check form-switch d-inline-block align-middle mb-0">
+                                        <input class="form-check-input" type="checkbox" id="blockReserved-${iface.interface}" 
+                                               ${blockReserved ? 'checked' : ''}
+                                               onchange="Rules.saveInterfaceSettings('${iface.interface}', this, 'reserved')">
+                                        <label class="form-check-label" for="blockReserved-${iface.interface}">Block Reserved</label>
+                                    </div>
+                                </div>
+                                <div class="col-auto">
+                                    <div class="form-check form-switch d-inline-block align-middle mb-0">
+                                        <input class="form-check-input" type="checkbox" id="blockBogon-${iface.interface}" 
+                                               ${blockBogon ? 'checked' : ''}
+                                               onchange="Rules.saveInterfaceSettings('${iface.interface}', this, 'bogon')">
+                                        <label class="form-check-label" for="blockBogon-${iface.interface}">Block Bogon</label>
+                                    </div>
+                                </div>
+                                <div class="col text-end">
+                                    <button class="btn btn-primary btn-sm" data-interface="${iface.interface}" data-action="add-rule">Add Rule</button>
+                                </div>
+                            </div>
                         </div>
-                        <button class="btn btn-primary" data-interface="${iface.interface}" data-action="add-rule">Add Rule</button>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-hover">
@@ -202,8 +274,52 @@ var Rules = {
         });
     },
 
+    saveInterfaceSettings: async function(interfaceName, element, type) {
+        const settings = this.interfaceSettings.find(s => s.InterfaceName === interfaceName || s.interfaceName === interfaceName) || {};
+        
+        let payload = {
+            interfaceName: interfaceName,
+            defaultAction: settings.DefaultAction || settings.defaultAction || 'block',
+            blockReserved: settings.BlockReserved !== undefined ? settings.BlockReserved : (settings.blockReserved || false),
+            blockBogon: settings.BlockBogon !== undefined ? settings.BlockBogon : (settings.blockBogon || false)
+        };
+
+        if (type === 'action') {
+            payload.defaultAction = $(element).val();
+        } else if (type === 'reserved') {
+            payload.blockReserved = $(element).is(':checked');
+        } else if (type === 'bogon') {
+            payload.blockBogon = $(element).is(':checked');
+        }
+
+        try {
+            const response = await Monolith.API.post('/firewall/interface-settings', payload);
+            if (response.Success || response.success) {
+                // Update local state
+                const index = this.interfaceSettings.findIndex(s => s.InterfaceName === interfaceName || s.interfaceName === interfaceName);
+                if (index !== -1) {
+                    this.interfaceSettings[index] = payload;
+                } else {
+                    this.interfaceSettings.push(payload);
+                }
+                
+                this.markPendingChanges();
+                this.showMessage('Interface settings updated', 'success');
+            } else {
+                this.showMessage(response.Error || response.error || 'Failed to update settings', 'danger');
+                // Revert UI if failed (simplified: just reload data)
+                this.loadInterfaceSettings().then(() => this.renderTabs());
+            }
+        } catch (error) {
+            console.error('Failed to update interface settings:', error);
+            this.showMessage('Failed to update settings', 'danger');
+        }
+    },
+
     renderRulesForInterface: function(interfaceName, bodyId) {
         const tbody = $('#' + bodyId);
+        if (!tbody.length) return;
+        
         const rules = this.rules.filter(r => r.interface && r.interface.toLowerCase() === interfaceName.toLowerCase());
 
         if (rules.length === 0) {
@@ -314,6 +430,11 @@ var Rules = {
             return `<option value="${i.interface}" ${selected}>${i.name}</option>`;
         }).join('');
 
+        const scheduleOptions = [
+            '<option value="">None (Always Active)</option>',
+            ...this.schedules.map(s => `<option value="${s.id}" ${rule && rule.scheduleId === s.id ? 'selected' : ''}>${s.name}</option>`)
+        ].join('');
+
         const modalHtml = `
             <div class="modal fade" id="ruleModal" tabindex="-1" aria-labelledby="ruleModalLabel" aria-hidden="true">
                 <div class="modal-dialog modal-xl">
@@ -325,13 +446,13 @@ var Rules = {
                         <div class="modal-body">
                             <form id="ruleForm">
                                 <div class="row">
-                                    <div class="col-md-4 mb-3">
+                                    <div class="col-md-3 mb-3">
                                         <label class="form-label">Interface</label>
                                         <select class="form-select" id="ruleInterface" required>
                                             ${interfaceOptions}
                                         </select>
                                     </div>
-                                    <div class="col-md-4 mb-3">
+                                    <div class="col-md-3 mb-3">
                                         <label class="form-label">Direction</label>
                                         <select class="form-select" id="ruleDirection">
                                             <option value="in" ${rule && rule.direction === 'in' ? 'selected' : ''}>In</option>
@@ -339,7 +460,7 @@ var Rules = {
                                             <option value="forward" ${rule && rule.direction === 'forward' ? 'selected' : ''}>Forward</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-4 mb-3">
+                                    <div class="col-md-3 mb-3">
                                         <label class="form-label">Action</label>
                                         <select class="form-select" id="ruleAction">
                                             <option value="pass" ${rule && rule.action === 'pass' ? 'selected' : ''}>Pass</option>
@@ -347,9 +468,7 @@ var Rules = {
                                             <option value="reject" ${rule && rule.action === 'reject' ? 'selected' : ''}>Reject</option>
                                         </select>
                                     </div>
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-4 mb-3">
+                                    <div class="col-md-3 mb-3">
                                         <label class="form-label">Address Family</label>
                                         <select class="form-select" id="ruleFamily">
                                             <option value="ipv4" ${!rule || rule.addressFamily === 'ipv4' ? 'selected' : ''}>IPv4</option>
@@ -357,6 +476,8 @@ var Rules = {
                                             <option value="dual" ${rule && rule.addressFamily === 'dual' ? 'selected' : ''}>IPv4 + IPv6</option>
                                         </select>
                                     </div>
+                                </div>
+                                <div class="row">
                                     <div class="col-md-4 mb-3">
                                         <label class="form-label">Protocol</label>
                                         <select class="form-select" id="ruleProtocol">
@@ -372,6 +493,12 @@ var Rules = {
                                         <select class="form-select" id="ruleLog">
                                             <option value="false" ${!rule || !rule.logEnabled ? 'selected' : ''}>No</option>
                                             <option value="true" ${rule && rule.logEnabled ? 'selected' : ''}>Yes</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Schedule</label>
+                                        <select class="form-select" id="ruleSchedule">
+                                            ${scheduleOptions}
                                         </select>
                                     </div>
                                 </div>
@@ -390,6 +517,7 @@ var Rules = {
                                     <div class="col-md-4 mb-3">
                                         <label class="form-label">Source Value</label>
                                         <input type="text" class="form-control" id="ruleSourceValue" value="${rule ? (rule.sourceValue || '') : ''}" placeholder="IP, network, or alias">
+                                        <div class="form-text" id="ruleSourceHint">Use addresses matching the selected family.</div>
                                     </div>
                                     <div class="col-md-4 mb-3">
                                         <label class="form-label">Source Port</label>
@@ -411,6 +539,7 @@ var Rules = {
                                     <div class="col-md-4 mb-3">
                                         <label class="form-label">Destination Value</label>
                                         <input type="text" class="form-control" id="ruleDestinationValue" value="${rule ? (rule.destinationValue || '') : ''}" placeholder="IP, network, or alias">
+                                        <div class="form-text" id="ruleDestinationHint">Use addresses matching the selected family.</div>
                                     </div>
                                     <div class="col-md-4 mb-3">
                                         <label class="form-label">Destination Port</label>
@@ -466,7 +595,14 @@ var Rules = {
     },
 
     saveRule: async function(id) {
-        const payload = {
+        const form = document.getElementById('ruleForm');
+        if (!form || !form.checkValidity()) {
+            if (form) form.reportValidity();
+            return;
+        }
+
+        const scheduleId = $('#ruleSchedule').val();
+        const rule = {
             interface: $('#ruleInterface').val(),
             direction: $('#ruleDirection').val(),
             action: $('#ruleAction').val(),
@@ -480,8 +616,24 @@ var Rules = {
             destinationPort: $('#ruleDestinationPort').val().trim() || null,
             logEnabled: $('#ruleLog').val() === 'true',
             enabled: $('#ruleEnabled').is(':checked'),
-            description: $('#ruleDescription').val().trim()
+            description: $('#ruleDescription').val().trim(),
+            scheduleId: scheduleId ? parseInt(scheduleId) : null
         };
+
+        // Simple family validation: if value looks IPv4/IPv6, ensure it matches family (unless dual)
+        const family = rule.addressFamily || 'ipv4';
+        if (family !== 'dual') {
+            const srcFam = this.detectFamily(rule.sourceValue);
+            const dstFam = this.detectFamily(rule.destinationValue);
+            if (srcFam && srcFam !== family) {
+                Monolith.UI.toast(`Source value appears ${srcFam} but rule family is ${family}`, 'warning');
+                return;
+            }
+            if (dstFam && dstFam !== family) {
+                Monolith.UI.toast(`Destination value appears ${dstFam} but rule family is ${family}`, 'warning');
+                return;
+            }
+        }
 
         try {
             let response;
@@ -757,7 +909,13 @@ var Rules = {
         $(document).off('change', '#ruleDestinationType');
         $(document).on('change', '#ruleDestinationType', updateDestination);
         $(document).off('change', '#ruleFamily');
-        $(document).on('change', '#ruleFamily', updateSystemList);
+        $(document).on('change', '#ruleFamily', () => {
+            const family = $('#ruleFamily').val() || 'ipv4';
+            $('#ruleSourceHint, #ruleDestinationHint').text(family === 'dual'
+                ? 'IPv4 or IPv6 allowed.'
+                : `Use ${family.toUpperCase()} addresses.`);
+            updateSystemList();
+        });
 
         updateSystemList();
     },
@@ -775,6 +933,13 @@ var Rules = {
             input.removeAttr('list');
             input.attr('placeholder', 'IP or network');
         }
+    },
+
+    detectFamily: function(value) {
+        if (!value) return null;
+        if (value.includes(':')) return 'ipv6';
+        if (value.match(/^(\d{1,3}\.){3}\d{1,3}(\/\d+)?$/)) return 'ipv4';
+        return null;
     },
 
     systemSetOptions: function(family) {
@@ -823,6 +988,7 @@ var Rules = {
 
     showMessage: function(message, type) {
         const alert = $('#rulesStatusMessage');
+        if (!alert.length) return;
         alert.removeClass('d-none alert-success alert-danger alert-warning alert-info')
              .addClass(`alert-${type}`)
              .text(message);

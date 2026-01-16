@@ -41,9 +41,8 @@ public sealed class InterfaceAssignmentManager
 
         var ifaceMap = interfaces.ToDictionary(i => i.Name, StringComparer.OrdinalIgnoreCase);
         var addressMap = addresses
-            .Where(a => string.Equals(a.Family, "inet", StringComparison.OrdinalIgnoreCase))
             .GroupBy(a => a.Interface, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
         var views = assignments.Select(a => BuildAssignmentView(a, ifaceMap, addressMap)).ToList();
         var assignedIfaces = new HashSet<string>(assignments.Select(a => a.InterfaceName), StringComparer.OrdinalIgnoreCase);
@@ -51,14 +50,16 @@ public sealed class InterfaceAssignmentManager
         var unassigned = interfaces
             .Where(i => !assignedIfaces.Contains(i.Name))
             .Where(i => IsPhysicalInterface(i.Name))
-            .Select(i => new InterfaceInventoryView
+            .Select(i =>
             {
-                Interface = i.Name,
-                MacAddress = i.MacAddress,
-                Status = i.IsUp ? "up" : "down",
-                IpAddress = addressMap.TryGetValue(i.Name, out var addr)
-                    ? $"{addr.Address}/{addr.PrefixLength}"
-                    : null
+                var ipDisplay = ResolvePrimaryAddress(addressMap, i.Name);
+                return new InterfaceInventoryView
+                {
+                    Interface = i.Name,
+                    MacAddress = i.MacAddress,
+                    Status = i.IsUp ? "up" : "down",
+                    IpAddress = ipDisplay
+                };
             })
             .OrderBy(i => i.Interface, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -204,6 +205,28 @@ public sealed class InterfaceAssignmentManager
             return (false, "Invalid gateway address", null);
         }
 
+        var ipv6Mode = ParseIpMode(request.Ipv6Mode);
+        var (ipv6Address, ipv6Prefix, ipv6Error) = ParseIpv6(request);
+        if (!string.IsNullOrWhiteSpace(ipv6Error))
+        {
+            return (false, ipv6Error, null);
+        }
+
+        if (ipv6Mode == InterfaceIpMode.Static && string.IsNullOrWhiteSpace(ipv6Address))
+        {
+            return (false, "Static IPv6 requires an address and prefix", null);
+        }
+
+        if (ipv6Mode != InterfaceIpMode.Static)
+        {
+            ipv6Address = null;
+            ipv6Prefix = null;
+        }
+        else if (!string.IsNullOrWhiteSpace(request.Ipv6Gateway) && !PlatformValidators.IsValidIpv6(request.Ipv6Gateway))
+        {
+            return (false, "Invalid IPv6 gateway address", null);
+        }
+
         var existingAssignment = await _store.GetAssignmentAsync(ifaceName);
         if (existingAssignment != null && existingAssignment.Type != type.Value)
         {
@@ -229,6 +252,7 @@ public sealed class InterfaceAssignmentManager
         assignment.Name = string.IsNullOrWhiteSpace(request.Name) ? defaultName : request.Name.Trim();
         assignment.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
         assignment.IpMode = ipMode;
+        assignment.Ipv6Mode = ipv6Mode;
         assignment.Role = ResolveRole(request.Role, existingAssignment?.Role);
         assignment.IsManagement = request.IsManagement ?? existingAssignment?.IsManagement ?? false;
         assignment.IpAddress = address;
@@ -236,6 +260,13 @@ public sealed class InterfaceAssignmentManager
         assignment.Gateway = ipMode == InterfaceIpMode.Static && !string.IsNullOrWhiteSpace(request.Gateway)
             ? request.Gateway.Trim()
             : null;
+        assignment.Ipv6Address = ipv6Address;
+        assignment.Ipv6PrefixLength = ipv6Prefix;
+        assignment.Ipv6Gateway = ipv6Mode == InterfaceIpMode.Static && !string.IsNullOrWhiteSpace(request.Ipv6Gateway)
+            ? request.Ipv6Gateway.Trim()
+            : null;
+        assignment.Ipv6AcceptRa = request.Ipv6AcceptRa ?? existingAssignment?.Ipv6AcceptRa ?? false;
+        assignment.Ipv6Autoconf = request.Ipv6Autoconf ?? existingAssignment?.Ipv6Autoconf ?? false;
         assignment.ParentInterface = parentInterface;
         assignment.VlanId = vlanId;
         assignment.BridgePorts = request.BridgePorts != null
@@ -455,7 +486,7 @@ public sealed class InterfaceAssignmentManager
     private static InterfaceAssignmentView BuildAssignmentView(
         InterfaceAssignmentEntity assignment,
         IReadOnlyDictionary<string, Monolith.FireWall.Platform.Models.InterfaceInfo> ifaceMap,
-        IReadOnlyDictionary<string, Monolith.FireWall.Platform.Models.AddressInfo> addressMap)
+        IReadOnlyDictionary<string, List<Monolith.FireWall.Platform.Models.AddressInfo>> addressMap)
     {
         var status = "unknown";
         if (ifaceMap.TryGetValue(assignment.InterfaceName, out var info))
@@ -463,9 +494,9 @@ public sealed class InterfaceAssignmentManager
             status = info.IsUp ? "up" : "down";
         }
 
-        var ip = addressMap.TryGetValue(assignment.InterfaceName, out var addr)
-            ? $"{addr.Address}/{addr.PrefixLength}"
-            : null;
+        var liveIpv4 = ResolveAddress(addressMap, assignment.InterfaceName, "inet");
+        var liveIpv6 = ResolveAddress(addressMap, assignment.InterfaceName, "inet6");
+        var ip = liveIpv4 ?? liveIpv6;
 
         var ports = assignment.BridgePorts != null
             ? assignment.BridgePorts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
@@ -482,11 +513,17 @@ public sealed class InterfaceAssignmentManager
             Managed = true,
             SourceFile = "/etc/network/interfaces.d/monolith",
             IpMode = assignment.IpMode,
+            Ipv6Mode = assignment.Ipv6Mode,
             Role = assignment.Role,
             IsManagement = assignment.IsManagement,
             ConfigAddress = assignment.IpAddress,
             ConfigPrefixLength = assignment.PrefixLength,
             Gateway = assignment.Gateway,
+            Ipv6Address = assignment.Ipv6Address,
+            Ipv6PrefixLength = assignment.Ipv6PrefixLength,
+            Ipv6Gateway = assignment.Ipv6Gateway,
+            Ipv6AcceptRa = assignment.Ipv6AcceptRa,
+            Ipv6Autoconf = assignment.Ipv6Autoconf,
             ParentInterface = assignment.ParentInterface,
             VlanId = assignment.VlanId,
             BridgePorts = ports,
@@ -680,6 +717,54 @@ public sealed class InterfaceAssignmentManager
         }
 
         return (null, null, null);
+    }
+
+    private static (string? Address, int? Prefix, string? Error) ParseIpv6(InterfaceAssignmentRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.Ipv6Address))
+        {
+            if (!PlatformValidators.IsValidIpv6(request.Ipv6Address))
+            {
+                return (null, null, "Invalid IPv6 address");
+            }
+
+            if (!request.Ipv6PrefixLength.HasValue || request.Ipv6PrefixLength.Value < 0 || request.Ipv6PrefixLength.Value > 128)
+            {
+                return (null, null, "IPv6 prefix length must be between 0 and 128");
+            }
+
+            return (request.Ipv6Address.Trim(), request.Ipv6PrefixLength.Value, null);
+        }
+
+        return (null, null, null);
+    }
+
+    private static string? ResolvePrimaryAddress(IReadOnlyDictionary<string, List<Monolith.FireWall.Platform.Models.AddressInfo>> addressMap, string iface)
+    {
+        if (!addressMap.TryGetValue(iface, out var list) || list.Count == 0)
+        {
+            return null;
+        }
+
+        var ipv4 = list.FirstOrDefault(a => string.Equals(a.Family, "inet", StringComparison.OrdinalIgnoreCase));
+        if (ipv4 != null)
+        {
+            return $"{ipv4.Address}/{ipv4.PrefixLength}";
+        }
+
+        var ipv6 = list.FirstOrDefault(a => string.Equals(a.Family, "inet6", StringComparison.OrdinalIgnoreCase));
+        return ipv6 != null ? $"{ipv6.Address}/{ipv6.PrefixLength}" : null;
+    }
+
+    private static string? ResolveAddress(IReadOnlyDictionary<string, List<Monolith.FireWall.Platform.Models.AddressInfo>> addressMap, string iface, string family)
+    {
+        if (!addressMap.TryGetValue(iface, out var list))
+        {
+            return null;
+        }
+
+        var match = list.FirstOrDefault(a => string.Equals(a.Family, family, StringComparison.OrdinalIgnoreCase));
+        return match != null ? $"{match.Address}/{match.PrefixLength}" : null;
     }
 
     private static bool IsPhysicalInterface(string name)

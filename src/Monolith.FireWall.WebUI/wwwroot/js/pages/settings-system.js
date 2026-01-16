@@ -4,14 +4,20 @@ var SettingsSystem = {
 
     init: function() {
         console.log('Initializing System Settings tab...');
-        this.render();
+    },
+
+    renderPage: function() {
+        console.log('Rendering System Settings tab...');
+        this.renderStructure();
         this.loadTimezones().then(() => {
             this.loadSettings();
         });
     },
 
-    render: function() {
+    renderStructure: function() {
         const container = $('#system-tab-content');
+        if (!container.length) return;
+
         container.html(`
             <form id="system-settings-form">
                 <div class="row">
@@ -104,6 +110,7 @@ var SettingsSystem = {
             const timezones = data.timezones || data.Timezones || [];
             
             const select = $('#timezone');
+            if (!select.length) return;
             select.empty();
             
             if (timezones.length > 0) {
@@ -126,15 +133,17 @@ var SettingsSystem = {
             console.error('Failed to load timezones:', error);
             // Fallback to common timezones
             const select = $('#timezone');
-            select.empty();
-            const fallback = [
-                'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 
-                'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 
-                'Europe/Berlin', 'Asia/Tokyo', 'Asia/Shanghai'
-            ];
-            fallback.forEach(tz => {
-                select.append(`<option value="${tz}">${tz}</option>`);
-            });
+            if (select.length) {
+                select.empty();
+                const fallback = [
+                    'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 
+                    'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 
+                    'Europe/Berlin', 'Asia/Tokyo', 'Asia/Shanghai'
+                ];
+                fallback.forEach(tz => {
+                    select.append(`<option value="${tz}">${tz}</option>`);
+                });
+            }
             Monolith.UI.toast('Failed to load timezones from OS, using fallback list', 'warning');
         }
     },
@@ -197,6 +206,7 @@ var SettingsSystem = {
 
     renderDnsServers: function(servers) {
         const container = $('#dns-servers-list');
+        if (!container.length) return;
         const entries = Array.isArray(servers) ? servers.filter(s => s) : [];
         const initial = entries.length > 0 ? entries : ['', ''];
         const rows = initial.map(value => this.buildDnsRow(value)).join('');
@@ -215,7 +225,9 @@ var SettingsSystem = {
 
     addDnsServer: function() {
         const container = $('#dns-servers-list');
-        container.append(this.buildDnsRow(''));
+        if (container.length) {
+            container.append(this.buildDnsRow(''));
+        }
     },
 
     getDnsServers: function() {

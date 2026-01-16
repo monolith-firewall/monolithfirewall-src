@@ -60,6 +60,25 @@ public sealed class InterfaceAssignmentEntity
     [SQLiteColumn(DataType = SQLiteDataType.TEXT, Size = 64)]
     public string? Gateway { get; set; }
 
+    // IPv6 Configuration
+    [SQLiteColumn(DataType = SQLiteDataType.INTEGER)]
+    public InterfaceIpMode Ipv6Mode { get; set; } = InterfaceIpMode.None;
+
+    [SQLiteColumn(DataType = SQLiteDataType.TEXT, Size = 128)]
+    public string? Ipv6Address { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.INTEGER)]
+    public int? Ipv6PrefixLength { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.TEXT, Size = 128)]
+    public string? Ipv6Gateway { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "0")]
+    public bool Ipv6AcceptRa { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "0")]
+    public bool Ipv6Autoconf { get; set; }
+
     [SQLiteColumn(DataType = SQLiteDataType.TEXT, Size = 64)]
     public string? ParentInterface { get; set; }
 
@@ -95,6 +114,15 @@ public sealed class InterfaceAssignmentRequest
     public int? PrefixLength { get; set; }
     public string? AddressCidr { get; set; }
     public string? Gateway { get; set; }
+
+    // IPv6 Configuration
+    public string? Ipv6Mode { get; set; }
+    public string? Ipv6Address { get; set; }
+    public int? Ipv6PrefixLength { get; set; }
+    public string? Ipv6Gateway { get; set; }
+    public bool? Ipv6AcceptRa { get; set; }
+    public bool? Ipv6Autoconf { get; set; }
+
     public string? ParentInterface { get; set; }
     public int? VlanId { get; set; }
     public List<string>? BridgePorts { get; set; }
@@ -161,6 +189,15 @@ public sealed class InterfaceAssignmentView
     public string? ConfigAddress { get; set; }
     public int? ConfigPrefixLength { get; set; }
     public string? Gateway { get; set; }
+
+    // IPv6 Configuration
+    public InterfaceIpMode Ipv6Mode { get; set; }
+    public string? Ipv6Address { get; set; }
+    public int? Ipv6PrefixLength { get; set; }
+    public string? Ipv6Gateway { get; set; }
+    public bool Ipv6AcceptRa { get; set; }
+    public bool Ipv6Autoconf { get; set; }
+
     public string? ParentInterface { get; set; }
     public int? VlanId { get; set; }
     public List<string>? BridgePorts { get; set; }
@@ -183,4 +220,54 @@ public sealed class InterfaceAssignmentsSnapshot
     public List<InterfaceAssignmentView> Vlans { get; set; } = new();
     public List<InterfaceAssignmentView> Bridges { get; set; } = new();
     public string ManagedFile { get; set; } = string.Empty;
+}
+
+[SQLiteTable("gateways")]
+public sealed class GatewayEntity
+{
+    [SQLiteColumn(IsPrimaryKey = true, IsAutoIncrement = true)]
+    public int Id { get; set; }
+
+    [SQLiteColumn(IsNotNull = true, DataType = SQLiteDataType.TEXT, Size = 64)]
+    public string Name { get; set; } = string.Empty;
+
+    [SQLiteColumn(IsNotNull = true, DataType = SQLiteDataType.TEXT, Size = 128)]
+    public string Address { get; set; } = string.Empty;
+
+    [SQLiteColumn(IsNotNull = true, DataType = SQLiteDataType.TEXT, Size = 16)]
+    public string AddressFamily { get; set; } = "ipv4";
+
+    [SQLiteColumn(DataType = SQLiteDataType.TEXT, Size = 64)]
+    public string? Interface { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.INTEGER)]
+    public int? Metric { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "0")]
+    public bool IsDefault { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "0")]
+    public bool IsDynamic { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.TEXT)]
+    public string? Description { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.DATETIME)]
+    public DateTime CreatedAt { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.DATETIME)]
+    public DateTime UpdatedAt { get; set; }
+
+    [SQLiteColumn(DataType = SQLiteDataType.DATETIME)]
+    public DateTime? LastSeenAt { get; set; }
+}
+
+public sealed class GatewayRequest
+{
+    public string? Name { get; set; }
+    public string? Address { get; set; }
+    public string? Interface { get; set; }
+    public int? Metric { get; set; }
+    public bool? IsDefault { get; set; }
+    public string? Description { get; set; }
 }

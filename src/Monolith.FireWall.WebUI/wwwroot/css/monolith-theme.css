@@ -170,6 +170,7 @@ body {
 .top-navbar .nav-icon {
     width: 14px;
     height: 14px;
+    font-size: 0.875rem;
     fill: #ffffff !important;
     color: #ffffff !important;
     opacity: 1 !important;
@@ -283,6 +284,7 @@ body {
     opacity: 0.8;
     width: 12px;
     height: 12px;
+    font-size: 0.75rem;
 }
 
 .top-navbar .dropdown-item:hover .dropdown-icon {
@@ -319,6 +321,7 @@ body {
 .user-icon {
     width: 20px;
     height: 20px;
+    font-size: 1rem;
 }
 
 .user-info {
@@ -328,6 +331,7 @@ body {
 
 .dropdown-arrow {
     opacity: 0.6;
+    font-size: 0.75rem;
     transition: transform 0.3s ease;
 }
 
@@ -1167,11 +1171,12 @@ body {
     padding: 0.5rem 1rem !important;
     display: flex !important;
     align-items: center !important;
+    gap: 0.5rem;
 }
 
-/* Hide the icon in nested menu items */
-#packages-menu .dropend .dropdown-menu .dropdown-item .dropdown-icon {
-    display: none !important;
+#packages-menu .dropdown-icon {
+    width: 14px;
+    text-align: center;
 }
 
 #packages-menu .dropend > .dropdown-item {
@@ -1182,13 +1187,15 @@ body {
     cursor: pointer;
 }
 
-#packages-menu .dropend > .dropdown-item svg:last-child {
+#packages-menu .dropend > .dropdown-item svg:last-child,
+#packages-menu .dropend > .dropdown-item i:last-child {
     margin-left: auto;
     opacity: 0.7;
     transition: transform 0.2s;
 }
 
-#packages-menu .dropend:hover > .dropdown-item svg:last-child {
+#packages-menu .dropend:hover > .dropdown-item svg:last-child,
+#packages-menu .dropend:hover > .dropdown-item i:last-child {
     opacity: 1;
 }
 

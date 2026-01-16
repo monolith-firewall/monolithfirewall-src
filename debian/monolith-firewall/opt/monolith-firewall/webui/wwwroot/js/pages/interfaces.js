@@ -5,12 +5,18 @@ var Interfaces = {
     bridges: [],
     unassigned: [],
     availableInterfaces: [],
+    issues: [],
 
     init: function() {
         console.log('Initializing Interfaces page...');
-        this.render();
-        this.loadData();
         this.attachEventHandlers();
+    },
+
+    renderPage: function() {
+        console.log('Rendering Interfaces page...');
+        this.render();
+        this.renderIssues();
+        this.loadData();
     },
 
     /**
@@ -33,8 +39,8 @@ var Interfaces = {
                     </div>
                 </div>
 
-                <!-- Status Messages -->
-                <div id="interfacesStatusMessage" class="alert d-none"></div>
+                <!-- Issues Banner -->
+                <div id="interfacesIssuesAlert" class="alert alert-warning d-none"></div>
 
                 <!-- Main Tabs -->
                 <ul class="nav nav-tabs mb-4" id="interfacesTabs" role="tablist">
@@ -45,6 +51,16 @@ var Interfaces = {
                                 <path d="M12 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2zM5 4h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1zm-.5 2.5A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zM5 8h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1zm0 2h3a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1z"/>
                             </svg>
                             Interface Assignments
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="unassigned-tab" data-bs-toggle="tab" data-bs-target="#unassigned" 
+                                type="button" role="tab" aria-controls="unassigned" aria-selected="false">
+                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+                                <path d="M3 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3z"/>
+                                <path fill-rule="evenodd" d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+                            </svg>
+                            Unassigned Interfaces <span class="badge bg-secondary ms-1" id="unassigned-count">0</span>
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
@@ -73,50 +89,15 @@ var Interfaces = {
                 <div class="tab-content" id="interfacesTabContent">
                     <!-- Interface Assignments Tab -->
                     <div class="tab-pane fade show active" id="assignments" role="tabpanel" aria-labelledby="assignments-tab">
-                        <div class="card mb-4">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">Unassigned Interfaces</h5>
-                                <span class="text-muted small">Not managed by Monolith</span>
-                            </div>
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table class="table table-hover" id="unassignedTable">
-                                        <thead>
-                                            <tr>
-                                                <th>Interface</th>
-                                                <th>MAC</th>
-                                                <th>Status</th>
-                                                <th>IP Address</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr>
-                                                <td colspan="5" class="text-center text-muted">
-                                                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                                                    Loading interfaces...
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
                         <div class="card">
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0">Managed Assignments</h5>
                                 <div class="d-flex flex-wrap gap-2">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-check-config">Check Config</button>
-                                    <button type="button" class="btn btn-sm btn-outline-warning" id="btn-fix-config">Fix Config</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-check-config">Check</button>
+                                    <button type="button" class="btn btn-sm btn-outline-warning" id="btn-fix-config">Fix</button>
+                                    <div class="vr align-self-stretch d-none d-md-block"></div>
                                     <button type="button" class="btn btn-sm btn-success" id="btn-save-config">Save</button>
                                     <button type="button" class="btn btn-sm btn-primary" id="btn-apply-now">Apply Now</button>
-                                    <button type="button" class="btn btn-sm btn-primary" id="btn-add-assignment">
-                                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
-                                            <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
-                                        </svg>
-                                        Add Assignment
-                                    </button>
                                 </div>
                             </div>
                             <div class="card-body">
@@ -138,6 +119,39 @@ var Interfaces = {
                                                 <td colspan="7" class="text-center text-muted">
                                                     <div class="spinner-border spinner-border-sm me-2" role="status"></div>
                                                     Loading assignments...
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Unassigned Tab -->
+                    <div class="tab-pane fade" id="unassigned" role="tabpanel" aria-labelledby="unassigned-tab">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Unassigned Interfaces</h5>
+                                <span class="text-muted small">Not managed by Monolith</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover" id="unassignedTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Interface</th>
+                                                <th>MAC</th>
+                                                <th>Status</th>
+                                                <th>IP Address</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted">
+                                                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                                    Loading interfaces...
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -236,6 +250,8 @@ var Interfaces = {
      */
     loadData: async function() {
         try {
+            this.issues = [];
+            this.renderIssues();
             await Promise.all([
                 this.loadAssignments(),
                 this.loadVlans(),
@@ -280,6 +296,7 @@ var Interfaces = {
             }
             this.renderAssignments();
             this.renderUnassigned();
+            this.renderIssues();
         } catch (error) {
             console.error('Error loading assignments:', error);
             this.showMessage('Failed to load interface assignments', 'error');
@@ -287,6 +304,7 @@ var Interfaces = {
             this.unassigned = [];
             this.renderAssignments();
             this.renderUnassigned();
+            this.renderIssues();
         }
     },
 
@@ -369,6 +387,14 @@ var Interfaces = {
             const managedBadge = assignment.managed
                 ? '<span class="badge bg-primary-subtle text-primary border">Managed</span>'
                 : '<span class="badge bg-light text-muted border">External</span>';
+            const ipLines = [];
+            if (assignment.ip) {
+                ipLines.push(`<div><span class="badge bg-secondary me-1">IPv4</span><code>${assignment.ip}</code></div>`);
+            }
+            if (assignment.ipv6) {
+                ipLines.push(`<div><span class="badge bg-primary me-1">IPv6</span><code>${assignment.ipv6}</code></div>`);
+            }
+            const ipDisplay = ipLines.length ? ipLines.join('') : '-';
             
             html += `
                 <tr>
@@ -379,7 +405,7 @@ var Interfaces = {
                     <td><strong>${assignment.name}</strong></td>
                     <td>${typeLabel}</td>
                     <td>${statusBadge}</td>
-                    <td>${assignment.ip || '-'}</td>
+                    <td>${ipDisplay}</td>
                     <td>${assignment.description || '-'}</td>
                     <td>
                         <button class="btn btn-sm btn-outline-primary me-1" onclick="Interfaces.editAssignment('${assignment.interface}')">
@@ -402,10 +428,49 @@ var Interfaces = {
     },
 
     /**
+    * Render issues banner if any
+    */
+    renderIssues: function() {
+        const alert = $('#interfacesIssuesAlert');
+        if (!alert.length) {
+            return;
+        }
+
+        if (!this.issues || this.issues.length === 0) {
+            alert.addClass('d-none').empty();
+            return;
+        }
+
+        const listItems = this.issues.slice(0, 5).map(issue => `
+            <li class="mb-1">
+                <strong>${issue.Type || issue.type}</strong> — ${issue.Message || issue.message}
+                ${issue.File || issue.file ? `<div class="text-muted small">${issue.File || issue.file}</div>` : ''}
+                ${issue.Detail || issue.detail ? `<div class="text-muted small">${issue.Detail || issue.detail}</div>` : ''}
+            </li>
+        `).join('');
+
+        const more = this.issues.length > 5 ? `<div class="small text-muted mt-1">+${this.issues.length - 5} more...</div>` : '';
+
+        alert.removeClass('d-none').html(`
+            <div class="d-flex align-items-start">
+                <div class="me-3">
+                    <span class="badge bg-warning text-dark">${this.issues.length} issue${this.issues.length === 1 ? '' : 's'}</span>
+                </div>
+                <div>
+                    <div class="fw-semibold mb-1">Interface configuration issues detected</div>
+                    <ul class="mb-0 ps-3">${listItems}</ul>
+                    ${more}
+                </div>
+            </div>
+        `);
+    },
+
+    /**
      * Render unassigned interfaces table
      */
     renderUnassigned: function() {
         const tbody = $('#unassignedTable tbody');
+        $('#unassigned-count').text(this.unassigned.length);
         if (this.unassigned.length === 0) {
             tbody.html('<tr><td colspan="5" class="text-center text-muted">No unassigned interfaces detected</td></tr>');
             return;
@@ -504,6 +569,11 @@ var Interfaces = {
         if (typeof ipModeRaw === 'number') {
             ipMode = ipModeRaw === 1 ? 'dhcp' : ipModeRaw === 2 ? 'static' : 'none';
         }
+        const ipv6ModeRaw = raw.Ipv6Mode || raw.ipv6Mode;
+        let ipv6Mode = ipv6ModeRaw;
+        if (typeof ipv6ModeRaw === 'number') {
+            ipv6Mode = ipv6ModeRaw === 1 ? 'dhcp' : ipv6ModeRaw === 2 ? 'static' : 'none';
+        }
         const roleRaw = raw.Role !== undefined ? raw.Role : raw.role;
         const role = this.roleToString(roleRaw);
         return {
@@ -512,15 +582,22 @@ var Interfaces = {
             type: raw.Type || raw.type,
             status: raw.Status || raw.status || 'down',
             ip: raw.IpAddress || raw.ipAddress || raw.ip || null,
+            ipv6: raw.Ipv6Address || raw.ipv6Address || null,
             description: raw.Description || raw.description || '',
             managed: raw.Managed !== undefined ? raw.Managed : (raw.managed !== undefined ? raw.managed : true),
             sourceFile: raw.SourceFile || raw.sourceFile,
             ipMode: ipMode || 'none',
+            ipv6Mode: ipv6Mode || 'none',
             role: role,
             isManagement: raw.IsManagement !== undefined ? raw.IsManagement : (raw.isManagement !== undefined ? raw.isManagement : false),
             configAddress: raw.ConfigAddress || raw.configAddress,
             configPrefixLength: raw.ConfigPrefixLength || raw.configPrefixLength,
+            ipv6Address: raw.Ipv6Address || raw.ipv6Address,
+            ipv6PrefixLength: raw.Ipv6PrefixLength || raw.ipv6PrefixLength,
             gateway: raw.Gateway || raw.gateway,
+            ipv6Gateway: raw.Ipv6Gateway || raw.ipv6Gateway,
+            ipv6AcceptRa: raw.Ipv6AcceptRa || raw.ipv6AcceptRa || false,
+            ipv6Autoconf: raw.Ipv6Autoconf || raw.ipv6Autoconf || false,
             parentInterface: raw.ParentInterface || raw.parentInterface,
             vlanId: raw.VlanId || raw.vlanId,
             bridgePorts: raw.BridgePorts || raw.bridgePorts || [],
@@ -594,12 +671,6 @@ var Interfaces = {
      * Attach event handlers
      */
     attachEventHandlers: function() {
-        // Add assignment button
-        $(document).off('click', '#btn-add-assignment');
-        $(document).on('click', '#btn-add-assignment', () => {
-            this.showAddAssignmentModal();
-        });
-
         $(document).off('click', '#btn-check-config');
         $(document).on('click', '#btn-check-config', () => {
             this.checkConfig();
@@ -667,6 +738,7 @@ var Interfaces = {
 
         const interfaceOptions = this.buildOptions(interfaces, assignment.interface, 'Select interface');
         const ipMode = assignment.ipMode || 'dhcp';
+        const ipv6Mode = assignment.ipv6Mode || 'none';
         const roleValue = assignment.role || 'opt';
         const title = isEdit ? `Edit ${assignment.interface}` : 'Add Assignment';
 
@@ -702,28 +774,80 @@ var Interfaces = {
                         </div>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">IP Mode</label>
-                    <select class="form-select" id="assignment-ipmode">
-                        <option value="dhcp" ${ipMode === 'dhcp' ? 'selected' : ''}>DHCP</option>
-                        <option value="static" ${ipMode === 'static' ? 'selected' : ''}>Static</option>
-                        <option value="none" ${ipMode === 'none' ? 'selected' : ''}>None</option>
-                    </select>
-                </div>
-                <div id="assignment-static-fields">
-                    <div class="row g-2 mb-3">
-                        <div class="col-md-8">
-                            <label class="form-label">Address</label>
-                            <input type="text" class="form-control" id="assignment-address" value="${assignment.configAddress || ''}">
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#ipv4-tab" type="button" role="tab">IPv4</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#ipv6-tab" type="button" role="tab">IPv6</button>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="ipv4-tab" role="tabpanel">
+                        <div class="mb-3">
+                            <label class="form-label">IPv4 Mode</label>
+                            <select class="form-select" id="assignment-ipmode">
+                                <option value="dhcp" ${ipMode === 'dhcp' ? 'selected' : ''}>DHCP</option>
+                                <option value="static" ${ipMode === 'static' ? 'selected' : ''}>Static</option>
+                                <option value="none" ${ipMode === 'none' ? 'selected' : ''}>None</option>
+                            </select>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Prefix</label>
-                            <input type="number" class="form-control" id="assignment-prefix" value="${assignment.configPrefixLength || ''}" min="0" max="32">
+                        <div id="assignment-static-fields">
+                            <div class="row g-2 mb-3">
+                                <div class="col-md-8">
+                                    <label class="form-label">Address</label>
+                                    <input type="text" class="form-control" id="assignment-address" value="${assignment.configAddress || ''}">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Prefix</label>
+                                    <input type="number" class="form-control" id="assignment-prefix" value="${assignment.configPrefixLength || ''}" min="0" max="32">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Gateway</label>
+                                <input type="text" class="form-control" id="assignment-gateway" value="${assignment.gateway || ''}">
+                            </div>
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Gateway</label>
-                        <input type="text" class="form-control" id="assignment-gateway" value="${assignment.gateway || ''}">
+                    <div class="tab-pane fade" id="ipv6-tab" role="tabpanel">
+                        <div class="mb-3">
+                            <label class="form-label">IPv6 Mode</label>
+                            <select class="form-select" id="assignment-ipv6mode">
+                                <option value="none" ${ipv6Mode === 'none' ? 'selected' : ''}>None</option>
+                                <option value="dhcp" ${ipv6Mode === 'dhcp' ? 'selected' : ''}>DHCPv6</option>
+                                <option value="static" ${ipv6Mode === 'static' ? 'selected' : ''}>Static</option>
+                            </select>
+                        </div>
+                        <div id="assignment-ipv6-static-fields">
+                            <div class="row g-2 mb-3">
+                                <div class="col-md-8">
+                                    <label class="form-label">IPv6 Address</label>
+                                    <input type="text" class="form-control" id="assignment-ipv6-address" value="${assignment.ipv6Address || ''}">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Prefix</label>
+                                    <input type="number" class="form-control" id="assignment-ipv6-prefix" value="${assignment.ipv6PrefixLength || ''}" min="0" max="128">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Gateway</label>
+                                <input type="text" class="form-control" id="assignment-ipv6-gateway" value="${assignment.ipv6Gateway || ''}">
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="assignment-ipv6-acceptra" ${assignment.ipv6AcceptRa ? 'checked' : ''}>
+                                        <label class="form-check-label" for="assignment-ipv6-acceptra">Accept RA (SLAAC)</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="assignment-ipv6-autoconf" ${assignment.ipv6Autoconf ? 'checked' : ''}>
+                                        <label class="form-check-label" for="assignment-ipv6-autoconf">Enable Autoconf</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </form>
@@ -737,12 +861,19 @@ var Interfaces = {
 
         const modal = Monolith.UI.showModal(title, body, { size: 'lg', footerHtml: footer, staticBackdrop: true });
         const staticFields = modal.element.find('#assignment-static-fields');
+        const ipv6StaticFields = modal.element.find('#assignment-ipv6-static-fields');
         const toggleStaticFields = () => {
             const mode = modal.element.find('#assignment-ipmode').val();
             staticFields.toggle(mode === 'static');
         };
+        const toggleIpv6StaticFields = () => {
+            const mode = modal.element.find('#assignment-ipv6mode').val();
+            ipv6StaticFields.toggle(mode === 'static');
+        };
         modal.element.find('#assignment-ipmode').on('change', toggleStaticFields);
+        modal.element.find('#assignment-ipv6mode').on('change', toggleIpv6StaticFields);
         toggleStaticFields();
+        toggleIpv6StaticFields();
 
         const saveAssignment = async (apply = false) => {
             const iface = modal.element.find('#assignment-interface').val();
@@ -754,6 +885,12 @@ var Interfaces = {
             const address = modal.element.find('#assignment-address').val();
             const prefix = modal.element.find('#assignment-prefix').val();
             const gateway = modal.element.find('#assignment-gateway').val();
+            const ipv6ModeValue = modal.element.find('#assignment-ipv6mode').val();
+            const ipv6Address = modal.element.find('#assignment-ipv6-address').val();
+            const ipv6Prefix = modal.element.find('#assignment-ipv6-prefix').val();
+            const ipv6Gateway = modal.element.find('#assignment-ipv6-gateway').val();
+            const ipv6AcceptRa = modal.element.find('#assignment-ipv6-acceptra').is(':checked');
+            const ipv6Autoconf = modal.element.find('#assignment-ipv6-autoconf').is(':checked');
 
             if (!iface) {
                 Monolith.UI.toast('Interface is required', 'warning');
@@ -770,7 +907,13 @@ var Interfaces = {
                 isManagement: isManagement,
                 address: address || null,
                 prefixLength: prefix ? parseInt(prefix, 10) : null,
-                gateway: gateway || null
+                gateway: gateway || null,
+                ipv6Mode: ipv6ModeValue,
+                ipv6Address: ipv6Address || null,
+                ipv6PrefixLength: ipv6Prefix ? parseInt(ipv6Prefix, 10) : null,
+                ipv6Gateway: ipv6Gateway || null,
+                ipv6AcceptRa: ipv6AcceptRa,
+                ipv6Autoconf: ipv6Autoconf
             };
 
             try {
@@ -1089,17 +1232,21 @@ var Interfaces = {
             }
 
             const data = response.Data || response.data || {};
-            const issues = data.Issues || data.issues || [];
-            if (!issues.length) {
-                Monolith.UI.toast('No configuration issues detected', 'success');
-                return;
-            }
+        const issues = data.Issues || data.issues || [];
+        if (!issues.length) {
+            this.issues = [];
+            this.renderIssues();
+            Monolith.UI.toast('No configuration issues detected', 'success');
+            return;
+        }
 
-            const listItems = issues.map(issue => `
-                <li>
-                    <strong>${issue.Type || issue.type}</strong> - ${issue.Message || issue.message}
-                    ${issue.File || issue.file ? `<div class="text-muted small">${issue.File || issue.file}</div>` : ''}
-                    ${issue.Detail || issue.detail ? `<div class="text-muted small">${issue.Detail || issue.detail}</div>` : ''}
+        this.issues = issues;
+        this.renderIssues();
+        const listItems = issues.map(issue => `
+            <li>
+                <strong>${issue.Type || issue.type}</strong> - ${issue.Message || issue.message}
+                ${issue.File || issue.file ? `<div class="text-muted small">${issue.File || issue.file}</div>` : ''}
+                ${issue.Detail || issue.detail ? `<div class="text-muted small">${issue.Detail || issue.detail}</div>` : ''}
                 </li>
             `).join('');
 

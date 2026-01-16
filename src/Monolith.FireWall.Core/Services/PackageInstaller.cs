@@ -93,14 +93,18 @@ public sealed class PackageInstaller
             }
 
             var targetDir = Path.Combine(_config.PackagesDirectory, manifest.Id);
-            var isUpdate = Directory.Exists(targetDir);
-            if (isUpdate)
-            {
-                if (!overwrite)
-                {
-                    return PackageInstallResult.Fail("Package already installed");
-                }
+            var existingState = await _stateStore.GetPackageAsync(manifest.Id);
+            var isUpdate = Directory.Exists(targetDir) && existingState != null;
 
+            // If the directory exists but we have no state, treat it as stale and allow reinstall.
+            if (Directory.Exists(targetDir) && existingState != null && !overwrite)
+            {
+                return PackageInstallResult.Fail("Package already installed");
+            }
+
+            // For stale dirs or updates with overwrite, clear the target directory to ensure a clean install.
+            if (Directory.Exists(targetDir))
+            {
                 Directory.Delete(targetDir, recursive: true);
             }
 
@@ -303,6 +307,9 @@ public sealed class PackageInstaller
                 // Sync database tables for all modules in this package
                 await SyncPackageModuleTablesAsync(packageInfo, cancellationToken);
 
+                // Enable all modules in the package by default (if not already set)
+                await EnablePackageModulesAsync(packageInfo, cancellationToken);
+
                 // Start lifecycle modules so they receive a context immediately after install/update.
                 // This is important for packages that trigger config generation on writes.
                 await StartPackageLifecycleAsync(packageInfo, cancellationToken);
@@ -376,6 +383,34 @@ public sealed class PackageInstaller
             var target = Path.Combine(destinationDir, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(target) ?? destinationDir);
             File.Copy(file, target, overwrite: true);
+        }
+    }
+
+    /// <summary>
+    /// Enables all modules in a package by default (if not already set in database).
+    /// </summary>
+    private async Task EnablePackageModulesAsync(PackageInfo packageInfo, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var modules = packageInfo.Definition.GetModules();
+            foreach (var module in modules)
+            {
+                // Check if module state exists
+                var existingState = await _stateStore.GetModuleStateAsync(packageInfo.Definition.Id, module.Id);
+                if (existingState == null)
+                {
+                    // No state exists, enable by default
+                    await _stateStore.SetModuleEnabledAsync(packageInfo.Definition.Id, module.Id, enabled: true);
+                    _logger.LogInformation($"Enabled module: {packageInfo.Definition.Id}/{module.Id}");
+                }
+                // If state exists, leave it as-is (user may have disabled it)
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Failed to enable modules for package {packageInfo.Definition.Id}: {ex.Message}");
+            // Don't fail installation if module enabling fails
         }
     }
 

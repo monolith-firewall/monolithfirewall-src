@@ -32,6 +32,9 @@ public sealed class FirewallHandler : ICoreRequestHandler
         "firewall.rules.managed.upsert",
         "firewall.defaults.get",
         "firewall.defaults.update",
+        "firewall.interface_settings.list",
+        "firewall.interface_settings.get",
+        "firewall.interface_settings.update",
         "firewall.status",
         "firewall.config",
         "firewall.pending",
@@ -274,6 +277,40 @@ public sealed class FirewallHandler : ICoreRequestHandler
                 return defaultsUpdate.Success
                     ? new ApiResponse(true, defaultsUpdate.Defaults, null)
                     : new ApiResponse(false, null, defaultsUpdate.Error ?? "Failed to update defaults");
+
+            case "firewall.interface_settings.list":
+                var ifaceSettingsList = await context.FirewallManager.InterfaceSettings.GetAllAsync();
+                return new ApiResponse(true, ifaceSettingsList, null);
+
+            case "firewall.interface_settings.get":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallInterfaceSettingsRequest getSettingsRequest, out var getSettingsError))
+                {
+                    return new ApiResponse(false, null, getSettingsError);
+                }
+
+                if (string.IsNullOrWhiteSpace(getSettingsRequest.InterfaceName))
+                {
+                    return new ApiResponse(false, null, "Interface name is required");
+                }
+
+                var ifaceSettings = await context.FirewallManager.InterfaceSettings.GetByInterfaceAsync(getSettingsRequest.InterfaceName);
+                return new ApiResponse(true, ifaceSettings, null);
+
+            case "firewall.interface_settings.update":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallInterfaceSettingsEntity updateSettingsRequest, out var updateSettingsError))
+                {
+                    return new ApiResponse(false, null, updateSettingsError);
+                }
+
+                if (string.IsNullOrWhiteSpace(updateSettingsRequest.InterfaceName))
+                {
+                    return new ApiResponse(false, null, "Interface name is required");
+                }
+
+                var updateSettingsResult = await context.FirewallManager.InterfaceSettings.UpdateSettingsAsync(updateSettingsRequest);
+                return updateSettingsResult
+                    ? new ApiResponse(true, new { success = true }, null)
+                    : new ApiResponse(false, null, "Failed to update interface settings");
 
             case "firewall.status":
                 var aliasCount = (await context.FirewallManager.Aliases.ListAliasesAsync()).Count;

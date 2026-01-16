@@ -94,6 +94,66 @@ public class FirewallController : ControllerBase
         }
     }
 
+    [HttpGet("interface-settings")]
+    public async Task<ActionResult> GetInterfaceSettings()
+    {
+        try
+        {
+            var coreRequest = new { action = "firewall.interface_settings.list" };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting interface settings");
+            return StatusCode(500, new { success = false, data = (object?)null, error = ex.Message });
+        }
+    }
+
+    [HttpGet("interface-settings/{iface}")]
+    public async Task<ActionResult> GetInterfaceSetting(string iface)
+    {
+        try
+        {
+            var coreRequest = new 
+            { 
+                action = "firewall.interface_settings.get",
+                payload = new { InterfaceName = iface }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting interface setting for {Interface}", iface);
+            return StatusCode(500, new { success = false, data = (object?)null, error = ex.Message });
+        }
+    }
+
+    [HttpPost("interface-settings")]
+    public async Task<ActionResult> UpdateInterfaceSetting()
+    {
+        try
+        {
+            using var reader = new StreamReader(Request.Body);
+            var body = await reader.ReadToEndAsync();
+            var payload = System.Text.Json.JsonSerializer.Deserialize<object>(body);
+
+            var coreRequest = new 
+            { 
+                action = "firewall.interface_settings.update",
+                payload = payload
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating interface settings");
+            return StatusCode(500, new { success = false, data = (object?)null, error = ex.Message });
+        }
+    }
+
     [HttpGet("preview")]
     public async Task<ActionResult> Preview()
     {

@@ -3,6 +3,7 @@ var SystemLogs = {
     currentTab: 'monolith',
     currentCategory: 'all',
     currentSecurityCategory: 'firewall',
+    isInitialized: false,
     logs: {
         monolith: [],
         system: [],
@@ -21,7 +22,11 @@ var SystemLogs = {
 
     init: function() {
         console.log('Initializing System Logs page...');
-        this.render();
+    },
+
+    renderPage: function() {
+        console.log('Rendering System Logs page...');
+        this.renderStructure();
         this.loadMonolithLogs();
         this.attachEventHandlers();
     },
@@ -29,8 +34,10 @@ var SystemLogs = {
     /**
      * Render the main page structure with tabs
      */
-    render: function() {
+    renderStructure: function() {
         const container = $('#page-content');
+        if (!container.length) return;
+
         container.html(`
             <div class="container-fluid p-4">
                 <!-- Page Header -->
@@ -380,9 +387,10 @@ var SystemLogs = {
             if (this.filters.monolith.endDate) params.append('endDate', this.filters.monolith.endDate);
 
             const response = await Monolith.API.get(`/logs/monolith?${params}`);
-            if (response.Success && response.Data) {
-                this.logs.monolith = response.Data.Logs || [];
-                this.pagination.monolith.total = response.Data.TotalCount || 0;
+            if ((response.Success || response.success) && (response.Data || response.data)) {
+                const data = response.Data || response.data;
+                this.logs.monolith = data.Logs || data.logs || [];
+                this.pagination.monolith.total = data.TotalCount || data.totalCount || 0;
                 this.renderMonolithLogs();
             }
         } catch (error) {
@@ -408,9 +416,10 @@ var SystemLogs = {
             if (this.filters.system.endDate) params.append('endDate', this.filters.system.endDate);
 
             const response = await Monolith.API.get(`/logs/system?${params}`);
-            if (response.Success && response.Data) {
-                this.logs.system = response.Data.Logs || [];
-                this.pagination.system.total = response.Data.TotalCount || 0;
+            if ((response.Success || response.success) && (response.Data || response.data)) {
+                const data = response.Data || response.data;
+                this.logs.system = data.Logs || data.logs || [];
+                this.pagination.system.total = data.TotalCount || data.totalCount || 0;
                 this.renderSystemLogs();
             }
         } catch (error) {
@@ -436,9 +445,10 @@ var SystemLogs = {
             if (this.filters.security.endDate) params.append('endDate', this.filters.security.endDate);
 
             const response = await Monolith.API.get(`/logs/security?${params}`);
-            if (response.Success && response.Data) {
-                this.logs.security = response.Data.Logs || [];
-                this.pagination.security.total = response.Data.TotalCount || 0;
+            if ((response.Success || response.success) && (response.Data || response.data)) {
+                const data = response.Data || response.data;
+                this.logs.security = data.Logs || data.logs || [];
+                this.pagination.security.total = data.TotalCount || data.totalCount || 0;
                 this.renderSecurityLogs();
             }
         } catch (error) {
@@ -452,6 +462,8 @@ var SystemLogs = {
      */
     renderMonolithLogs: function() {
         const tbody = $('#monolithLogsTableBody');
+        if (!tbody.length) return;
+
         if (this.logs.monolith.length === 0) {
             tbody.html('<tr><td colspan="7" class="text-center text-muted">No logs found</td></tr>');
             return;
@@ -485,6 +497,8 @@ var SystemLogs = {
      */
     renderSystemLogs: function() {
         const tbody = $('#systemLogsTableBody');
+        if (!tbody.length) return;
+
         if (this.logs.system.length === 0) {
             tbody.html('<tr><td colspan="6" class="text-center text-muted">No logs found</td></tr>');
             return;
@@ -518,6 +532,8 @@ var SystemLogs = {
      */
     renderSecurityLogs: function() {
         const tbody = $('#securityLogsTableBody');
+        if (!tbody.length) return;
+
         if (this.logs.security.length === 0) {
             tbody.html('<tr><td colspan="8" class="text-center text-muted">No logs found</td></tr>');
             return;
@@ -566,6 +582,7 @@ var SystemLogs = {
      * Escape HTML
      */
     escapeHtml: function(text) {
+        if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
@@ -576,6 +593,7 @@ var SystemLogs = {
      */
     showMessage: function(message, type) {
         const alert = $('#logsStatusMessage');
+        if (!alert.length) return;
         alert.removeClass('d-none alert-success alert-danger alert-warning alert-info')
              .addClass(`alert-${type}`)
              .text(message);
