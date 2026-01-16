@@ -1,5 +1,7 @@
 using System.Linq;
 using System.IO;
+using System.Reflection;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
@@ -15,6 +17,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Matching;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure;
 
 namespace Monolith.FireWall.WebUI.Services;
 
@@ -27,18 +30,21 @@ public class RazorPartialRenderer
     private readonly ITempDataProvider _tempDataProvider;
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<RazorPartialRenderer> _logger;
+    private readonly IPageFactoryProvider _pageFactoryProvider;
     private static bool _loggedRoutes = false;
 
     public RazorPartialRenderer(
         IRazorViewEngine viewEngine,
         ITempDataProvider tempDataProvider,
         IServiceProvider serviceProvider,
-        ILogger<RazorPartialRenderer> logger)
+        ILogger<RazorPartialRenderer> logger,
+        IPageFactoryProvider pageFactoryProvider)
     {
         _viewEngine = viewEngine;
         _tempDataProvider = tempDataProvider;
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _pageFactoryProvider = pageFactoryProvider;
     }
 
     /// <summary>
@@ -59,47 +65,9 @@ public class RazorPartialRenderer
                 return await RenderPageByRouteAsync(httpContext, pageRoute);
             }
             
-            // Otherwise, try to find it as a view (for backward compatibility)
-            var actionContext = new ActionContext(
-                httpContext,
-                httpContext.GetRouteData(),
-                new ActionDescriptor());
-
-            var viewResult = _viewEngine.FindView(actionContext, pageRoute, isMainPage: false);
-            
-            if (!viewResult.Success)
-            {
-                viewResult = _viewEngine.GetView(executingFilePath: null, viewPath: pageRoute, isMainPage: false);
-            }
-
-            if (!viewResult.Success)
-            {
-                _logger.LogWarning($"View not found: {pageRoute}. Searched locations: {string.Join(", ", viewResult.SearchedLocations ?? Array.Empty<string>())}");
-                throw new FileNotFoundException($"View not found: {pageRoute}");
-            }
-
-            using var sw = new StringWriter();
-            
-            var viewData = new ViewDataDictionary(
-                new EmptyModelMetadataProvider(),
-                new ModelStateDictionary())
-            {
-                Model = model
-            };
-
-            var tempData = new TempDataDictionary(httpContext, _tempDataProvider);
-
-            var viewContext = new ViewContext(
-                actionContext,
-                viewResult.View,
-                viewData,
-                tempData,
-                sw,
-                new HtmlHelperOptions());
-
-            await viewResult.View.RenderAsync(viewContext);
-
-            return sw.ToString();
+            // If not a route, it's an invalid page route
+            _logger.LogWarning($"Invalid page route format: {pageRoute}. Routes must start with '/'");
+            throw new ArgumentException($"Invalid page route: {pageRoute}. Routes must start with '/'");
         }
         catch (Exception ex)
         {
@@ -109,7 +77,9 @@ public class RazorPartialRenderer
     }
 
     /// <summary>
-    /// Renders a Razor page from a package
+    /// Renders a Razor page from a package (Razor Pages are embedded in main DLL)
+    /// Package pages are Razor Pages with @page directives like: @page "/p/monolith-network/dhcp/config"
+    /// We need to use the view engine with the correct view path format for RCL embedded views
     /// </summary>
     /// <param name="httpContext">Current HTTP context</param>
     /// <param name="packageId">Package ID (e.g., "monolith-network")</param>
@@ -122,212 +92,239 @@ public class RazorPartialRenderer
         string moduleId, 
         string pageId)
     {
-        // IMPORTANT: Do NOT call RenderPageByRouteAsync for package routes!
-        // That would cause a circular dependency because it would try to render PackagePageWrapper,
-        // which calls RenderPackagePageAsync again, creating an infinite loop.
-        // Instead, render package pages directly from RCLs using the view engine.
-        
-        _logger.LogWarning($"[RenderPackagePageAsync] ===== STARTING RENDER ===== packageId={packageId}, moduleId={moduleId}, pageId={pageId}");
-        
-        // Build page candidates to try
-        var pageCandidates = new List<string> { pageId };
-        if (!pageCandidates.Contains("config", StringComparer.OrdinalIgnoreCase))
-        {
-            pageCandidates.Add("config");
-        }
-        _logger.LogWarning($"[RenderPackagePageAsync] Page candidates: {string.Join(", ", pageCandidates)}");
-        
-        // Convert package ID to assembly name: monolith-network -> Monolith.Network
+        // Package pages are Razor Pages with @page directives
+        // The compiled class name is: AspNetCoreGeneratedDocument.Pages_{Module}_{Page}
+        // Example: AspNetCoreGeneratedDocument.Pages_Dhcp_Config
         var assemblyName = ToAssemblyName(packageId);
         var modulePascal = ToPascalCase(moduleId);
-        _logger.LogWarning($"[RenderPackagePageAsync] Converted: packageId={packageId} -> assemblyName={assemblyName}, moduleId={moduleId} -> modulePascal={modulePascal}");
+        var pagePascal = ToPascalCase(pageId);
         
-        // Try to find and render the package page from RCL views
-        foreach (var candidate in pageCandidates)
+        // Try to find and instantiate the compiled Razor Page class directly
+        var compiledClassName = $"AspNetCoreGeneratedDocument.Pages_{modulePascal}_{pagePascal}";
+        
+        _logger.LogDebug($"Trying to load compiled Razor Page class: {compiledClassName} from assembly {assemblyName}");
+        
+        try
         {
-            var pagePascal = ToPascalCase(candidate);
+            // First try to get assembly from ApplicationPartManager
+            var partManager = httpContext.RequestServices.GetRequiredService<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPartManager>();
+            var assemblyPart = partManager.ApplicationParts
+                .OfType<Microsoft.AspNetCore.Mvc.ApplicationParts.AssemblyPart>()
+                .FirstOrDefault(ap => ap.Assembly.GetName().Name == assemblyName);
             
-            // Try multiple path formats for RCL views
-            // Format: /_content/{AssemblyName}/Pages/{Module}/{Page}
-            var paths = new[]
-            {
-                $"/_content/{assemblyName}/Pages/{modulePascal}/{pagePascal}",
-                $"/_content/{assemblyName}/Pages/{modulePascal}/Config",
-                $"/_content/{assemblyName}/Views/{modulePascal}/{pagePascal}",
-                $"/_content/{assemblyName}/Views/{modulePascal}/Config",
-                // Also try without _content prefix (for direct assembly access)
-                $"/Pages/{modulePascal}/{pagePascal}",
-                $"/Pages/{modulePascal}/Config",
-                $"/{modulePascal}/{pagePascal}",
-                $"/{modulePascal}/Config"
-            };
-
-            // Try to find the view using the view engine
-            // ViewLocationFormats are: /_content/{0}/Pages/{1} and /_content/{0}/Views/{1}
-            // Where {0} is the controller/area name and {1} is the view name
-            // For RCL views, we can use FindView with the assembly name as {0} and the view path as {1}
-            var viewNames = new[]
-            {
-                $"{modulePascal}/{pagePascal}",
-                $"{modulePascal}/Config"
-            };
+            Assembly? assembly = null;
             
-            var actionContext = new ActionContext(
-                httpContext,
-                httpContext.GetRouteData(),
-                new ActionDescriptor())
+            if (assemblyPart != null)
             {
-                // Set the route data to include the assembly name so ViewLocationFormats can use it
-                RouteData = new RouteData(httpContext.GetRouteData())
-            };
-            
-            // Try to set a route value that ViewLocationFormats can use
-            // The ViewLocationFormats use {0} which typically comes from the controller name
-            // For RCL views, we need {0} to be the assembly name
-            actionContext.RouteData.Values["controller"] = assemblyName;
-            _logger.LogWarning($"[RenderPackagePageAsync] Set controller route value to: {assemblyName}");
-            
-            foreach (var viewName in viewNames)
+                assembly = assemblyPart.Assembly;
+                _logger.LogDebug($"Found assembly {assemblyName} in ApplicationPartManager");
+            }
+            else
             {
-                try
+                // Fallback: Load assembly directly from file path via Core API
+                _logger.LogDebug($"Assembly {assemblyName} not in ApplicationPartManager, trying to load from file path");
+                
+                var coreClient = httpContext.RequestServices.GetRequiredService<CoreApiClient>();
+                var request = JsonSerializer.Serialize(new { action = "get-packages" });
+                var responseJson = await coreClient.SendRequestAsync(request);
+                var response = JsonSerializer.Deserialize<JsonElement>(responseJson);
+                
+                if (response.TryGetProperty("Success", out var success) && success.GetBoolean())
                 {
-                    _logger.LogWarning($"[RenderPackagePageAsync] Trying view name: '{viewName}' (assembly: {assemblyName}, page candidate: {candidate})");
-                    
-                    // Try FindView first - it will use ViewLocationFormats with {0} = assemblyName, {1} = viewName
-                    _logger.LogWarning($"[RenderPackagePageAsync] Calling FindView with viewName='{viewName}', controller='{assemblyName}'");
-                    var viewResult = _viewEngine.FindView(actionContext, viewName, isMainPage: false);
-                    _logger.LogWarning($"[RenderPackagePageAsync] FindView result: Success={viewResult.Success}, View={viewResult.View?.GetType().Name ?? "null"}");
-                    
-                    if (!viewResult.Success && viewResult.SearchedLocations != null)
+                    if (response.TryGetProperty("Data", out var data))
                     {
-                        _logger.LogWarning($"[RenderPackagePageAsync] FindView searched locations: {string.Join(", ", viewResult.SearchedLocations)}");
-                    }
-                    
-                    // Also try GetView with explicit paths (RCL assemblies)
-                    if (!viewResult.Success)
-                    {
-                        var explicitPaths = new[]
-                        {
-                            $"_content/{assemblyName}/Pages/{viewName}",
-                            $"_content/{assemblyName}/Views/{viewName}",
-                            $"{assemblyName}/Pages/{viewName}",
-                            $"{assemblyName}/Views/{viewName}"
-                        };
+                        var packages = JsonSerializer.Deserialize<List<JsonElement>>(data.GetRawText()) ?? new List<JsonElement>();
+                        var package = packages.FirstOrDefault(p => 
+                            p.TryGetProperty("id", out var id) && 
+                            id.GetString()?.Equals(packageId, StringComparison.OrdinalIgnoreCase) == true);
                         
-                        _logger.LogWarning($"[RenderPackagePageAsync] FindView failed, trying GetView with explicit paths: {string.Join(", ", explicitPaths)}");
-                        foreach (var explicitPath in explicitPaths)
+                        if (package.TryGetProperty("viewsAssemblyPath", out var pathEl))
                         {
-                            _logger.LogWarning($"[RenderPackagePageAsync] Trying GetView with path: '{explicitPath}'");
-                            viewResult = _viewEngine.GetView(executingFilePath: null, viewPath: explicitPath, isMainPage: false);
-                            _logger.LogWarning($"[RenderPackagePageAsync] GetView result for '{explicitPath}': Success={viewResult.Success}");
-                            if (viewResult.Success)
+                            var assemblyPath = pathEl.GetString();
+                            if (!string.IsNullOrEmpty(assemblyPath) && File.Exists(assemblyPath))
                             {
-                                if (viewResult.SearchedLocations != null)
-                                {
-                                    _logger.LogWarning($"[RenderPackagePageAsync] GetView searched locations: {string.Join(", ", viewResult.SearchedLocations)}");
-                                }
-                                break;
+                                assembly = Assembly.LoadFrom(assemblyPath);
+                                _logger.LogDebug($"Loaded assembly {assemblyName} directly from {assemblyPath}");
                             }
                         }
                     }
-                    
-                    // Try file system paths for package pages (when not in RCL)
-                    // NOTE: Razor views need to be compiled - file system .cshtml files can't be directly rendered
-                    // Packages should have Views assemblies (RCLs) for their pages to work
-                    if (!viewResult.Success)
-                    {
-                        // Try multiple file system path formats to check if files exist
-                        var fileSystemPaths = new[]
-                        {
-                            $"/var/lib/monolith-firewall/packages/{packageId}/Pages/{viewName}.cshtml",
-                            $"/var/lib/monolith-firewall/packages/{packageId}/Pages/{modulePascal}/{pagePascal}.cshtml",
-                            $"/var/lib/monolith-firewall/packages/{packageId}/Pages/{modulePascal}/Config.cshtml"
-                        };
-                        
-                        foreach (var packagePagePath in fileSystemPaths)
-                        {
-                            _logger.LogWarning($"[RenderPackagePageAsync] Checking file system path: '{packagePagePath}'");
-                            if (File.Exists(packagePagePath))
-                            {
-                                _logger.LogWarning($"[RenderPackagePageAsync] ⚠️ FILE EXISTS but cannot be rendered - Razor views must be compiled!");
-                                _logger.LogWarning($"[RenderPackagePageAsync] Package '{packageId}' has file system pages but no Views assembly (RCL)");
-                                _logger.LogWarning($"[RenderPackagePageAsync] Solution: Package needs to compile pages into a Views assembly");
-                                var expectedViewsAssembly = $"{assemblyName}.Views.dll";
-                                _logger.LogWarning($"[RenderPackagePageAsync] Expected: /var/lib/monolith-firewall/packages/{packageId}/views/{expectedViewsAssembly}");
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (!viewResult.Success)
-                    {
-                        var searchedLocations = viewResult.SearchedLocations != null 
-                            ? string.Join(", ", viewResult.SearchedLocations) 
-                            : "none";
-                        _logger.LogWarning($"[RenderPackagePageAsync] View not found: '{viewName}'. Searched locations: {searchedLocations}");
-                        continue;
-                    }
-                    
-                    _logger.LogWarning($"[RenderPackagePageAsync] View found successfully: '{viewName}'");
-
-                    using var sw = new StringWriter();
-                    
-                    var viewData = new ViewDataDictionary(
-                        new EmptyModelMetadataProvider(),
-                        new ModelStateDictionary());
-
-                    var tempData = new TempDataDictionary(httpContext, _tempDataProvider);
-
-                    var viewContext = new ViewContext(
-                        actionContext,
-                        viewResult.View,
-                        viewData,
-                        tempData,
-                        sw,
-                        new HtmlHelperOptions());
-
-                    _logger.LogWarning($"[RenderPackagePageAsync] Rendering view '{viewName}'...");
-                    await viewResult.View.RenderAsync(viewContext);
-                    var result = sw.ToString();
-                    _logger.LogWarning($"[RenderPackagePageAsync] View rendered, result length: {result?.Length ?? 0} chars");
-                    
-                    if (!string.IsNullOrWhiteSpace(result) && result.Length > 100)
-                    {
-                        _logger.LogWarning($"[RenderPackagePageAsync] ===== SUCCESS ===== Rendered package page from RCL: {packageId}/{moduleId}/{candidate} via view '{viewName}' ({result.Length} chars)");
-                        return result;
-                    }
-                    else
-                    {
-                        _logger.LogWarning($"[RenderPackagePageAsync] View rendered but result is too short or empty: length={result?.Length ?? 0}");
-                    }
-                }
-                catch (FileNotFoundException)
-                {
-                    // Try next view name
-                    continue;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug($"Error rendering package view {viewName}: {ex.Message}");
-                    continue;
                 }
             }
+            
+            if (assembly != null)
+            {
+                _logger.LogDebug($"Looking for type: {compiledClassName} in assembly {assemblyName}");
+                
+                // Try to find the type - it might be in a different namespace
+                var pageType = assembly.GetType(compiledClassName, throwOnError: false);
+                
+                // If not found, try searching all types
+                if (pageType == null)
+                {
+                    try
+                    {
+                        var allTypes = assembly.GetTypes();
+                        pageType = allTypes.FirstOrDefault(t => 
+                            t.Name.Contains($"Pages_{modulePascal}_{pagePascal}") && 
+                            typeof(PageBase).IsAssignableFrom(t));
+                        
+                        if (pageType != null)
+                        {
+                            _logger.LogDebug($"Found Razor Page type by search: {pageType.FullName}");
+                        }
+                        else
+                        {
+                            // Log available page types for debugging
+                            var pageTypes = allTypes.Where(t => t.Name.Contains("Pages_")).Select(t => t.Name).Take(10).ToList();
+                            _logger.LogDebug($"Available page types in {assemblyName}: {string.Join(", ", pageTypes)}");
+                        }
+                    }
+                    catch (ReflectionTypeLoadException ex)
+                    {
+                        _logger.LogWarning($"Error loading types from {assemblyName}: {ex.Message}");
+                        // Try to get types that did load
+                        var loadedTypes = ex.Types.Where(t => t != null).ToList();
+                        pageType = loadedTypes.FirstOrDefault(t => 
+                            t.Name.Contains($"Pages_{modulePascal}_{pagePascal}") && 
+                            typeof(PageBase).IsAssignableFrom(t));
+                    }
+                }
+                
+                if (pageType != null && typeof(PageBase).IsAssignableFrom(pageType))
+                {
+                    _logger.LogInformation($"Found compiled Razor Page class: {pageType.FullName}");
+                    
+                    // Create page instance
+                    var page = (PageBase)Activator.CreateInstance(pageType)!;
+                    
+                    // Create page context - let the page create its own ViewData if it has a strongly-typed model
+                    var pageContext = new PageContext(new ActionContext(
+                        httpContext,
+                        httpContext.GetRouteData(),
+                        new ActionDescriptor()))
+                    {
+                        HttpContext = httpContext
+                    };
+                    
+                    // Try to create ViewData using the page's ViewData property type
+                    try
+                    {
+                        // Get the ViewData property from the page to see its type
+                        var viewDataProperty = pageType.GetProperty("ViewData", BindingFlags.Public | BindingFlags.Instance);
+                        if (viewDataProperty != null && viewDataProperty.PropertyType.IsGenericType)
+                        {
+                            // Page has strongly-typed ViewData, create it using reflection
+                            var viewDataType = viewDataProperty.PropertyType;
+                            var viewData = Activator.CreateInstance(viewDataType, 
+                                new EmptyModelMetadataProvider(), 
+                                new ModelStateDictionary()) as ViewDataDictionary;
+                            pageContext.ViewData = viewData ?? new ViewDataDictionary(new EmptyModelMetadataProvider(), new ModelStateDictionary());
+                        }
+                        else
+                        {
+                            // Use standard ViewDataDictionary
+                            pageContext.ViewData = new ViewDataDictionary(new EmptyModelMetadataProvider(), new ModelStateDictionary());
+                        }
+                    }
+                    catch
+                    {
+                        // Fallback to standard ViewDataDictionary
+                        pageContext.ViewData = new ViewDataDictionary(new EmptyModelMetadataProvider(), new ModelStateDictionary());
+                    }
+                    
+                    page.PageContext = pageContext;
+                    
+                    // Create view context and render
+                    using var sw = new StringWriter();
+                    page.ViewContext = new ViewContext(
+                        pageContext,
+                        new EmptyView(),
+                        pageContext.ViewData,
+                        new TempDataDictionary(httpContext, _tempDataProvider),
+                        sw,
+                        new HtmlHelperOptions());
+                    
+                    await page.ExecuteAsync();
+                    return sw.ToString();
+                }
+                else
+                {
+                    _logger.LogWarning($"Compiled Razor Page class not found: {compiledClassName} in assembly {assemblyName}");
+                }
+            }
+            else
+            {
+                _logger.LogWarning($"Could not load assembly {assemblyName} from ApplicationPartManager or file path");
+            }
         }
-
-        // Build list of tried view names for error message
-        var allTriedViews = new List<string>();
-        foreach (var candidate in pageCandidates)
+        catch (Exception ex)
         {
-            var pagePascal = ToPascalCase(candidate);
-            allTriedViews.Add($"{modulePascal}/{pagePascal}");
-            allTriedViews.Add($"{modulePascal}/Config");
+            _logger.LogDebug($"Failed to load compiled Razor Page class: {ex.Message}");
         }
         
-        _logger.LogError($"[RenderPackagePageAsync] ===== FAILED ===== Package page not found: {packageId}/{moduleId}/{pageId}");
-        _logger.LogError($"[RenderPackagePageAsync] Tried view names: {string.Join(", ", allTriedViews)}");
-        _logger.LogError($"[RenderPackagePageAsync] Assembly name: {assemblyName}, Module Pascal: {modulePascal}");
-        _logger.LogError($"[RenderPackagePageAsync] Page candidates: {string.Join(", ", pageCandidates)}");
-        throw new FileNotFoundException($"Package page not found: {packageId}/{moduleId}/{pageId}");
+        // Fallback: Try Config page if pageId is not "config"
+        if (!string.Equals(pageId, "config", StringComparison.OrdinalIgnoreCase))
+        {
+            var configClassName = $"AspNetCoreGeneratedDocument.Pages_{modulePascal}_Config";
+            _logger.LogDebug($"Trying Config fallback: {configClassName}");
+            
+            try
+            {
+                var partManager = httpContext.RequestServices.GetRequiredService<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPartManager>();
+                var assemblyPart = partManager.ApplicationParts
+                    .OfType<Microsoft.AspNetCore.Mvc.ApplicationParts.AssemblyPart>()
+                    .FirstOrDefault(ap => ap.Assembly.GetName().Name == assemblyName);
+                
+                if (assemblyPart != null)
+                {
+                    var assembly = assemblyPart.Assembly;
+                    var pageType = assembly.GetType(configClassName, throwOnError: false);
+                    
+                    if (pageType != null && typeof(PageBase).IsAssignableFrom(pageType))
+                    {
+                        var page = (PageBase)Activator.CreateInstance(pageType)!;
+                        var pageContext = new PageContext(new ActionContext(
+                            httpContext,
+                            httpContext.GetRouteData(),
+                            new ActionDescriptor()))
+                        {
+                            ViewData = new ViewDataDictionary(new EmptyModelMetadataProvider(), new ModelStateDictionary()),
+                            HttpContext = httpContext
+                        };
+                        
+                        page.PageContext = pageContext;
+                        using var sw = new StringWriter();
+                        page.ViewContext = new ViewContext(
+                            pageContext,
+                            new EmptyView(),
+                            pageContext.ViewData,
+                            new TempDataDictionary(httpContext, _tempDataProvider),
+                            sw,
+                            new HtmlHelperOptions());
+                        
+                        await page.ExecuteAsync();
+                        return sw.ToString();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug($"Failed to load Config Razor Page: {ex.Message}");
+            }
+        }
+        
+        throw new FileNotFoundException(
+            $"Package page not found: {packageId}/{moduleId}/{pageId}. " +
+            $"Tried compiled Razor Page classes: AspNetCoreGeneratedDocument.Pages_{modulePascal}_{pagePascal}, " +
+            $"AspNetCoreGeneratedDocument.Pages_{modulePascal}_Config. " +
+            $"Assembly {assemblyName} may not be registered or pages not compiled correctly.");
+    }
+    
+    // Helper class for empty view
+    private class EmptyView : IView
+    {
+        public string Path => "";
+        public Task RenderAsync(ViewContext context) => Task.CompletedTask;
     }
 
     /// <summary>

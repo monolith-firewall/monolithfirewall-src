@@ -271,17 +271,16 @@ public class NamedPipeListener
                             case "get-packages":
                                 var packages = _moduleRegistry.GetAllPackages()
                                     .Select(p => {
-                                        // Get assembly location - may be null for loaded assemblies
+                                        // Views are embedded in main assembly - get main assembly location
                                         string? viewsAssemblyPath = null;
-                                        if (p.ViewsAssembly != null)
+                                        if (p.MainAssembly != null)
                                         {
                                             try
                                             {
-                                                viewsAssemblyPath = p.ViewsAssembly.Location;
-                                                // If Location is null, try CodeBase (legacy)
+                                                viewsAssemblyPath = p.MainAssembly.Location;
                                                 if (string.IsNullOrEmpty(viewsAssemblyPath))
                                                 {
-                                                    var codeBase = p.ViewsAssembly.CodeBase;
+                                                    var codeBase = p.MainAssembly.CodeBase;
                                                     if (!string.IsNullOrEmpty(codeBase))
                                                     {
                                                         var uri = new Uri(codeBase);
@@ -301,7 +300,7 @@ public class NamedPipeListener
                                             version = p.Definition.Version,
                                             hasRazorViews = p.HasRazorViews,
                                             viewsAssemblyPath = viewsAssemblyPath,
-                                            viewsAssemblyName = p.ViewsAssembly?.FullName,
+                                            viewsAssemblyName = p.MainAssembly?.FullName, // Views are in main assembly
                                             packageDirectory = p.PackageDirectory,
                                         modules = p.Definition.GetModules().Select(m => new {
                                             id = m.Id,

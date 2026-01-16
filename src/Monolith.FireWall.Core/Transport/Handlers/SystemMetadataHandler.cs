@@ -118,7 +118,7 @@ public sealed class SystemMetadataHandler : ICoreRequestHandler
                         author = package.Definition.Author,
                         hasRazorViews = package.HasRazorViews,
                         viewsAssemblyPath = GetViewsAssemblyPath(package),
-                        viewsAssemblyName = package.ViewsAssembly?.FullName,
+                        viewsAssemblyName = package.MainAssembly?.FullName, // Views are in main assembly
                         packageDirectory = package.PackageDirectory,
                         installedVersion = installInfo?.Version,
                         installedAt = installInfo?.InstalledAt,
@@ -147,20 +147,22 @@ public sealed class SystemMetadataHandler : ICoreRequestHandler
 
     private static string? GetViewsAssemblyPath(PackageInfo package)
     {
-        if (package.ViewsAssembly == null)
+        // Views are embedded in main assembly when using Microsoft.NET.Sdk.Razor
+        // Return main assembly path as views assembly path
+        if (package.MainAssembly == null)
         {
             return null;
         }
 
         try
         {
-            var location = package.ViewsAssembly.Location;
+            var location = package.MainAssembly.Location;
             if (!string.IsNullOrEmpty(location))
             {
                 return location;
             }
 
-            var codeBase = package.ViewsAssembly.CodeBase;
+            var codeBase = package.MainAssembly.CodeBase;
             if (!string.IsNullOrEmpty(codeBase))
             {
                 var uri = new Uri(codeBase);

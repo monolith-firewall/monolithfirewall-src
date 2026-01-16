@@ -53,7 +53,7 @@ for PACKAGE_DIR in "$PACKAGES_DIR"/*; do
         continue
     fi
     
-    # Extract package ID from manifest.json (fallback to directory name)
+    # Extract package ID from manifest.json
     PACKAGE_ID=$(grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' "$PACKAGE_DIR/manifest.json" | head -1 | sed 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' || echo "$PACKAGE_NAME")
     
     PACKAGE_COUNT=$((PACKAGE_COUNT + 1))

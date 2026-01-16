@@ -22,72 +22,74 @@ public class PackageViewsRegistry
 
     /// <summary>
     /// Registers all package Views assemblies with the application
+    /// Views are embedded in main DLL when using Microsoft.NET.Sdk.Razor
     /// </summary>
     public async Task RegisterViewsAssembliesAsync(ApplicationPartManager partManager)
     {
         try
         {
-            var request = new
-            {
-                action = "get-packages"
-            };
-
-            var requestJson = JsonSerializer.Serialize(request);
-            var responseJson = await _coreClient.SendRequestAsync(requestJson);
+            var request = JsonSerializer.Serialize(new { action = "get-packages" });
+            var responseJson = await _coreClient.SendRequestAsync(request);
             var response = JsonSerializer.Deserialize<JsonElement>(responseJson);
 
-            if (response.TryGetProperty("success", out var success) && success.GetBoolean())
-            {
-                if (response.TryGetProperty("data", out var data))
-                {
-                    var packages = JsonSerializer.Deserialize<List<JsonElement>>(data.GetRawText()) ?? new List<JsonElement>();
+            _logger.LogDebug($"PackageViewsRegistry: Got response from Core API. Response keys: {string.Join(", ", response.EnumerateObject().Select(p => p.Name))}");
 
-                    foreach (var package in packages)
+            // Check for both "success" and "Success" (case variations)
+            if (!response.TryGetProperty("success", out var success))
+                response.TryGetProperty("Success", out success);
+            
+            if (!success.GetBoolean())
+            {
+                _logger.LogWarning("PackageViewsRegistry: Core API returned success=false");
+                return;
+            }
+
+            // Check for both "data" and "Data" (case variations)
+            if (!response.TryGetProperty("data", out var data))
+            {
+                if (!response.TryGetProperty("Data", out data))
+                {
+                    _logger.LogWarning("PackageViewsRegistry: No data property in response");
+                    return;
+                }
+            }
+
+            var packages = JsonSerializer.Deserialize<List<JsonElement>>(data.GetRawText()) ?? new List<JsonElement>();
+
+            foreach (var package in packages)
+            {
+                // Get views assembly path (which is main DLL path - views are embedded)
+                if (!package.TryGetProperty("viewsAssemblyPath", out var pathEl))
+                    continue;
+
+                var assemblyPath = pathEl.GetString();
+                if (string.IsNullOrEmpty(assemblyPath) || !File.Exists(assemblyPath))
+                    continue;
+
+                // Skip if already registered
+                if (IsRegistered(assemblyPath))
+                    continue;
+
+                try
+                {
+                    var assembly = Assembly.LoadFrom(assemblyPath);
+                    var assemblyPart = new AssemblyPart(assembly);
+                    partManager.ApplicationParts.Add(assemblyPart);
+                    _registeredAssemblies.Add(assemblyPath);
+                    _logger.LogInformation($"Registered Views assembly: {assembly.FullName} from {assemblyPath}");
+                    
+                    // Log embedded Razor Pages for debugging
+                    var embeddedResources = assembly.GetManifestResourceNames()
+                        .Where(r => r.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    if (embeddedResources.Count > 0)
                     {
-                        var packageId = package.TryGetProperty("id", out var idEl) ? idEl.GetString() : "unknown";
-                        var packageName = package.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : packageId;
-                        
-                        if (package.TryGetProperty("hasRazorViews", out var hasViews) && hasViews.GetBoolean())
-                        {
-                            _logger.LogWarning($"[PackageViewsRegistry] Package '{packageId}' reports hasRazorViews=true");
-                            
-                            if (package.TryGetProperty("viewsAssemblyPath", out var assemblyPathEl))
-                            {
-                                var assemblyPath = assemblyPathEl.GetString();
-                                if (!string.IsNullOrEmpty(assemblyPath) && File.Exists(assemblyPath))
-                                {
-                                    try
-                                    {
-                                        // Load the Views assembly
-                                        var assembly = Assembly.LoadFrom(assemblyPath);
-                                        
-                                        // Add as an application part
-                                        var assemblyPart = new AssemblyPart(assembly);
-                                        partManager.ApplicationParts.Add(assemblyPart);
-                                        
-                                        _registeredAssemblies.Add(assemblyPath);
-                                        _logger.LogInformation($"[PackageViewsRegistry] ✓ Registered Views assembly: {assembly.FullName} from {assemblyPath}");
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        _logger.LogError($"[PackageViewsRegistry] ✗ Failed to register Views assembly {assemblyPath}: {ex.Message}");
-                                    }
-                                }
-                                else
-                                {
-                                    _logger.LogWarning($"[PackageViewsRegistry] ✗ Package '{packageId}' has hasRazorViews=true but viewsAssemblyPath is missing or file doesn't exist: '{assemblyPath}'");
-                                }
-                            }
-                            else
-                            {
-                                _logger.LogWarning($"[PackageViewsRegistry] ✗ Package '{packageId}' has hasRazorViews=true but no viewsAssemblyPath property");
-                            }
-                        }
-                        else
-                        {
-                            _logger.LogDebug($"[PackageViewsRegistry] Package '{packageId}' has no Razor Views (hasRazorViews=false or missing)");
-                        }
+                        _logger.LogDebug($"  Found {embeddedResources.Count} embedded Razor resource(s) in {assembly.FullName}");
                     }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Failed to register Views assembly {assemblyPath}: {ex.Message}");
                 }
             }
         }

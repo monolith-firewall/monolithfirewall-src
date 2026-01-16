@@ -30,7 +30,7 @@ builder.Logging.AddFilter("Microsoft", LogLevel.Warning); // Reduce Microsoft no
 builder.Logging.AddFilter("System", LogLevel.Warning); // Reduce System noise
 builder.Logging.AddFilter("Monolith.FireWall", LogLevel.Debug); // Full debug for our code
 
-// Load WebUI settings from database via Core API (with file fallback)
+// Load WebUI settings from database via Core API
 var webUiSettings = await LoadWebUiSettingsAsync();
 var certificate = LoadOrCreateCertificate();
 
@@ -153,32 +153,22 @@ builder.Services.AddHostedService<Monolith.FireWall.WebUI.BackgroundServices.Per
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.Razor.RazorViewEngineOptions>(options =>
 {
     // Add view location formats for package views (RCL assemblies)
+    // Views are embedded in main DLL when using Microsoft.NET.Sdk.Razor
+    // Embedded resources are like: Monolith.Diagnostics.Pages.Diagnostics.Config.cshtml
+    // View location format: /_content/{AssemblyName}/Pages/{ViewPath}
+    // {0} = controller/assembly name, {1} = view name (e.g., "Diagnostics/Config")
     options.ViewLocationFormats.Add("/_content/{0}/Pages/{1}" + Microsoft.AspNetCore.Mvc.Razor.RazorViewEngine.ViewExtension);
     options.ViewLocationFormats.Add("/_content/{0}/Views/{1}" + Microsoft.AspNetCore.Mvc.Razor.RazorViewEngine.ViewExtension);
     
-    // Add file system view locations for package pages (when not in RCL)
-    // Note: These need to be registered as physical file providers to work
-    // For now, we handle file system pages directly in RazorPartialRenderer
-    options.ViewLocationFormats.Add("/packages/{0}/Pages/{1}" + Microsoft.AspNetCore.Mvc.Razor.RazorViewEngine.ViewExtension);
-    
     // Also add area view locations
     options.AreaViewLocationFormats.Add("/_content/{2}/Areas/{1}/Views/{0}" + Microsoft.AspNetCore.Mvc.Razor.RazorViewEngine.ViewExtension);
+    
+    // Add explicit paths for package pages (without _content prefix, just assembly name)
+    options.ViewLocationFormats.Add("{0}/Pages/{1}" + Microsoft.AspNetCore.Mvc.Razor.RazorViewEngine.ViewExtension);
 });
 
 var app = builder.Build();
 
-// Redirect legacy index.html to the new app shell.
-app.Use(async (context, next) =>
-{
-    if (HttpMethods.IsGet(context.Request.Method) &&
-        string.Equals(context.Request.Path.Value, "/index.html", StringComparison.OrdinalIgnoreCase))
-    {
-        context.Response.Redirect("/");
-        return;
-    }
-
-    await next();
-});
 
 // Initialize UserService if CL.SQLite is available
 if (sqliteForDI != null)
@@ -222,7 +212,7 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
-// SPA fallback: rewrite HTML routes to the app shell (keeps /login and /setup separate)
+// SPA: rewrite HTML routes to the app shell (keeps /login and /setup separate)
 app.Use(async (context, next) =>
 {
     if (HttpMethods.IsGet(context.Request.Method))
@@ -257,7 +247,7 @@ app.UseRouting();
 // Authentication middleware
 app.UseMiddleware<AuthenticationMiddleware>();
 
-var packagesRoot = Environment.GetEnvironmentVariable("MONOLITH_PACKAGES_ROOT") ?? "/opt/monolith-firewall/packages";
+var packagesRoot = Environment.GetEnvironmentVariable("MONOLITH_PACKAGES_ROOT") ?? "/var/lib/monolith-firewall/packages";
 
 // Custom route for package static files: /_content/{PackageName}/{**filePath}
 // Maps /_content/Monolith.Network/js/file.js -> {packagesRoot}/monolith-network/wwwroot/js/file.js
@@ -423,33 +413,6 @@ static string? ResolvePackageAsset(string packagesRoot, string packageFolder, st
     return ResolveCandidatePath(basePath, candidates);
 }
 
-static string NormalizeModuleKey(string value)
-{
-    return new string(value
-        .Where(char.IsLetterOrDigit)
-        .Select(char.ToLowerInvariant)
-        .ToArray());
-}
-
-static string? FindModuleFolder(string basePagesPath, string module)
-{
-    if (!Directory.Exists(basePagesPath))
-    {
-        return null;
-    }
-
-    var moduleKey = NormalizeModuleKey(module);
-    foreach (var dir in Directory.GetDirectories(basePagesPath))
-    {
-        var name = Path.GetFileName(dir);
-        if (NormalizeModuleKey(name) == moduleKey)
-        {
-            return name;
-        }
-    }
-
-    return null;
-}
 
 static async Task<string> DownloadPackageAsync(string packageId, string downloadUrl, string? expectedSha256, bool allowInsecureHttp, CancellationToken cancellationToken)
 {
@@ -692,116 +655,8 @@ app.MapGet("/api/user/current", async (HttpContext httpContext) =>
     });
 });
 
-// Package page route (module only): /p/{package}/{module}
-// This loads the default page (Index.cshtml or Config.cshtml) for the module
-app.MapGet("/p/{package}/{module}", async (HttpContext context, string package, string module) =>
-{
-    var route = $"/p/{package.ToLowerInvariant()}/{module.ToLowerInvariant()}";
-    
-    // Convert package name to folder name: monolith-network
-    var packageFolder = package.ToLowerInvariant();
-    var pagesPath = Path.Combine(packagesRoot, packageFolder, "Pages");
-    var moduleFolder = FindModuleFolder(pagesPath, module);
-    
-    // Map module to file path
-    // Example: dhcp -> Pages/Dhcp/Index.cshtml or Pages/Dhcp/Config.cshtml
-    var moduleCap = moduleFolder ?? (char.ToUpper(module[0]) + module.Substring(1));
-    
-    // Try Index.cshtml first, then Config.cshtml as fallback
-    var indexPath = Path.Combine(packagesRoot, packageFolder, "Pages", moduleCap, "Index.cshtml");
-    var configPath = Path.Combine(packagesRoot, packageFolder, "Pages", moduleCap, "Config.cshtml");
-    
-    string? filePath = null;
-    if (System.IO.File.Exists(indexPath))
-    {
-        filePath = indexPath;
-    }
-    else if (System.IO.File.Exists(configPath))
-    {
-        filePath = configPath;
-    }
-    
-    if (filePath != null)
-    {
-        var content = await System.IO.File.ReadAllTextAsync(filePath);
-        context.Response.ContentType = "text/html";
-        context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
-        context.Response.Headers.Append("Pragma", "no-cache");
-        context.Response.Headers.Append("Expires", "0");
-        await context.Response.WriteAsync(content);
-    }
-    else
-    {
-        context.Response.StatusCode = 404;
-        await context.Response.WriteAsync($@"<!DOCTYPE html>
-<html>
-<head>
-    <title>Page Not Found</title>
-    <link href=""/css/bootstrap.min.css"" rel=""stylesheet"" />
-    <link href=""/css/monolith-theme.css"" rel=""stylesheet"" />
-</head>
-<body>
-    <div class=""container mt-5"">
-        <div class=""alert alert-warning"">
-            <h4>Page Not Found</h4>
-            <p>The page at <code>{route}</code> could not be loaded.</p>
-            <p>Tried: <code>{indexPath}</code> and <code>{configPath}</code></p>
-            <p class=""text-muted"">This page may not be fully implemented yet.</p>
-        </div>
-    </div>
-</body>
-</html>");
-    }
-});
-
-// Package page route: /p/{package}/{module}/{page}
-app.MapGet("/p/{package}/{module}/{page}", async (HttpContext context, string package, string module, string page) =>
-{
-    var route = $"/p/{package.ToLowerInvariant()}/{module.ToLowerInvariant()}/{page.ToLowerInvariant()}";
-    
-    // Convert package name to folder name: monolith-network
-    var packageFolder = package.ToLowerInvariant();
-    var pagesPath = Path.Combine(packagesRoot, packageFolder, "Pages");
-    var moduleFolder = FindModuleFolder(pagesPath, module);
-    
-    // Map module/page to file path
-    // Example: dhcp/config -> Pages/Dhcp/Config.cshtml
-    var moduleCap = moduleFolder ?? (char.ToUpper(module[0]) + module.Substring(1));
-    var pageCap = char.ToUpper(page[0]) + page.Substring(1);
-    var filePath = Path.Combine(packagesRoot, packageFolder, "Pages", moduleCap, $"{pageCap}.cshtml");
-    
-    if (System.IO.File.Exists(filePath))
-    {
-        var content = await System.IO.File.ReadAllTextAsync(filePath);
-        context.Response.ContentType = "text/html";
-        context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
-        context.Response.Headers.Append("Pragma", "no-cache");
-        context.Response.Headers.Append("Expires", "0");
-        await context.Response.WriteAsync(content);
-    }
-    else
-    {
-        context.Response.StatusCode = 404;
-        await context.Response.WriteAsync($@"<!DOCTYPE html>
-<html>
-<head>
-    <title>Page Not Found</title>
-    <link href=""/css/bootstrap.min.css"" rel=""stylesheet"" />
-    <link href=""/css/monolith-theme.css"" rel=""stylesheet"" />
-</head>
-<body>
-    <div class=""container mt-5"">
-        <div class=""alert alert-warning"">
-            <h4>Page Not Found</h4>
-            <p>The page at <code>{route}</code> could not be loaded.</p>
-            <p>Expected file: <code>{filePath}</code></p>
-            <p class=""text-muted"">This page may not be fully implemented yet.</p>
-        </div>
-    </div>
-</body>
-</html>");
-    }
-});
+// Package pages are handled by Razor Pages via PackagePageWrapper.cshtml
+// Route: /p/{package}/{module}/{page?} is defined in PackagePageWrapper.cshtml
 
 // Interfaces API routes
 app.MapGet("/api/interfaces/assignments", async (HttpContext context, CoreApiClient coreClient) =>
@@ -1742,7 +1597,7 @@ app.MapGet("/api/logs/security", async (HttpContext context, SystemLogsManager l
     }
 });
 
-// Default SPA shell (fallback) - only for non-API routes to avoid ambiguity with controllers
+// Default SPA shell - only for non-API routes to avoid ambiguity with controllers
 app.MapWhen(
     ctx => !ctx.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase),
     branch =>
@@ -1833,7 +1688,7 @@ static X509Certificate2 LoadOrCreateCertificate()
 }
 
 /// <summary>
-/// Load WebUI settings from database via Core API, with file fallback for compatibility.
+/// Load WebUI settings from database via Core API
 /// </summary>
 static async Task<WebUiSettings> LoadWebUiSettingsAsync()
 {
@@ -1895,32 +1750,6 @@ static async Task<WebUiSettings> LoadWebUiSettingsAsync()
         Console.WriteLine($"⚠ Could not load WebUI settings from Core API: {ex.Message}");
     }
 
-    // Fallback: Try to load from file (for compatibility)
-    try
-    {
-        var filePath = "/etc/monolith-firewall/webui-bindings.json";
-        if (File.Exists(filePath))
-        {
-            var json = await File.ReadAllTextAsync(filePath);
-            var config = JsonSerializer.Deserialize<WebUiBindings>(json);
-            if (config != null && config.Addresses != null && config.Addresses.Count > 0)
-            {
-                Console.WriteLine($"✓ Loaded WebUI settings from file (legacy)");
-                return new WebUiSettings
-                {
-                    HttpPort = 80,
-                    HttpsPort = 443,
-                    BindToAllInterfaces = false,
-                    BindingAddresses = config.Addresses
-                };
-            }
-        }
-    }
-    catch
-    {
-        // Ignore file errors
-    }
-
     Console.WriteLine($"✓ Using default WebUI settings: HTTP=80, HTTPS=443 (all interfaces)");
     return defaultSettings;
 }
@@ -1945,10 +1774,4 @@ sealed class WebUiSettings
     public int HttpsPort { get; set; }
     public bool BindToAllInterfaces { get; set; }
     public List<string> BindingAddresses { get; set; } = new();
-}
-
-sealed class WebUiBindings
-{
-    public List<string> Addresses { get; set; } = new();
-    public DateTime GeneratedAt { get; set; }
 }

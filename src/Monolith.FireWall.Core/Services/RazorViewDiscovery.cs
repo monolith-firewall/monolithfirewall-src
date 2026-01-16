@@ -33,7 +33,7 @@ public class RazorViewDiscovery
 
         try
         {
-            // Method 1: Look for embedded resources (Razor views are embedded in RCL)
+            // Look for embedded resources (Razor views are embedded in RCL)
             var embeddedResources = viewsAssembly.GetManifestResourceNames()
                 .Where(r => r.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase) ||
                            r.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
@@ -47,6 +47,7 @@ public class RazorViewDiscovery
                 {
                     var viewPath = ExtractViewPathFromResource(resource, packageName);
                     var route = GenerateRouteFromPath(viewPath, packageId);
+                    // contentPath uses assembly name format (packageName is now in assembly name format)
                     var contentPath = $"/_content/{packageName}/{viewPath}";
 
                     views.Add(new PageDefinition(
@@ -62,37 +63,6 @@ public class RazorViewDiscovery
                     _logger.LogWarning($"Error processing view resource: {resource} - {ex.Message}");
                 }
             }
-
-            // Method 2: Look for types with PageAttribute (ASP.NET Core Razor Pages) - fallback
-            if (views.Count == 0)
-            {
-                var pageTypes = viewsAssembly.GetTypes()
-                    .Where(t => t.GetCustomAttributes()
-                        .Any(a => a.GetType().Name.Contains("Page") || a.GetType().Name.Contains("Razor")))
-                    .ToList();
-
-                foreach (var pageType in pageTypes)
-                {
-                    try
-                    {
-                        var viewPath = ExtractViewPathFromType(pageType, packageName);
-                        var route = GenerateRouteFromPath(viewPath, packageId);
-                        var contentPath = $"/_content/{packageName}/{viewPath}";
-
-                        views.Add(new PageDefinition(
-                            route,
-                            contentPath,
-                            Array.Empty<string>()
-                        ));
-
-                        _logger.LogDebug($"Discovered view from type: {route} -> {contentPath}");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning($"Error processing page type: {pageType.FullName} - {ex.Message}");
-                    }
-                }
-            }
         }
         catch (Exception ex)
         {
@@ -105,14 +75,22 @@ public class RazorViewDiscovery
 
     private string ExtractViewPathFromResource(string resourceName, string packageName)
     {
-        // Razor Class Library embeds views as: "Monolith.Network.Views.Pages.Dhcp.Config.cshtml"
+        // Razor Class Library embeds views as: "Monolith.Network.Pages.Dhcp.Config.cshtml"
+        // (when using Microsoft.NET.Sdk.Razor, views are in main assembly, not separate Views assembly)
         // We want: "Pages/Dhcp/Config.cshtml"
 
-        // Remove package name prefix
-        var prefix = $"{packageName.Replace("-", ".")}.Views.";
-        if (resourceName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        // Remove package name prefix (try both with and without .Views)
+        var packagePrefix = packageName.Replace("-", ".");
+        var prefixWithViews = $"{packagePrefix}.Views.";
+        var prefixWithoutViews = $"{packagePrefix}.";
+        
+        if (resourceName.StartsWith(prefixWithViews, StringComparison.OrdinalIgnoreCase))
         {
-            resourceName = resourceName.Substring(prefix.Length);
+            resourceName = resourceName.Substring(prefixWithViews.Length);
+        }
+        else if (resourceName.StartsWith(prefixWithoutViews, StringComparison.OrdinalIgnoreCase))
+        {
+            resourceName = resourceName.Substring(prefixWithoutViews.Length);
         }
 
         // Replace dots with slashes (except file extension)
@@ -147,25 +125,6 @@ public class RazorViewDiscovery
         return $"/p/{packageId.ToLowerInvariant()}/default/index";
     }
 
-    private string ExtractViewPathFromType(Type pageType, string packageName)
-    {
-        // Extract view path from type name
-        // Example: Monolith.Network.Pages.Dhcp.Config -> Pages/Dhcp/Config.cshtml
-        var typeName = pageType.FullName ?? "";
-        
-        // Find "Pages" in the namespace
-        var pagesIndex = typeName.IndexOf(".Pages.", StringComparison.Ordinal);
-        if (pagesIndex >= 0)
-        {
-            var afterPages = typeName.Substring(pagesIndex + 7); // Skip ".Pages."
-            var parts = afterPages.Split('.');
-            return $"Pages/{string.Join("/", parts)}.cshtml";
-        }
-
-        // Fallback: use type name
-        return $"Pages/{pageType.Name}.cshtml";
-    }
-
     private string ExtractModuleFromPath(string path)
     {
         // Extract module name from path like "Pages/Dhcp/Config.cshtml"
@@ -183,20 +142,4 @@ public class RazorViewDiscovery
         return "default";
     }
 
-    private string ExtractPageFromPath(string path)
-    {
-        // Extract page name from path like "Pages/Dhcp/Config.cshtml"
-        var parts = path.Split('/');
-        if (parts.Length >= 3)
-        {
-            // Remove extension
-            var pageName = parts[2];
-            if (pageName.Contains('.'))
-            {
-                pageName = pageName.Substring(0, pageName.LastIndexOf('.'));
-            }
-            return pageName.ToLowerInvariant();
-        }
-        return "index";
-    }
 }

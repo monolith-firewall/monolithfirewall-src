@@ -54,42 +54,10 @@ public class PageContentRenderer
             // Skip "p" at index 0
             var packageId = parts[1];
             var moduleId = parts[2];
-            var specifiedPageId = parts.Length > 3 ? parts[3] : "config";
+            var pageId = parts.Length > 3 ? parts[3] : "config";
 
-            // Build page candidates to try
-            // Always try the specified pageId first, then "config" as fallback
-            // Don't add moduleId as a candidate - that would cause routes like /p/package/module/module
-            var pageCandidates = new List<string> { specifiedPageId };
-            if (!pageCandidates.Contains("config", StringComparer.OrdinalIgnoreCase))
-            {
-                pageCandidates.Add("config");
-            }
-
-            _logger.LogWarning("[PageContentRenderer] ===== RENDERING PACKAGE PAGE ===== {PackageId}/{ModuleId}/{PageId} (candidates: {Candidates})", packageId, moduleId, specifiedPageId, string.Join(", ", pageCandidates));
-
-            FileNotFoundException? lastError = null;
-            foreach (var candidate in pageCandidates)
-            {
-                try
-                {
-                    html = await _razorRenderer.RenderPackagePageAsync(httpContext, packageId, moduleId, candidate);
-                    if (!string.IsNullOrWhiteSpace(html))
-                    {
-                        break;
-                    }
-                }
-                catch (FileNotFoundException ex)
-                {
-                    _logger.LogWarning("[PageContentRenderer] Package route {Package}/{Module}/{Page} not found: {Message}", packageId, moduleId, candidate, ex.Message);
-                    lastError = ex;
-                    continue;
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(html))
-            {
-                throw lastError ?? new FileNotFoundException($"Package page not found: {packageId}/{moduleId}/{specifiedPageId}");
-            }
+            _logger.LogInformation("Rendering package page: {PackageId}/{ModuleId}/{PageId}", packageId, moduleId, pageId);
+            html = await _razorRenderer.RenderPackagePageAsync(httpContext, packageId, moduleId, pageId);
         }
         // INTERNAL PAGES (firewall, etc.): Use Razor Pages rendering directly (no HTTP request to avoid deadlock)
         else
@@ -119,106 +87,6 @@ public class PageContentRenderer
         };
     }
 
-    /// <summary>
-    /// Renders an internal page by making an HTTP request to the route.
-    /// ASP.NET Core routing will handle it normally - Razor Pages with Layout = null return just content.
-    /// </summary>
-    private async Task<string> RenderPageViaHttpAsync(HttpContext httpContext, string route)
-    {
-        // For internal requests, try localhost first (faster, avoids network stack)
-        // Fall back to original host if localhost fails
-        var scheme = httpContext.Request.Scheme;
-        var originalHost = httpContext.Request.Host.Value;
-        var port = httpContext.Request.Host.Port;
-        
-        // Try localhost first (127.0.0.1 or localhost with port)
-        var localhostHost = port.HasValue ? $"127.0.0.1:{port.Value}" : "127.0.0.1";
-        var localhostUrl = $"{scheme}://{localhostHost}{route}";
-        var originalUrl = $"{scheme}://{originalHost}{route}";
-
-        _logger.LogInformation("Making HTTP request to render internal page: {Url} (will fallback to {OriginalUrl} if needed)", localhostUrl, originalUrl);
-
-        // Create HTTP client with timeout
-        var client = _httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromSeconds(30);
-
-        // Copy all request headers that might be needed (especially cookies for auth)
-        foreach (var header in httpContext.Request.Headers)
-        {
-            // Skip headers that shouldn't be forwarded
-            if (header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase) ||
-                header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            // Copy cookies and other headers
-            if (header.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase))
-            {
-                client.DefaultRequestHeaders.Add("Cookie", header.Value.ToString());
-            }
-            else if (!header.Key.StartsWith(":", StringComparison.OrdinalIgnoreCase))
-            {
-                try
-                {
-                    client.DefaultRequestHeaders.TryAddWithoutValidation(header.Key, header.Value.ToArray());
-                }
-                catch
-                {
-                    // Skip headers that can't be added
-                }
-            }
-        }
-
-        // Make the request - try localhost first, fallback to original host
-        HttpResponseMessage response;
-        string finalUrl = localhostUrl;
-        try
-        {
-            response = await client.GetAsync(localhostUrl);
-            _logger.LogDebug("Successfully connected to localhost: {Url}", localhostUrl);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Localhost request failed for {Url}, trying original host: {OriginalUrl}", localhostUrl, originalUrl);
-            // Fallback to original host
-            try
-            {
-                response = await client.GetAsync(originalUrl);
-                finalUrl = originalUrl;
-                _logger.LogDebug("Successfully connected to original host: {Url}", originalUrl);
-            }
-            catch (Exception ex2)
-            {
-                _logger.LogError(ex2, "HTTP request exception for both {LocalhostUrl} and {OriginalUrl}", localhostUrl, originalUrl);
-                throw new HttpRequestException($"Failed to make HTTP request to {localhostUrl} and {originalUrl}: {ex2.Message}", ex2);
-            }
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogError("HTTP request failed: {StatusCode} for {Url} - {Error}", response.StatusCode, finalUrl, errorContent.Substring(0, Math.Min(500, errorContent.Length)));
-            throw new HttpRequestException($"HTTP {response.StatusCode} for {finalUrl}: {errorContent.Substring(0, Math.Min(500, errorContent.Length))}");
-        }
-
-        var html = await response.Content.ReadAsStringAsync();
-
-        _logger.LogDebug("Received HTML response ({Length} chars) for {Url}", html.Length, finalUrl);
-
-        if (IsLoadingPage(html))
-        {
-            _logger.LogError("Route {Route} returned loading page HTML ({Length} chars) - route may not be registered correctly or is hitting fallback route", route, html.Length);
-            throw new FileNotFoundException($"Route {route} returned default HTML instead of page content. Route may not be registered correctly.");
-        }
-
-        if (html.Length < 100)
-        {
-            _logger.LogWarning("Route {Route} returned very short HTML ({Length} chars) - may be an error page", route, html.Length);
-        }
-
-        return html;
-    }
 
     private string ExtractPageContent(string fullHtml)
     {

@@ -273,7 +273,7 @@ class Program
                 
                 if (packageInfo.HasRazorViews)
                 {
-                    coreLogger.Info($"Package has Razor views: {discoveryInfo.ViewsDllPath}");
+                    coreLogger.Info($"Package has Razor views: {discoveryInfo.MainDllPath}");
                     coreLogger.Info($"  → Discovered {packageInfo.DiscoveredViews.Count} view(s)");
                     foreach (var view in packageInfo.DiscoveredViews)
                     {

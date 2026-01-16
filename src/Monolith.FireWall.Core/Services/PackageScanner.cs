@@ -80,18 +80,8 @@ public class PackageScanner
         var backendDir = Path.Combine(packageDir, "backend");
         if (!Directory.Exists(backendDir))
         {
-            // Fallback: Check for build output (dev environment)
-            var devBackendDir = Path.Combine(packageDir, "bin", "Release", "net10.0");
-            if (Directory.Exists(devBackendDir))
-            {
-                _logger.LogDebug($"Using dev build directory for package {packageDir}: {devBackendDir}");
-                backendDir = devBackendDir;
-            }
-            else
-            {
-                _logger.LogWarning($"No backend directory found in {packageDir}");
-                return null;
-            }
+            _logger.LogWarning($"No backend directory found in {packageDir}");
+            return null;
         }
 
         // Find main DLL
@@ -102,15 +92,12 @@ public class PackageScanner
             return null;
         }
 
-        // Find Views DLL (optional - only for RCL packages)
-        var viewsDll = FindViewsDll(backendDir, manifest.Id);
-
+        // Views are embedded in main DLL when using Microsoft.NET.Sdk.Razor
         return new PackageDiscoveryInfo
         {
             Directory = packageDir,
             Manifest = manifest,
-            MainDllPath = mainDll,
-            ViewsDllPath = viewsDll
+            MainDllPath = mainDll
         };
     }
 
@@ -124,28 +111,8 @@ public class PackageScanner
         if (File.Exists(dllPath))
             return dllPath;
 
-        // Fallback: search for any DLL matching the pattern
-        var dllFiles = Directory.GetFiles(backendDir, "*.dll", SearchOption.TopDirectoryOnly);
-        var matchingDll = dllFiles.FirstOrDefault(f =>
-        {
-            var fileName = Path.GetFileNameWithoutExtension(f);
-            return fileName.Equals(packageId.Replace("-", "."), StringComparison.OrdinalIgnoreCase) ||
-                   fileName.Equals(dllName.Replace(".dll", ""), StringComparison.OrdinalIgnoreCase);
-        });
-
-        return matchingDll;
-    }
-
-    private string? FindViewsDll(string backendDir, string packageId)
-    {
-        // Views DLL: "Monolith.Network.Views.dll"
-        var viewsDllName = ConvertPackageIdToDllName(packageId).Replace(".dll", ".Views.dll");
-        var viewsDllPath = Path.Combine(backendDir, viewsDllName);
-
-        if (File.Exists(viewsDllPath))
-            return viewsDllPath;
-
-        return null; // Views DLL is optional
+        _logger.LogWarning($"Main DLL not found at expected path: {dllPath}");
+        return null;
     }
 
     private string ConvertPackageIdToDllName(string packageId)
@@ -165,6 +132,6 @@ public class PackageDiscoveryInfo
     public string Directory { get; set; } = "";
     public PackageManifest Manifest { get; set; } = null!;
     public string MainDllPath { get; set; } = "";
-    public string? ViewsDllPath { get; set; }
-    public bool HasRazorViews => ViewsDllPath != null;
+    // Views are embedded in main DLL when using Microsoft.NET.Sdk.Razor
+    public bool HasRazorViews => !string.IsNullOrEmpty(MainDllPath);
 }

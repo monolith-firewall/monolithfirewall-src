@@ -18,41 +18,15 @@ public class PackageLoader
     }
 
     /// <summary>
-    /// Load package from directory (legacy method - use LoadPackageAsync(PackageDiscoveryInfo) instead)
-    /// </summary>
-    public async Task<PackageInfo> LoadPackageAsync(string packageDir)
-    {
-        // Create a scanner to discover the package
-        var scanner = new PackageScanner(_logger);
-        var discovered = await scanner.ScanPackagesAsync(Path.GetDirectoryName(packageDir) ?? "");
-        var discoveryInfo = discovered.FirstOrDefault(p => p.Directory == packageDir);
-        
-        if (discoveryInfo == null)
-        {
-            throw new FileNotFoundException($"Package not found in directory: {packageDir}");
-        }
-
-        return await LoadPackageAsync(discoveryInfo);
-    }
-
-    /// <summary>
-    /// Load package from discovery info (supports RCL with Views DLL)
+    /// Load package from discovery info (Razor views are embedded in main DLL)
     /// </summary>
     public async Task<PackageInfo> LoadPackageAsync(PackageDiscoveryInfo discoveryInfo)
     {
         _logger.LogInformation($"Loading package: {discoveryInfo.Manifest.Id} v{discoveryInfo.Manifest.Version}");
 
-        // Load main assembly
+        // Load main assembly (Razor views are embedded in main DLL when using Microsoft.NET.Sdk.Razor)
         var mainAssembly = Assembly.LoadFrom(discoveryInfo.MainDllPath);
         _logger.LogInformation($"Main assembly loaded: {mainAssembly.FullName}");
-
-        // Load Views assembly (if exists - RCL packages)
-        Assembly? viewsAssembly = null;
-        if (discoveryInfo.ViewsDllPath != null && File.Exists(discoveryInfo.ViewsDllPath))
-        {
-            viewsAssembly = Assembly.LoadFrom(discoveryInfo.ViewsDllPath);
-            _logger.LogInformation($"Views assembly loaded: {viewsAssembly.FullName} (Razor Class Library)");
-        }
 
         // Find package definition type
         var allTypes = mainAssembly.GetTypes();
@@ -78,20 +52,35 @@ public class PackageLoader
 
         var package = (IMonolithPackage)Activator.CreateInstance(pkgType)!;
 
-        // Discover Razor views if Views assembly exists
-        List<PageDefinition> discoveredViews = new();
-        if (viewsAssembly != null)
+        // Discover Razor views from main assembly (views are embedded when using Microsoft.NET.Sdk.Razor)
+        // Convert package ID to assembly name format for view discovery
+        var assemblyName = ConvertPackageIdToAssemblyName(discoveryInfo.Manifest.Id);
+        var viewDiscovery = new RazorViewDiscovery(_logger);
+        var discoveredViews = viewDiscovery.DiscoverViews(mainAssembly, discoveryInfo.Manifest.Id, assemblyName);
+        
+        if (discoveredViews.Count > 0)
         {
-            var viewDiscovery = new RazorViewDiscovery(_logger);
-            discoveredViews = viewDiscovery.DiscoverViews(viewsAssembly, discoveryInfo.Manifest.Id, definition.Name);
-            
-            if (discoveredViews.Count > 0)
-            {
-                _logger.LogInformation($"Discovered {discoveredViews.Count} Razor view(s) for package {discoveryInfo.Manifest.Id}");
-            }
+            _logger.LogInformation($"Discovered {discoveredViews.Count} Razor view(s) for package {discoveryInfo.Manifest.Id}");
         }
 
-        return new PackageInfo(definition, package, mainAssembly, viewsAssembly, null, discoveredViews, discoveryInfo.Directory);
+        // Use mainAssembly for both backend and views (views are embedded in main DLL)
+        return new PackageInfo(definition, package, mainAssembly, mainAssembly, null, discoveredViews, discoveryInfo.Directory);
+    }
+
+    /// <summary>
+    /// Converts package ID to assembly name format
+    /// monolith-network -> Monolith.Network
+    /// </summary>
+    private static string ConvertPackageIdToAssemblyName(string packageId)
+    {
+        if (string.IsNullOrEmpty(packageId))
+            return packageId;
+
+        var parts = packageId.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        return string.Join(".", parts.Select(part => 
+            part.Length > 0 
+                ? char.ToUpper(part[0]) + part.Substring(1).ToLower() 
+                : part));
     }
 
     public void UnloadPackage(string packageId)
