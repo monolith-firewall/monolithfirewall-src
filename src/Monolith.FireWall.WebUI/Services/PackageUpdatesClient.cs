@@ -95,6 +95,12 @@ public sealed class PackageUpdatesClient
                 GetString(pkg, "group") ??
                 GetString(pkg, "Group") ??
                 null;
+            var minCoreVersion =
+                GetString(pkg, "minCoreVersion") ??
+                GetString(pkg, "min_core_version") ??
+                GetString(pkg, "minCore") ??
+                null;
+            var requiresRestart = pkg.TryGetProperty("requiresRestart", out var restartEl) && restartEl.ValueKind == JsonValueKind.True;
 
             results.Add(new AvailablePackage
             {
@@ -107,7 +113,9 @@ public sealed class PackageUpdatesClient
                 Category = category,
                 Author = GetString(pkg, "author"),
                 Homepage = GetString(pkg, "homepage"),
-                ReleaseNotes = GetString(pkg, "releaseNotes")
+                ReleaseNotes = GetString(pkg, "releaseNotes"),
+                MinCoreVersion = minCoreVersion,
+                RequiresRestart = requiresRestart
             });
         }
 
@@ -132,4 +140,6 @@ public sealed class AvailablePackage
     public string DownloadUrl { get; set; } = string.Empty;
     public string? Sha256 { get; set; }
     public string? Category { get; set; }
+    public string? MinCoreVersion { get; set; }
+    public bool RequiresRestart { get; set; }
 }
