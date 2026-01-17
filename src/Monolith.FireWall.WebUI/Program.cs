@@ -123,7 +123,7 @@ if (sqliteForDI != null)
 
 // Register custom application model provider to filter out controllers from package assemblies
 // This prevents package assemblies (which reference Core) from being scanned for controllers
-builder.Services.AddSingleton<Microsoft.AspNetCore.Mvc.ApplicationModels.IApplicationModelProvider, Services.PackageControllerFeatureProvider>();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Mvc.ApplicationModels.IApplicationModelProvider, Monolith.FireWall.WebUI.Services.PackageControllerFeatureProvider>();
 
 builder.Services.AddControllers(options =>
 {
