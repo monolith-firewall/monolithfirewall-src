@@ -44,20 +44,37 @@ public class PackageStepModel : PageModel
                 var data = root.TryGetProperty("Data", out var dataEl) ? dataEl : 
                           root.TryGetProperty("data", out var dataEl2) ? dataEl2 : root;
                 
-                var packages = data.TryGetProperty("packages", out var packagesEl) ? packagesEl :
-                              data.TryGetProperty("Packages", out var packagesEl2) ? packagesEl2 :
-                              data.EnumerateArray();
+                JsonElement packagesEl;
+                if (data.TryGetProperty("packages", out packagesEl))
+                {
+                    // Use packages property
+                }
+                else if (data.TryGetProperty("Packages", out packagesEl))
+                {
+                    // Use Packages property
+                }
+                else if (data.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    packagesEl = data;
+                }
+                else
+                {
+                    ErrorMessage = "Invalid response format";
+                    return;
+                }
 
-                foreach (var package in packages)
+                foreach (var package in packagesEl.EnumerateArray())
                 {
                     var packageId = package.TryGetProperty("packageId", out var pkgIdEl) ? pkgIdEl.GetString() :
                                    package.TryGetProperty("PackageId", out var pkgIdEl2) ? pkgIdEl2.GetString() : null;
 
                     if (packageId != PackageId) continue;
 
-                    var setupPages = package.TryGetProperty("setupPages", out var pagesEl) ? pagesEl :
-                                    package.TryGetProperty("SetupPages", out var pagesEl2) ? pagesEl2 :
-                                    default;
+                    JsonElement setupPages;
+                    if (!package.TryGetProperty("setupPages", out setupPages))
+                    {
+                        package.TryGetProperty("SetupPages", out setupPages);
+                    }
 
                     if (setupPages.ValueKind == System.Text.Json.JsonValueKind.Array)
                     {
