@@ -73,8 +73,11 @@ public class PackageViewsRegistry
                 try
                 {
                     var assembly = Assembly.LoadFrom(assemblyPath);
-                    var assemblyPart = new AssemblyPart(assembly);
-                    partManager.ApplicationParts.Add(assemblyPart);
+                    
+                    // Use CompiledRazorAssemblyPart instead of AssemblyPart to avoid controller discovery
+                    // This ensures only Razor pages are loaded, not controllers that might reference Core
+                    var razorPart = new Microsoft.AspNetCore.Mvc.ApplicationParts.CompiledRazorAssemblyPart(assembly);
+                    partManager.ApplicationParts.Add(razorPart);
                     _registeredAssemblies.Add(assemblyPath);
                     _logger.LogInformation($"Registered Views assembly: {assembly.FullName} from {assemblyPath}");
                     
@@ -85,6 +88,24 @@ public class PackageViewsRegistry
                     if (embeddedResources.Count > 0)
                     {
                         _logger.LogDebug($"  Found {embeddedResources.Count} embedded Razor resource(s) in {assembly.FullName}");
+                    }
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    // Some types may not load if they reference Core - that's OK for Razor pages
+                    _logger.LogWarning($"Some types in {assemblyPath} could not be loaded (expected for package assemblies): {ex.Message}");
+                    // Try to continue with what we can load
+                    try
+                    {
+                        var assembly = Assembly.LoadFrom(assemblyPath);
+                        var razorPart = new Microsoft.AspNetCore.Mvc.ApplicationParts.CompiledRazorAssemblyPart(assembly);
+                        partManager.ApplicationParts.Add(razorPart);
+                        _registeredAssemblies.Add(assemblyPath);
+                        _logger.LogInformation($"Registered Views assembly (with type load exceptions): {assembly.FullName} from {assemblyPath}");
+                    }
+                    catch (Exception ex2)
+                    {
+                        _logger.LogError($"Failed to register Views assembly {assemblyPath}: {ex2.Message}");
                     }
                 }
                 catch (Exception ex)

@@ -676,6 +676,7 @@ app.MapGet("/assets/package/{package}/{module}/{**filePath}", async (HttpContext
 });
 
 // Controllers (includes Firewall API controllers)
+// Note: Package assemblies are registered as CompiledRazorAssemblyPart only, so they won't be scanned for controllers
 app.MapControllers();
 
 // Razor Pages (login, setup, package pages, app shell)
