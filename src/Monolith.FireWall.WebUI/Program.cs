@@ -121,9 +121,9 @@ if (sqliteForDI != null)
     builder.Services.AddSingleton<FirewallService>();
 }
 
-// Register custom controller feature provider to filter out package assemblies
+// Register custom application model provider to filter out controllers from package assemblies
 // This prevents package assemblies (which reference Core) from being scanned for controllers
-builder.Services.AddSingleton<ControllerFeatureProvider, Services.PackageControllerFeatureProvider>();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Mvc.ApplicationModels.IApplicationModelProvider, Services.PackageControllerFeatureProvider>();
 
 builder.Services.AddControllers(options =>
 {

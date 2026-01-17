@@ -7,8 +7,9 @@ namespace Monolith.FireWall.WebUI.Services;
 /// <summary>
 /// Controller feature provider that filters out controllers from package assemblies.
 /// Package assemblies may reference Monolith.FireWall.Core which isn't available in WebUI runtime.
+/// Uses IApplicationModelProvider approach instead of ControllerFeatureProvider.
 /// </summary>
-public class PackageControllerFeatureProvider : ControllerFeatureProvider
+public class PackageControllerFeatureProvider : Microsoft.AspNetCore.Mvc.ApplicationModels.IApplicationModelProvider
 {
     private static readonly HashSet<string> PackageAssemblies = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -17,29 +18,27 @@ public class PackageControllerFeatureProvider : ControllerFeatureProvider
         "Monolith.Vpn"
     };
 
-    protected override bool IsController(TypeInfo typeInfo)
-    {
-        // Skip package assemblies - they may have types that reference Core
-        var assemblyName = typeInfo.Assembly.GetName().Name;
-        if (assemblyName != null && PackageAssemblies.Contains(assemblyName))
-        {
-            return false;
-        }
+    public int Order => -1000; // Run early
 
-        // Use base implementation for other assemblies
-        try
+    public void OnProvidersExecuting(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModelProviderContext context)
+    {
+        // Remove controllers from package assemblies
+        var controllersToRemove = context.Result.Controllers
+            .Where(c => 
+            {
+                var assemblyName = c.ControllerType.Assembly.GetName().Name;
+                return assemblyName != null && PackageAssemblies.Contains(assemblyName);
+            })
+            .ToList();
+
+        foreach (var controller in controllersToRemove)
         {
-            return base.IsController(typeInfo);
+            context.Result.Controllers.Remove(controller);
         }
-        catch (ReflectionTypeLoadException)
-        {
-            // Some types may not load if they reference Core - skip them
-            return false;
-        }
-        catch (Exception)
-        {
-            // Any other exception loading the type - skip it
-            return false;
-        }
+    }
+
+    public void OnProvidersExecuted(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModelProviderContext context)
+    {
+        // No-op
     }
 }

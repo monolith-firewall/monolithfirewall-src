@@ -1,11 +1,21 @@
 #!/bin/bash
 # MonolithFireWall - Development Reset & Rebuild Script
 # This script completely resets the development environment and rebuilds everything from scratch
+# Compatible with Linux, macOS, and Windows (WSL/Git Bash)
 
 set -e  # Exit on error
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
+
+# Detect platform
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" || "$OSTYPE" == "cygwin" ]]; then
+    IS_WINDOWS=true
+    SUDO_CMD=""  # Windows doesn't use sudo
+else
+    IS_WINDOWS=false
+    SUDO_CMD="sudo"
+fi
 
 echo "════════════════════════════════════════════════════════════════"
 echo "  MonolithFireWall - Development Reset & Rebuild"
@@ -32,22 +42,39 @@ print_error() {
     exit 1
 }
 
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then 
+# Check if running as root (Linux/macOS only)
+if [ "$IS_WINDOWS" = false ] && [ "$EUID" -ne 0 ]; then 
     print_error "This script must be run as root (use sudo)"
 fi
 
+# Function to run commands with appropriate privileges
+run_cmd() {
+    if [ "$IS_WINDOWS" = true ]; then
+        "$@"
+    else
+        $SUDO_CMD "$@"
+    fi
+}
+
 print_step "Step 1: Stopping all MonolithFireWall services"
-systemctl stop monolith-firewall-webui 2>/dev/null || print_warning "WebUI service not running"
-systemctl stop monolith-firewall-core 2>/dev/null || print_warning "Core service not running"
-print_success "Services stopped"
+if [ "$IS_WINDOWS" = false ]; then
+    systemctl stop monolith-firewall-webui 2>/dev/null || print_warning "WebUI service not running"
+    systemctl stop monolith-firewall-core 2>/dev/null || print_warning "Core service not running"
+    print_success "Services stopped"
+else
+    print_warning "Service management not available on Windows - manually stop services if needed"
+fi
 
 print_step "Step 2: Removing existing Debian package"
-if dpkg -l | grep -q monolith-firewall; then
-    apt-get remove --purge -y monolith-firewall 2>/dev/null || true
-    print_success "Debian package removed"
+if [ "$IS_WINDOWS" = false ]; then
+    if dpkg -l | grep -q monolith-firewall; then
+        run_cmd apt-get remove --purge -y monolith-firewall 2>/dev/null || true
+        print_success "Debian package removed"
+    else
+        print_warning "No existing Debian package found"
+    fi
 else
-    print_warning "No existing Debian package found"
+    print_warning "Debian package management not available on Windows"
 fi
 
 print_step "Step 3: Cleaning installation directories"
@@ -70,10 +97,14 @@ rm -f /var/lib/monolith-firewall/codelogic/.codelogic 2>/dev/null || true
 print_success "Installation directories cleaned"
 
 print_step "Step 4: Removing systemd service files"
-rm -f /usr/lib/systemd/system/monolith-firewall-core.service 2>/dev/null || true
-rm -f /usr/lib/systemd/system/monolith-firewall-webui.service 2>/dev/null || true
-systemctl daemon-reload
-print_success "Systemd service files removed"
+if [ "$IS_WINDOWS" = false ]; then
+    run_cmd rm -f /usr/lib/systemd/system/monolith-firewall-core.service 2>/dev/null || true
+    run_cmd rm -f /usr/lib/systemd/system/monolith-firewall-webui.service 2>/dev/null || true
+    run_cmd systemctl daemon-reload 2>/dev/null || true
+    print_success "Systemd service files removed"
+else
+    print_warning "Systemd service management not available on Windows"
+fi
 
 print_step "Step 5: Cleaning databases"
 # Clean temporary databases
@@ -101,12 +132,16 @@ rm -f /tmp/CoreFxPipe_monolith-core* 2>/dev/null || true
 print_success "Named pipes removed"
 
 print_step "Step 7: Removing monolith-firewall user and group"
-if id "monolith-firewall" &>/dev/null; then
-    userdel monolith-firewall 2>/dev/null || true
-    groupdel monolith-firewall 2>/dev/null || true
-    print_success "User and group removed"
+if [ "$IS_WINDOWS" = false ]; then
+    if id "monolith-firewall" &>/dev/null; then
+        run_cmd userdel monolith-firewall 2>/dev/null || true
+        run_cmd groupdel monolith-firewall 2>/dev/null || true
+        print_success "User and group removed"
+    else
+        print_warning "User/group not found"
+    fi
 else
-    print_warning "User/group not found"
+    print_warning "User/group management not available on Windows"
 fi
 
 print_step "Step 8: Cleaning build artifacts"
@@ -187,19 +222,24 @@ else
 fi
 
 print_step "Step 12: Installing Debian package"
-if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
-    dpkg -i "$DEB_FILE" || apt-get install -f -y || print_error "Failed to install Debian package"
-    print_success "Debian package installed"
+if [ "$IS_WINDOWS" = false ]; then
+    if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
+        run_cmd dpkg -i "$DEB_FILE" || run_cmd apt-get install -f -y || print_error "Failed to install Debian package"
+        print_success "Debian package installed"
+    else
+        print_error "Debian package file not found: $DEB_FILE"
+    fi
 else
-    print_error "Debian package file not found: $DEB_FILE"
+    print_warning "Debian package installation not available on Windows - install manually"
 fi
 
 print_step "Step 12a: Writing core configuration (packages directory)"
-mkdir -p /var/lib/monolith-firewall/codelogic
-mkdir -p /var/lib/monolith-firewall/data
-mkdir -p /var/lib/monolith-firewall/packages
-mkdir -p /var/lib/monolith-firewall/run
-cat > /var/lib/monolith-firewall/codelogic/core-config.json <<'EOF'
+if [ "$IS_WINDOWS" = false ]; then
+    run_cmd mkdir -p /var/lib/monolith-firewall/codelogic
+    run_cmd mkdir -p /var/lib/monolith-firewall/data
+    run_cmd mkdir -p /var/lib/monolith-firewall/packages
+    run_cmd mkdir -p /var/lib/monolith-firewall/run
+    cat > /tmp/core-config.json <<'EOF'
 {
   "Version": "1.0.0",
   "PackagesDirectory": "/var/lib/monolith-firewall/packages",
@@ -217,32 +257,41 @@ cat > /var/lib/monolith-firewall/codelogic/core-config.json <<'EOF'
   }
 }
 EOF
-chown root:root /var/lib/monolith-firewall/codelogic/core-config.json
-chmod 644 /var/lib/monolith-firewall/codelogic/core-config.json
-chown -R monolith-firewall:monolith-firewall /var/lib/monolith-firewall/packages 2>/dev/null || true
-chown -R monolith-firewall:monolith-firewall /var/lib/monolith-firewall/data 2>/dev/null || true
-chown -R monolith-firewall:monolith-firewall /var/lib/monolith-firewall/run 2>/dev/null || true
-print_success "core-config.json written with packages path /var/lib/monolith-firewall/packages"
+    run_cmd cp /tmp/core-config.json /var/lib/monolith-firewall/codelogic/core-config.json
+    run_cmd chown root:root /var/lib/monolith-firewall/codelogic/core-config.json
+    run_cmd chmod 644 /var/lib/monolith-firewall/codelogic/core-config.json
+    run_cmd chown -R monolith-firewall:monolith-firewall /var/lib/monolith-firewall/packages 2>/dev/null || true
+    run_cmd chown -R monolith-firewall:monolith-firewall /var/lib/monolith-firewall/data 2>/dev/null || true
+    run_cmd chown -R monolith-firewall:monolith-firewall /var/lib/monolith-firewall/run 2>/dev/null || true
+    rm -f /tmp/core-config.json
+    print_success "core-config.json written with packages path /var/lib/monolith-firewall/packages"
+else
+    print_warning "Core configuration setup not available on Windows - configure manually"
+fi
 
 print_step "Step 13: Starting Core service (required for package installation)"
-systemctl start monolith-firewall-core || print_error "Failed to start Core service"
+if [ "$IS_WINDOWS" = false ]; then
+    run_cmd systemctl start monolith-firewall-core || print_error "Failed to start Core service"
 
-# Wait for Core service to be ready (Unix socket exists)
-echo "  Waiting for Core service to be ready..."
-SOCKET_PATH="/var/lib/monolith-firewall/run/monolith-core.sock"
-MAX_WAIT=30
-WAIT_COUNT=0
-while [ ! -S "$SOCKET_PATH" ] && [ $WAIT_COUNT -lt $MAX_WAIT ]; do
-    sleep 1
-    WAIT_COUNT=$((WAIT_COUNT + 1))
-    echo -n "."
-done
-echo ""
+    # Wait for Core service to be ready (Unix socket exists)
+    echo "  Waiting for Core service to be ready..."
+    SOCKET_PATH="/var/lib/monolith-firewall/run/monolith-core.sock"
+    MAX_WAIT=30
+    WAIT_COUNT=0
+    while [ ! -S "$SOCKET_PATH" ] && [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+        sleep 1
+        WAIT_COUNT=$((WAIT_COUNT + 1))
+        echo -n "."
+    done
+    echo ""
 
-if [ ! -S "$SOCKET_PATH" ]; then
-    print_warning "Core service socket not ready after ${MAX_WAIT}s, continuing anyway..."
+    if [ ! -S "$SOCKET_PATH" ]; then
+        print_warning "Core service socket not ready after ${MAX_WAIT}s, continuing anyway..."
+    else
+        print_success "Core service is ready"
+    fi
 else
-    print_success "Core service is ready"
+    print_warning "Service management not available on Windows - start Core service manually"
 fi
 
 print_step "Step 14: Installing .mfwpkg packages"
@@ -262,7 +311,9 @@ if [ -d "$PACKAGES_DIR" ]; then
         fi
     done
     
-    chown -R monolith-firewall:monolith-firewall "$PACKAGES_STAGING_DIR" 2>/dev/null || true
+    if [ "$IS_WINDOWS" = false ]; then
+        run_cmd chown -R monolith-firewall:monolith-firewall "$PACKAGES_STAGING_DIR" 2>/dev/null || true
+    fi
     
     # Install packages using monolith-pkgmgr CLI
     if command -v monolith-pkgmgr &> /dev/null; then
@@ -313,21 +364,27 @@ else
 fi
 
 print_step "Step 15: Starting WebUI service"
-systemctl start monolith-firewall-webui || print_warning "Failed to start WebUI service"
-sleep 2
-print_success "Services started"
+if [ "$IS_WINDOWS" = false ]; then
+    run_cmd systemctl start monolith-firewall-webui || print_warning "Failed to start WebUI service"
+    sleep 2
+    print_success "Services started"
 
-print_step "Step 16: Verifying installation"
-if systemctl is-active --quiet monolith-firewall-core; then
-    print_success "Core service is running"
-else
-    print_error "Core service failed to start"
-fi
+    print_step "Step 16: Verifying installation"
+    if systemctl is-active --quiet monolith-firewall-core; then
+        print_success "Core service is running"
+    else
+        print_error "Core service failed to start"
+    fi
 
-if systemctl is-active --quiet monolith-firewall-webui; then
-    print_success "WebUI service is running"
+    if systemctl is-active --quiet monolith-firewall-webui; then
+        print_success "WebUI service is running"
+    else
+        print_error "WebUI service failed to start"
+    fi
 else
-    print_error "WebUI service failed to start"
+    print_warning "Service management not available on Windows - start services manually"
+    print_step "Step 16: Verifying installation"
+    print_warning "Manual verification required on Windows"
 fi
 
 echo ""
@@ -335,15 +392,23 @@ echo "════════════════════════�
 echo "  ✓ Development Reset & Rebuild Complete!"
 echo "════════════════════════════════════════════════════════════════"
 echo ""
-echo "Services Status:"
-systemctl status monolith-firewall-core --no-pager -l | head -10
-echo ""
-systemctl status monolith-firewall-webui --no-pager -l | head -10
-echo ""
-echo "Access the WebUI at: http://localhost:80 or https://localhost:443"
-echo "Default credentials: admin / admin"
-echo ""
-echo "View logs with:"
-echo "  sudo journalctl -u monolith-firewall-core -f"
-echo "  sudo journalctl -u monolith-firewall-webui -f"
+if [ "$IS_WINDOWS" = false ]; then
+    echo "Services Status:"
+    systemctl status monolith-firewall-core --no-pager -l | head -10
+    echo ""
+    systemctl status monolith-firewall-webui --no-pager -l | head -10
+    echo ""
+    echo "Access the WebUI at: http://localhost:80 or https://localhost:443"
+    echo "Default credentials: admin / admin"
+    echo ""
+    echo "View logs with:"
+    echo "  sudo journalctl -u monolith-firewall-core -f"
+    echo "  sudo journalctl -u monolith-firewall-webui -f"
+else
+    echo "Windows Platform Detected"
+    echo "Services must be started manually on Windows"
+    echo ""
+    echo "Access the WebUI at: http://localhost:80 or https://localhost:443"
+    echo "Default credentials: admin / admin"
+fi
 echo ""
