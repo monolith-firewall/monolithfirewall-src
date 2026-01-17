@@ -8,7 +8,7 @@ namespace Monolith.FireWall.WebUI.Services;
 /// Controller feature provider that filters out controllers from package assemblies.
 /// Package assemblies may reference Monolith.FireWall.Core which isn't available in WebUI runtime.
 /// </summary>
-public class PackageControllerFeatureProvider : Microsoft.AspNetCore.Mvc.Controllers.IControllerFeatureProvider
+public class PackageControllerFeatureProvider : ControllerFeatureProvider
 {
     private static readonly HashSet<string> PackageAssemblies = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -17,67 +17,29 @@ public class PackageControllerFeatureProvider : Microsoft.AspNetCore.Mvc.Control
         "Monolith.Vpn"
     };
 
-    public void PopulateFeature(IEnumerable<ApplicationPart> parts, ControllerFeature feature)
+    protected override bool IsController(TypeInfo typeInfo)
     {
-        foreach (var part in parts)
-        {
-            if (part is AssemblyPart assemblyPart)
-            {
-                var assemblyName = assemblyPart.Assembly.GetName().Name;
-                
-                // Skip package assemblies - they may have types that reference Core
-                if (assemblyName != null && PackageAssemblies.Contains(assemblyName))
-                {
-                    continue;
-                }
-                
-                // For other assemblies, try to get types but handle ReflectionTypeLoadException
-                try
-                {
-                    var types = assemblyPart.Assembly.GetTypes();
-                    foreach (var type in types)
-                    {
-                        if (IsController(type))
-                        {
-                            feature.Controllers.Add(type);
-                        }
-                    }
-                }
-                catch (ReflectionTypeLoadException ex)
-                {
-                    // Some types may not load - that's OK, use what we can
-                    var loadedTypes = ex.Types.Where(t => t != null).ToList();
-                    foreach (var type in loadedTypes)
-                    {
-                        if (IsController(type))
-                        {
-                            feature.Controllers.Add(type);
-                        }
-                    }
-                }
-            }
-            else if (part is Microsoft.AspNetCore.Mvc.ApplicationParts.CompiledRazorAssemblyPart razorPart)
-            {
-                // CompiledRazorAssemblyPart is for Razor pages only, skip controller discovery
-                continue;
-            }
-        }
-    }
-
-    private static bool IsController(Type type)
-    {
-        if (type == null || !type.IsClass || type.IsAbstract || type.IsGenericType)
+        // Skip package assemblies - they may have types that reference Core
+        var assemblyName = typeInfo.Assembly.GetName().Name;
+        if (assemblyName != null && PackageAssemblies.Contains(assemblyName))
         {
             return false;
         }
 
-        // Check if it's a controller (ends with "Controller" or has [Controller] attribute)
-        if (type.Name.EndsWith("Controller", StringComparison.OrdinalIgnoreCase))
+        // Use base implementation for other assemblies
+        try
         {
-            return true;
+            return base.IsController(typeInfo);
         }
-
-        // Check for [Controller] attribute
-        return type.GetCustomAttribute<Microsoft.AspNetCore.Mvc.ControllerAttribute>() != null;
+        catch (ReflectionTypeLoadException)
+        {
+            // Some types may not load if they reference Core - skip them
+            return false;
+        }
+        catch (Exception)
+        {
+            // Any other exception loading the type - skip it
+            return false;
+        }
     }
 }

@@ -122,7 +122,8 @@ if (sqliteForDI != null)
 }
 
 // Register custom controller feature provider to filter out package assemblies
-builder.Services.AddSingleton<Microsoft.AspNetCore.Mvc.Controllers.IControllerFeatureProvider, Services.PackageControllerFeatureProvider>();
+// This prevents package assemblies (which reference Core) from being scanned for controllers
+builder.Services.AddSingleton<ControllerFeatureProvider, Services.PackageControllerFeatureProvider>();
 
 builder.Services.AddControllers(options =>
 {
