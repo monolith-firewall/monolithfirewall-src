@@ -408,17 +408,52 @@ const SetupWizard = {
     },
 
     savePackageConfiguration: async function(packageId, pageId, data) {
-        // Save package-specific configuration
-        // This will call the package's setup API endpoint if it exists
+        // Save package-specific configuration via module API endpoints
         try {
-            const response = await Monolith.API.post(`/api/setup/package/${packageId}/${pageId}`, data);
+            let response;
+            
+            if (packageId === 'monolith-network' && pageId === 'dhcp') {
+                // Save DHCP configuration
+                if (data.enabled && data.interface) {
+                    // Update interface DHCP configuration
+                    response = await Monolith.API.post(`/api/packages/${packageId}/modules/${pageId}/update-interface`, {
+                        interface: data.interface,
+                        enabled: data.enabled,
+                        poolStart: data.poolStart,
+                        poolEnd: data.poolEnd,
+                        gateway: data.gateway,
+                        dns1: data.dnsServers && data.dnsServers.length > 0 ? data.dnsServers[0] : '',
+                        dns2: data.dnsServers && data.dnsServers.length > 1 ? data.dnsServers[1] : '',
+                        dns3: data.dnsServers && data.dnsServers.length > 2 ? data.dnsServers[2] : '',
+                        dns4: data.dnsServers && data.dnsServers.length > 3 ? data.dnsServers[3] : '',
+                        leaseTime: data.leaseTime || 7200
+                    });
+                } else {
+                    // Disable DHCP
+                    response = await Monolith.API.post(`/api/packages/${packageId}/modules/${pageId}/update-settings`, {
+                        enabled: false
+                    });
+                }
+            } else if (packageId === 'monolith-network' && pageId === 'dns') {
+                // Save DNS configuration
+                response = await Monolith.API.post(`/api/packages/${packageId}/modules/${pageId}/update-settings`, {
+                    enabled: data.enabled || false,
+                    forwarders: data.forwarders || [],
+                    localDomain: data.localDomain || null,
+                    dnssecEnabled: data.dnssecEnabled !== undefined ? data.dnssecEnabled : true
+                });
+            } else {
+                // Generic package setup endpoint
+                response = await Monolith.API.post(`/api/setup/package/${packageId}/${pageId}`, data);
+            }
+            
             if (!response.success && !response.Success) {
                 throw new Error(response.error || response.Error || 'Failed to save package configuration');
             }
         } catch (err) {
             // If the endpoint doesn't exist, that's OK - the package might handle it differently
             console.warn('Package setup endpoint not available, configuration may be saved elsewhere:', err);
-            // Don't throw - allow the step to complete
+            // Don't throw - allow the step to complete (user can configure later)
         }
     },
 
