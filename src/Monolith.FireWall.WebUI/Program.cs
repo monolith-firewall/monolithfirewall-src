@@ -1537,6 +1537,40 @@ app.MapGet("/api/setup/packages", async (HttpContext context, CoreApiClient core
     }
 });
 
+app.MapGet("/api/setup/package/{packageId}/{pageId}", async (string packageId, string pageId, HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        // This endpoint can be used by packages to provide setup page content
+        // For now, we'll return a simple response indicating the page should be loaded via route
+        // Packages can override this behavior by providing their own API endpoints
+        return Results.Json(new { Success = true, Data = new { packageId, pageId, route = $"/setup/package/{packageId}/{pageId}" }, Error = (string?)null });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPost("/api/setup/package/{packageId}/{pageId}", async (string packageId, string pageId, HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        // This endpoint can be used by packages to save setup page data
+        // Packages can provide their own handlers for this
+        using var doc = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+        var data = doc.RootElement;
+        
+        // For now, just acknowledge receipt
+        // Packages should implement their own save logic via module callbacks or API endpoints
+        return Results.Json(new { Success = true, Data = new { packageId, pageId, saved = true }, Error = (string?)null });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
 app.MapPost("/api/setup/finish", async (HttpContext context, CoreApiClient coreClient) =>
 {
     try

@@ -1,0 +1,162 @@
+@page "/setup/package/{packageId}/{pageId}"
+@model Monolith.FireWall.WebUI.Pages.Setup.PackageStepModel
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = Model.PageTitle ?? "Package Setup";
+}
+
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="bi bi-box-seam me-2"></i>
+                        @(Model.PageTitle ?? "Package Setup")
+                    </h4>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+                    {
+                        <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-circle me-2"></i>
+                            @Model.ErrorMessage
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(Model.Description))
+                    {
+                        <p class="text-muted mb-4">@Model.Description</p>
+                    }
+
+                    <div id="package-setup-container">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3 text-muted">Loading setup page...</p>
+                        </div>
+                    </div>
+
+                    <div id="setup-nav-buttons" class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-outline-secondary" id="btn-setup-back">
+                            <i class="bi bi-arrow-left me-1"></i> Back
+                        </button>
+                        <div>
+                            <button type="button" class="btn btn-outline-warning me-2" id="btn-setup-skip" style="display: none;">
+                                Skip
+                            </button>
+                            <button type="button" class="btn btn-primary" id="btn-setup-next">
+                                Next <i class="bi bi-arrow-right ms-1"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const packageId = '@Model.PackageId';
+        const pageId = '@Model.PageId';
+        const route = '@Model.Route';
+
+        // Load package setup page content
+        function loadPackageSetupPage() {
+            // Try to load the page via the package's route
+            // First, try to get the page content via API
+            Monolith.API.get(`/api/setup/package/${packageId}/${pageId}`)
+                .then(response => {
+                    const data = response.data || response.Data || response;
+                    if (data.html || data.Html) {
+                        $('#package-setup-container').html(data.html || data.Html);
+                        initializePackagePage();
+                    } else {
+                        // Fallback: try to navigate to the route directly
+                        loadPackagePageViaRoute();
+                    }
+                })
+                .catch(err => {
+                    console.error('Failed to load package setup page via API:', err);
+                    // Fallback: try to navigate to the route directly
+                    loadPackagePageViaRoute();
+                });
+        }
+
+        function loadPackagePageViaRoute() {
+            // Try to load the page content via the package's route
+            // This assumes the package has a Razor page at the route
+            $.get(route)
+                .then(html => {
+                    // Extract just the content from the page
+                    const $content = $(html).find('.card-body, .container, main').first();
+                    if ($content.length > 0) {
+                        $('#package-setup-container').html($content.html());
+                        initializePackagePage();
+                    } else {
+                        showPackagePageNotFound();
+                    }
+                })
+                .catch(err => {
+                    console.error('Failed to load package page:', err);
+                    showPackagePageNotFound();
+                });
+        }
+
+        function showPackagePageNotFound() {
+            $('#package-setup-container').html(`
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Setup page not found</strong>
+                    <p class="mb-0 mt-2">The setup page for this package module could not be loaded. 
+                    You can skip this step and configure it later in the package settings.</p>
+                </div>
+            `);
+        }
+
+        function initializePackagePage() {
+            // Initialize any package-specific JavaScript
+            // Check for common initialization functions
+            if (typeof window.initPackageSetupPage === 'function') {
+                window.initPackageSetupPage(packageId, pageId);
+            }
+
+            // Setup validation and data getters
+            setupPackagePageHandlers();
+        }
+
+        function setupPackagePageHandlers() {
+            // Setup validation function for this package page
+            window.validatePackageStep = function() {
+                // Check for package-specific validator
+                if (typeof window.validatePackageSetup === 'function') {
+                    return window.validatePackageSetup(packageId, pageId);
+                }
+                // Default: always valid
+                return true;
+            };
+
+            // Setup data getter for this package page
+            window.getPackageStepData = function() {
+                // Check for package-specific data getter
+                if (typeof window.getPackageSetupData === 'function') {
+                    return window.getPackageSetupData(packageId, pageId);
+                }
+                // Default: return empty object
+                return {};
+            };
+        }
+
+        // Initialize when document is ready
+        $(document).ready(function() {
+            loadPackageSetupPage();
+            
+            // Setup navigation buttons
+            setTimeout(() => {
+                setupStepPageNavigation();
+            }, 100);
+        });
+    })();
+</script>

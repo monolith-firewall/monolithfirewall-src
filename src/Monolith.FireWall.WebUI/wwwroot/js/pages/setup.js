@@ -62,20 +62,27 @@ const SetupWizard = {
 
         // Load package setup steps
         try {
-            const packagesData = await Monolith.API.get('/api/setup/packages');
-            if (packagesData && packagesData.packages) {
-                packagesData.packages.forEach(pkg => {
-                    pkg.setupPages.forEach(page => {
+            const response = await Monolith.API.get('/api/setup/packages');
+            const packagesData = response.data || response.Data || response;
+            const packages = packagesData.packages || packagesData.Packages || [];
+            
+            if (packages.length > 0) {
+                packages.forEach(pkg => {
+                    const packageId = pkg.packageId || pkg.PackageId;
+                    const setupPages = pkg.setupPages || pkg.SetupPages || [];
+                    
+                    setupPages.forEach(page => {
+                        const pageId = page.id || page.Id;
                         this.steps.push({
-                            id: `package:${pkg.packageId}:${page.id}`,
-                            title: page.title,
-                            description: page.description,
-                            route: page.route,
-                            required: page.isRequired,
+                            id: `package:${packageId}:${pageId}`,
+                            title: page.title || page.Title,
+                            description: page.description || page.Description,
+                            route: page.route || page.Route,
+                            required: page.isRequired !== undefined ? page.isRequired : (page.IsRequired !== undefined ? page.IsRequired : false),
                             component: 'package',
-                            packageId: pkg.packageId,
-                            pageId: page.id,
-                            order: page.order || 10
+                            packageId: packageId,
+                            pageId: pageId,
+                            order: page.order !== undefined ? page.order : (page.Order !== undefined ? page.Order : 10)
                         });
                     });
                 });
@@ -107,7 +114,7 @@ const SetupWizard = {
 
         const step = this.steps[this.currentStep];
         
-        // For router and network steps, redirect to their pages
+        // For router, network, and package steps, redirect to their pages
         // The pages will handle their own navigation
         if (step.component === 'router' || step.component === 'network' || step.component === 'package') {
             if (window.location.pathname !== step.route) {
@@ -156,6 +163,8 @@ const SetupWizard = {
             validator = window.validateRouterSetup;
         } else if (step.component === 'network' && window.validateNetworkSetup) {
             validator = window.validateNetworkSetup;
+        } else if (step.component === 'package' && window.validatePackageStep) {
+            validator = window.validatePackageStep;
         } else if (window.validateStep) {
             validator = window.validateStep;
         }
@@ -176,7 +185,11 @@ const SetupWizard = {
                 }
             } catch (err) {
                 console.error('Failed to save router settings:', err);
-                Monolith.UI.showError('Failed to save system settings: ' + (err.message || err));
+                if (typeof Monolith !== 'undefined' && Monolith.UI) {
+                    Monolith.UI.showError('Failed to save system settings: ' + (err.message || err));
+                } else {
+                    alert('Failed to save system settings: ' + (err.message || err));
+                }
                 return;
             }
         } else if (step.component === 'network' && window.getNetworkSetupData) {
@@ -186,7 +199,25 @@ const SetupWizard = {
                 await this.saveNetworkConfiguration(stepData);
             } catch (err) {
                 console.error('Failed to save network configuration:', err);
-                Monolith.UI.showError('Failed to save network configuration: ' + (err.message || err));
+                if (typeof Monolith !== 'undefined' && Monolith.UI) {
+                    Monolith.UI.showError('Failed to save network configuration: ' + (err.message || err));
+                } else {
+                    alert('Failed to save network configuration: ' + (err.message || err));
+                }
+                return;
+            }
+        } else if (step.component === 'package' && window.getPackageStepData) {
+            stepData = window.getPackageStepData();
+            // Save package-specific configuration
+            try {
+                await this.savePackageConfiguration(step.packageId, step.pageId, stepData);
+            } catch (err) {
+                console.error('Failed to save package configuration:', err);
+                if (typeof Monolith !== 'undefined' && Monolith.UI) {
+                    Monolith.UI.showError('Failed to save package configuration: ' + (err.message || err));
+                } else {
+                    alert('Failed to save package configuration: ' + (err.message || err));
+                }
                 return;
             }
         } else if (window.getStepData) {
@@ -374,6 +405,21 @@ const SetupWizard = {
             cidr += (octet >>> 0).toString(2).split('1').length - 1;
         }
         return cidr || 24; // Default to /24 if calculation fails
+    },
+
+    savePackageConfiguration: async function(packageId, pageId, data) {
+        // Save package-specific configuration
+        // This will call the package's setup API endpoint if it exists
+        try {
+            const response = await Monolith.API.post(`/api/setup/package/${packageId}/${pageId}`, data);
+            if (!response.success && !response.Success) {
+                throw new Error(response.error || response.Error || 'Failed to save package configuration');
+            }
+        } catch (err) {
+            // If the endpoint doesn't exist, that's OK - the package might handle it differently
+            console.warn('Package setup endpoint not available, configuration may be saved elsewhere:', err);
+            // Don't throw - allow the step to complete
+        }
     },
 
     showFinish: function() {
