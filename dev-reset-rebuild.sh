@@ -146,6 +146,11 @@ fi
 
 print_step "Step 8: Cleaning build artifacts"
 cd "$PROJECT_ROOT"
+# Fix permissions on obj directories first (common issue)
+if [ "$IS_WINDOWS" = false ]; then
+    find . -type d -name "obj" -exec run_cmd chmod -R u+w {} \; 2>/dev/null || true
+    find . -type d -name "bin" -exec run_cmd chmod -R u+w {} \; 2>/dev/null || true
+fi
 find . -type d \( -name "bin" -o -name "obj" \) | while read dir; do
     rm -rf "$dir" 2>/dev/null || true
 done
@@ -172,7 +177,13 @@ print_success "Build artifacts cleaned"
 
 print_step "Step 9: Building solution"
 cd "$PROJECT_ROOT"
+# Clean and fix permissions
 dotnet clean 2>/dev/null || true
+if [ "$IS_WINDOWS" = false ]; then
+    # Fix any permission issues with obj directories
+    find . -type d -name "obj" -exec run_cmd chmod -R u+w {} \; 2>/dev/null || true
+    find . -type f -path "*/obj/*" -exec run_cmd chmod u+w {} \; 2>/dev/null || true
+fi
 dotnet restore || print_error "Failed to restore packages"
 dotnet build -c Release || print_error "Failed to build solution"
 print_success "Solution built successfully"
