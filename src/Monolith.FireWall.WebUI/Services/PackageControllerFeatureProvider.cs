@@ -8,7 +8,7 @@ namespace Monolith.FireWall.WebUI.Services;
 /// Controller feature provider that filters out controllers from package assemblies.
 /// Package assemblies may reference Monolith.FireWall.Core which isn't available in WebUI runtime.
 /// </summary>
-public class PackageControllerFeatureProvider : IControllerFeatureProvider
+public class PackageControllerFeatureProvider : Microsoft.AspNetCore.Mvc.Controllers.IControllerFeatureProvider
 {
     private static readonly HashSet<string> PackageAssemblies = new(StringComparer.OrdinalIgnoreCase)
     {
