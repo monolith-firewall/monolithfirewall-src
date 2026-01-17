@@ -121,6 +121,9 @@ if (sqliteForDI != null)
     builder.Services.AddSingleton<FirewallService>();
 }
 
+// Register custom controller feature provider to filter out package assemblies
+builder.Services.AddSingleton<Microsoft.AspNetCore.Mvc.Controllers.IControllerFeatureProvider, Services.PackageControllerFeatureProvider>();
+
 builder.Services.AddControllers(options =>
 {
     // Disable response caching for all controllers

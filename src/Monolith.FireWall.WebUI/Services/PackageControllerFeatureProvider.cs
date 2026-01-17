@@ -55,6 +55,11 @@ public class PackageControllerFeatureProvider : IControllerFeatureProvider
                     }
                 }
             }
+            else if (part is Microsoft.AspNetCore.Mvc.ApplicationParts.CompiledRazorAssemblyPart razorPart)
+            {
+                // CompiledRazorAssemblyPart is for Razor pages only, skip controller discovery
+                continue;
+            }
         }
     }
 
