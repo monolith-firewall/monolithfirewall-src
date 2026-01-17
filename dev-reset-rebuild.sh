@@ -54,7 +54,19 @@ print_step "Step 3: Cleaning installation directories"
 rm -rf /opt/monolith-firewall 2>/dev/null || true
 rm -rf /etc/monolith-firewall 2>/dev/null || true
 rm -rf /var/log/monolith-firewall 2>/dev/null || true
-rm -rf /var/lib/monolith-firewall 2>/dev/null || true
+
+# Clean /var/lib/monolith-firewall but preserve structure for later
+# We'll clean specific subdirectories instead of everything
+rm -rf /var/lib/monolith-firewall/packages 2>/dev/null || true
+rm -rf /var/lib/monolith-firewall/codelogic/Packages 2>/dev/null || true
+rm -rf /var/lib/monolith-firewall/codelogic/plugins 2>/dev/null || true
+rm -rf /var/lib/monolith-firewall/codelogic/localization 2>/dev/null || true
+rm -rf /var/lib/monolith-firewall/run 2>/dev/null || true
+rm -rf /var/lib/monolith-firewall/data 2>/dev/null || true
+rm -rf /var/lib/monolith-firewall/packages-cache 2>/dev/null || true
+rm -f /var/lib/monolith-firewall/.setup-complete 2>/dev/null || true
+rm -f /var/lib/monolith-firewall/.setup-progress.json 2>/dev/null || true
+rm -f /var/lib/monolith-firewall/codelogic/.codelogic 2>/dev/null || true
 print_success "Installation directories cleaned"
 
 print_step "Step 4: Removing systemd service files"
@@ -64,10 +76,24 @@ systemctl daemon-reload
 print_success "Systemd service files removed"
 
 print_step "Step 5: Cleaning databases"
+# Clean temporary databases
 rm -f /tmp/monolith*.db 2>/dev/null || true
 rm -f /tmp/monolith*.db-* 2>/dev/null || true
 rm -f "$PROJECT_ROOT"/*.db 2>/dev/null || true
 rm -f "$PROJECT_ROOT"/*.db-* 2>/dev/null || true
+
+# Clean installed databases
+rm -f /var/lib/monolith-firewall/data/*.db 2>/dev/null || true
+rm -f /var/lib/monolith-firewall/data/*.db-* 2>/dev/null || true
+rm -f /var/lib/monolith-firewall/data/*.db-shm 2>/dev/null || true
+rm -f /var/lib/monolith-firewall/data/*.db-wal 2>/dev/null || true
+rm -f /var/lib/monolith-firewall/codelogic/CL.cl.sqlite/data/database.db 2>/dev/null || true
+rm -f /var/lib/monolith-firewall/codelogic/CL.cl.sqlite/data/database.db-* 2>/dev/null || true
+rm -f /var/lib/monolith-firewall/codelogic/CL.cl.sqlite/data/database.db-shm 2>/dev/null || true
+rm -f /var/lib/monolith-firewall/codelogic/CL.cl.sqlite/data/database.db-wal 2>/dev/null || true
+
+# Clean CodeLogic data directory
+rm -rf /var/lib/monolith-firewall/codelogic/CL.cl.sqlite/data/* 2>/dev/null || true
 print_success "Databases cleaned"
 
 print_step "Step 6: Removing named pipes"
@@ -97,6 +123,16 @@ rm -f *.mfwpkg 2>/dev/null || true
 rm -f ../monolith-firewall_*.deb 2>/dev/null || true
 rm -f ../monolith-firewall_*.buildinfo 2>/dev/null || true
 rm -f ../monolith-firewall_*.changes 2>/dev/null || true
+
+# Clean package build artifacts in tmp/monolithfirewall-packages
+if [ -d "$PROJECT_ROOT/tmp/monolithfirewall-packages" ]; then
+    find "$PROJECT_ROOT/tmp/monolithfirewall-packages" -type d \( -name "bin" -o -name "obj" \) | while read dir; do
+        rm -rf "$dir" 2>/dev/null || true
+    done
+    find "$PROJECT_ROOT/tmp/monolithfirewall-packages" -name "*.mfwpkg" -type f | while read file; do
+        rm -f "$file" 2>/dev/null || true
+    done
+fi
 print_success "Build artifacts cleaned"
 
 print_step "Step 9: Building solution"
@@ -105,6 +141,23 @@ dotnet clean 2>/dev/null || true
 dotnet restore || print_error "Failed to restore packages"
 dotnet build -c Release || print_error "Failed to build solution"
 print_success "Solution built successfully"
+
+# Also build packages in tmp/monolithfirewall-packages if they exist
+if [ -d "$PROJECT_ROOT/tmp/monolithfirewall-packages" ]; then
+    print_step "Step 9a: Building monolith packages"
+    for pkg_dir in "$PROJECT_ROOT/tmp/monolithfirewall-packages"/*; do
+        if [ -d "$pkg_dir" ] && [ -f "$pkg_dir"/*.csproj ]; then
+            pkg_name=$(basename "$pkg_dir")
+            echo "  Building $pkg_name..."
+            cd "$pkg_dir"
+            dotnet clean 2>/dev/null || true
+            dotnet restore 2>/dev/null || true
+            dotnet build -c Release 2>/dev/null || print_warning "Failed to build $pkg_name"
+        fi
+    done
+    cd "$PROJECT_ROOT"
+    print_success "Package projects built"
+fi
 
 print_step "Step 10: Building all .mfwpkg packages"
 cd "$PROJECT_ROOT"
@@ -144,6 +197,8 @@ fi
 print_step "Step 12a: Writing core configuration (packages directory)"
 mkdir -p /var/lib/monolith-firewall/codelogic
 mkdir -p /var/lib/monolith-firewall/data
+mkdir -p /var/lib/monolith-firewall/packages
+mkdir -p /var/lib/monolith-firewall/run
 cat > /var/lib/monolith-firewall/codelogic/core-config.json <<'EOF'
 {
   "Version": "1.0.0",
@@ -164,6 +219,9 @@ cat > /var/lib/monolith-firewall/codelogic/core-config.json <<'EOF'
 EOF
 chown root:root /var/lib/monolith-firewall/codelogic/core-config.json
 chmod 644 /var/lib/monolith-firewall/codelogic/core-config.json
+chown -R monolith-firewall:monolith-firewall /var/lib/monolith-firewall/packages 2>/dev/null || true
+chown -R monolith-firewall:monolith-firewall /var/lib/monolith-firewall/data 2>/dev/null || true
+chown -R monolith-firewall:monolith-firewall /var/lib/monolith-firewall/run 2>/dev/null || true
 print_success "core-config.json written with packages path /var/lib/monolith-firewall/packages"
 
 print_step "Step 13: Starting Core service (required for package installation)"
