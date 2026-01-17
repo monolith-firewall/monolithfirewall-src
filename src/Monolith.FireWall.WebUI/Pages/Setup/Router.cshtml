@@ -85,12 +85,14 @@
         });
 
         function loadTimezones() {
-            Monolith.API.get('/system/settings/timezones')
-                .then(data => {
+            Monolith.API.get('/api/system/settings/timezones')
+                .then(response => {
+                    const data = response.data || response.Data || response;
+                    const timezones = data.timezones || data.Timezones || [];
                     const select = $('#timezone');
                     select.empty();
                     select.append('<option value="">Select timezone...</option>');
-                    data.timezones.forEach(tz => {
+                    timezones.forEach(tz => {
                         select.append(`<option value="${tz}">${tz}</option>`);
                     });
                 })
@@ -109,16 +111,18 @@
 
         function loadCurrentSettings() {
             Monolith.API.get('/api/system/settings')
-                .then(data => {
-                    if (data.hostname) $('#hostname').val(data.hostname);
-                    if (data.domain) $('#domain').val(data.domain);
-                    if (data.timezone) $('#timezone').val(data.timezone);
-                    if (data.currentDateTime) {
-                        const dt = new Date(data.currentDateTime);
+                .then(response => {
+                    const data = response.data || response.Data || response;
+                    if (data.hostname || data.Hostname) $('#hostname').val(data.hostname || data.Hostname);
+                    if (data.domain || data.Domain) $('#domain').val(data.domain || data.Domain);
+                    if (data.timezone || data.Timezone) $('#timezone').val(data.timezone || data.Timezone);
+                    if (data.currentDateTime || data.CurrentDateTime) {
+                        const dt = new Date(data.currentDateTime || data.CurrentDateTime);
                         $('#datetime').val(dt.toISOString().slice(0, 16));
                     }
-                    if (data.ntpServers && data.ntpServers.length > 0) {
-                        data.ntpServers.forEach(server => addNtpServer(server));
+                    const ntpServers = data.ntpServers || data.NtpServers || [];
+                    if (ntpServers.length > 0) {
+                        ntpServers.forEach(server => addNtpServer(server));
                     } else {
                         // Default NTP servers
                         addNtpServer('0.debian.pool.ntp.org');

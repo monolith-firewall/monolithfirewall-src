@@ -14,10 +14,11 @@ const SetupWizard = {
 
     loadSetupStatus: async function() {
         try {
-            const data = await Monolith.API.get('/setup/status');
+            const response = await Monolith.API.get('/api/setup/status');
+            const data = response.data || response.Data || response;
             this.setupStatus = data;
             
-            if (!data.needsSetup && window.location.pathname.startsWith('/setup')) {
+            if (!data.needsSetup && !data.NeedsSetup && window.location.pathname.startsWith('/setup')) {
                 // Redirect to dashboard if setup not needed
                 window.location.href = '/';
                 return;
@@ -26,9 +27,14 @@ const SetupWizard = {
             await this.buildSteps();
             this.renderCurrentStep();
             this.updateProgress();
+            this.updateNavigation();
         } catch (err) {
             console.error('Failed to load setup status:', err);
-            Monolith.UI.showError('Failed to load setup wizard. Please refresh the page.');
+            if (typeof Monolith !== 'undefined' && Monolith.UI) {
+                Monolith.UI.showError('Failed to load setup wizard. Please refresh the page.');
+            } else {
+                alert('Failed to load setup wizard. Please refresh the page.');
+            }
         }
     },
 
@@ -40,7 +46,8 @@ const SetupWizard = {
                 description: 'Configure hostname, timezone, and time synchronization',
                 route: '/setup/router',
                 required: true,
-                component: 'router'
+                component: 'router',
+                order: 0
             },
             {
                 id: 'network',
@@ -48,7 +55,8 @@ const SetupWizard = {
                 description: 'Configure WAN and LAN interfaces',
                 route: '/setup/network',
                 required: false,
-                component: 'network'
+                component: 'network',
+                order: 1
             }
         ];
 
@@ -66,13 +74,28 @@ const SetupWizard = {
                             required: page.isRequired,
                             component: 'package',
                             packageId: pkg.packageId,
-                            pageId: page.id
+                            pageId: page.id,
+                            order: page.order || 10
                         });
                     });
                 });
             }
         } catch (err) {
             console.error('Failed to load package setup pages:', err);
+        }
+
+        // Sort steps by order
+        this.steps.sort((a, b) => (a.order || 999) - (b.order || 999));
+        
+        // Find current step index based on completed steps
+        if (this.setupStatus && this.setupStatus.completedSteps) {
+            const completed = this.setupStatus.completedSteps;
+            for (let i = 0; i < this.steps.length; i++) {
+                if (!completed.includes(this.steps[i].id)) {
+                    this.currentStep = i;
+                    break;
+                }
+            }
         }
     },
 
@@ -89,6 +112,9 @@ const SetupWizard = {
         if (step.component === 'router' || step.component === 'network' || step.component === 'package') {
             if (window.location.pathname !== step.route) {
                 window.location.href = step.route;
+            } else {
+                // Already on the correct page, just update navigation
+                this.updateNavigation();
             }
             return;
         }
@@ -101,11 +127,13 @@ const SetupWizard = {
                 <p class="text-muted">${step.description}</p>
             </div>
         `);
+        this.updateNavigation();
     },
 
     updateProgress: function() {
         const total = this.steps.length;
-        const completed = this.setupStatus?.completedSteps?.length || 0;
+        const completedSteps = this.setupStatus?.completedSteps || this.setupStatus?.CompletedSteps || [];
+        const completed = Array.isArray(completedSteps) ? completedSteps.length : 0;
         const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
 
         $('#progress-bar').css('width', progress + '%');
@@ -142,13 +170,25 @@ const SetupWizard = {
             stepData = window.getRouterSetupData();
             // Also save to system settings
             try {
-                await Monolith.API.post('/api/system/settings', stepData);
+                const response = await Monolith.API.post('/api/system/settings', stepData);
+                if (!response.success && !response.Success) {
+                    throw new Error(response.error || response.Error || 'Failed to save settings');
+                }
             } catch (err) {
                 console.error('Failed to save router settings:', err);
+                Monolith.UI.showError('Failed to save system settings: ' + (err.message || err));
+                return;
             }
         } else if (step.component === 'network' && window.getNetworkSetupData) {
             stepData = window.getNetworkSetupData();
-            // TODO: Save network configuration
+            // Save network configuration
+            try {
+                await this.saveNetworkConfiguration(stepData);
+            } catch (err) {
+                console.error('Failed to save network configuration:', err);
+                Monolith.UI.showError('Failed to save network configuration: ' + (err.message || err));
+                return;
+            }
         } else if (window.getStepData) {
             stepData = window.getStepData();
         }
@@ -181,31 +221,57 @@ const SetupWizard = {
 
     completeStep: async function(stepId, data) {
         try {
-            await Monolith.API.post('/api/setup/complete-step', {
+            const response = await Monolith.API.post('/api/setup/complete-step', {
                 stepId: stepId,
                 data: data
             });
-            this.setupStatus.completedSteps.push(stepId);
-            this.updateProgress();
+            if (response.success || response.Success) {
+                if (!this.setupStatus.completedSteps) {
+                    this.setupStatus.completedSteps = [];
+                }
+                if (!this.setupStatus.completedSteps.includes(stepId)) {
+                    this.setupStatus.completedSteps.push(stepId);
+                }
+                this.updateProgress();
+            } else {
+                throw new Error(response.error || response.Error || 'Failed to complete step');
+            }
         } catch (err) {
             console.error('Failed to complete step:', err);
-            Monolith.UI.showError('Failed to save step progress');
+            if (typeof Monolith !== 'undefined' && Monolith.UI) {
+                Monolith.UI.showError('Failed to save step progress: ' + (err.message || err));
+            } else {
+                alert('Failed to save step progress');
+            }
+            throw err;
         }
     },
 
     finishSetup: async function() {
         try {
-            await Monolith.API.post('/api/setup/finish', {
+            const response = await Monolith.API.post('/api/setup/finish', {
                 skipRemaining: false
             });
             
-            Monolith.UI.showSuccess('Setup completed successfully!');
-            setTimeout(() => {
-                window.location.href = '/';
-            }, 1500);
+            if (response.success || response.Success) {
+                if (typeof Monolith !== 'undefined' && Monolith.UI) {
+                    Monolith.UI.showSuccess('Setup completed successfully!');
+                } else {
+                    alert('Setup completed successfully!');
+                }
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            } else {
+                throw new Error(response.error || response.Error || 'Failed to finish setup');
+            }
         } catch (err) {
             console.error('Failed to finish setup:', err);
-            Monolith.UI.showError('Failed to complete setup');
+            if (typeof Monolith !== 'undefined' && Monolith.UI) {
+                Monolith.UI.showError('Failed to complete setup: ' + (err.message || err));
+            } else {
+                alert('Failed to complete setup');
+            }
         }
     },
 
@@ -217,6 +283,97 @@ const SetupWizard = {
         $('#btn-next').toggle(!isLast);
         $('#btn-finish').toggle(isLast);
         $('#btn-skip').toggle(!isLast && !step.required);
+    },
+
+    saveNetworkConfiguration: async function(networkData) {
+        // Save interface assignments (WAN/LAN roles)
+        if (networkData.wanInterface) {
+            try {
+                const response = await Monolith.API.post('/api/interfaces/assignments', {
+                    interface: networkData.wanInterface,
+                    type: 'physical',
+                    role: 'wan',
+                    ipMode: 'dhcp' // WAN typically uses DHCP
+                });
+                if (!response.success && !response.Success) {
+                    throw new Error(response.error || response.Error || 'Failed to assign WAN interface');
+                }
+            } catch (err) {
+                console.error('Failed to assign WAN interface:', err);
+                throw new Error('Failed to assign WAN interface: ' + (err.message || err));
+            }
+        }
+
+        if (networkData.lanInterface) {
+            try {
+                // Determine IP mode and address
+                const ipMode = networkData.lanConfig === 'static' ? 'static' : 'dhcp';
+                const addressCidr = networkData.lanConfig === 'static' && networkData.lanIp
+                    ? `${networkData.lanIp}/${this.netmaskToCidr(networkData.lanNetmask || '255.255.255.0')}`
+                    : null;
+
+                const response = await Monolith.API.post('/api/interfaces/assignments', {
+                    interface: networkData.lanInterface,
+                    type: 'physical',
+                    role: 'lan',
+                    ipMode: ipMode,
+                    addressCidr: addressCidr
+                });
+                if (!response.success && !response.Success) {
+                    throw new Error(response.error || response.Error || 'Failed to assign LAN interface');
+                }
+            } catch (err) {
+                console.error('Failed to assign LAN interface:', err);
+                throw new Error('Failed to assign LAN interface: ' + (err.message || err));
+            }
+        }
+
+        // Save gateway (routing) - use gateways endpoint
+        if (networkData.gateway) {
+            try {
+                const response = await Monolith.API.post('/api/routing/gateways', {
+                    name: 'default',
+                    address: networkData.gateway,
+                    interface: networkData.wanInterface || null,
+                    isDefault: true,
+                    metric: 1
+                });
+                if (!response.success && !response.Success) {
+                    console.warn('Failed to save gateway:', response.error || response.Error);
+                }
+            } catch (err) {
+                console.error('Failed to save gateway:', err);
+                // Don't throw - gateway can be configured later
+            }
+        }
+
+        // Save DNS servers to system settings
+        if (networkData.dnsServers && networkData.dnsServers.length > 0) {
+            try {
+                const response = await Monolith.API.post('/api/system/settings', {
+                    dnsServers: networkData.dnsServers
+                });
+                if (!response.success && !response.Success) {
+                    console.warn('Failed to save DNS servers:', response.error || response.Error);
+                }
+            } catch (err) {
+                console.error('Failed to save DNS servers:', err);
+                // Don't throw - DNS can be configured later
+            }
+        }
+    },
+
+    netmaskToCidr: function(netmask) {
+        // Convert netmask (e.g., 255.255.255.0) to CIDR (e.g., 24)
+        const parts = netmask.split('.');
+        if (parts.length !== 4) return 24; // Default
+        
+        let cidr = 0;
+        for (let i = 0; i < 4; i++) {
+            const octet = parseInt(parts[i], 10);
+            cidr += (octet >>> 0).toString(2).split('1').length - 1;
+        }
+        return cidr || 24; // Default to /24 if calculation fails
     },
 
     showFinish: function() {
@@ -242,7 +399,10 @@ $(document).ready(function() {
         
         // Setup navigation buttons for individual step pages
         if (window.location.pathname !== '/setup') {
-            setupStepPageNavigation();
+            // Wait a bit for SetupWizard to initialize
+            setTimeout(() => {
+                setupStepPageNavigation();
+            }, 100);
         }
     }
 });
@@ -269,9 +429,14 @@ function setupStepPageNavigation() {
         $('.card-body').append(navHtml);
     }
 
-    $('#btn-setup-next').on('click', () => {
+    // Remove existing handlers to prevent duplicates
+    $('#btn-setup-next').off('click');
+    $('#btn-setup-back').off('click');
+    $('#btn-setup-skip').off('click');
+
+    $('#btn-setup-next').on('click', async () => {
         if (window.SetupWizard) {
-            window.SetupWizard.nextStep();
+            await window.SetupWizard.nextStep();
         }
     });
 
@@ -281,11 +446,21 @@ function setupStepPageNavigation() {
         }
     });
 
-    $('#btn-setup-skip').on('click', () => {
+    $('#btn-setup-skip').on('click', async () => {
         if (window.SetupWizard) {
-            window.SetupWizard.skipStep();
+            await window.SetupWizard.skipStep();
         }
     });
+
+    // Update button states based on current step
+    if (window.SetupWizard && window.SetupWizard.steps) {
+        const currentStep = window.SetupWizard.currentStep;
+        const step = window.SetupWizard.steps[currentStep];
+        if (step) {
+            $('#btn-setup-back').prop('disabled', currentStep === 0);
+            $('#btn-setup-skip').toggle(!step.required && currentStep < window.SetupWizard.steps.length - 1);
+        }
+    }
 }
 
 // Export for individual step pages

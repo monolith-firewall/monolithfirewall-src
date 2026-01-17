@@ -48,8 +48,10 @@
         function loadNetworkInterfaces() {
             // Check if network package is installed
             Monolith.API.get('/api/setup/packages')
-                .then(data => {
-                    const hasNetworkPackage = data.packages.some(p => p.packageId === 'monolith-network');
+                .then(response => {
+                    const data = response.data || response.Data || response;
+                    const packages = data.packages || data.Packages || [];
+                    const hasNetworkPackage = packages.some(p => (p.packageId || p.PackageId) === 'monolith-network');
                     
                     if (!hasNetworkPackage) {
                         $('#network-package-warning').show();
@@ -63,9 +65,18 @@
                     }
 
                     // Load interfaces
-                    Monolith.API.get('/api/interfaces/list')
-                        .then(data => {
-                            renderNetworkSetup(data.interfaces || []);
+                    Monolith.API.get('/api/interfaces/assignments')
+                        .then(response => {
+                            const data = response.data || response.Data || response;
+                            const unassigned = data.unassigned || data.Unassigned || [];
+                            const assigned = data.assigned || data.Assigned || [];
+                            // Combine all interfaces for selection
+                            const allInterfaces = [...assigned, ...unassigned].map(iface => ({
+                                name: iface.interface || iface.Interface,
+                                description: iface.description || iface.Description || '',
+                                status: iface.status || iface.Status || 'unknown'
+                            }));
+                            renderNetworkSetup(allInterfaces);
                         })
                         .catch(err => {
                             console.error('Failed to load interfaces:', err);
@@ -174,13 +185,21 @@
 
             // Load current DNS settings
             Monolith.API.get('/api/system/settings')
-                .then(data => {
-                    if (data.dnsServers && data.dnsServers.length > 0) {
-                        data.dnsServers.forEach(server => addDnsServer(server));
+                .then(response => {
+                    const data = response.data || response.Data || response;
+                    const dnsServers = data.dnsServers || data.DnsServers || [];
+                    if (dnsServers.length > 0) {
+                        dnsServers.forEach(server => addDnsServer(server));
                     } else {
                         addDnsServer('8.8.8.8');
                         addDnsServer('8.8.4.4');
                     }
+                })
+                .catch(err => {
+                    console.error('Failed to load DNS settings:', err);
+                    // Set defaults
+                    addDnsServer('8.8.8.8');
+                    addDnsServer('8.8.4.4');
                 });
         }
 
