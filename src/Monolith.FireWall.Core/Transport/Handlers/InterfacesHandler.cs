@@ -14,6 +14,8 @@ public sealed class InterfacesHandler : ICoreRequestHandler
         "interfaces.available.list",
         "interfaces.assignments.save",
         "interfaces.assignments.delete",
+        "interfaces.unmanaged.delete",
+        "interfaces.unmanaged.assign",
         "interfaces.config.check",
         "interfaces.config.apply",
         "interfaces.config.apply-now",
@@ -81,6 +83,28 @@ public sealed class InterfacesHandler : ICoreRequestHandler
             case "interfaces.config.fix":
                 var fixResult = await context.InterfaceAssignments.FixConfigAsync(cancellationToken);
                 return new ApiResponse(fixResult.Success, fixResult, fixResult.Success ? null : fixResult.Message);
+
+            case "interfaces.unmanaged.delete":
+                if (!CoreRequestParsing.TryGetPayload(request, out InterfaceAssignmentDeleteRequest deleteUnmanagedRequest, out var deleteUnmanagedError))
+                {
+                    return new ApiResponse(false, null, deleteUnmanagedError);
+                }
+
+                var deleteUnmanagedResult = await context.InterfaceAssignments.DeleteUnmanagedInterfaceAsync(deleteUnmanagedRequest.Interface, cancellationToken);
+                return deleteUnmanagedResult.Success
+                    ? new ApiResponse(true, new { interfaceName = deleteUnmanagedRequest.Interface }, null)
+                    : new ApiResponse(false, null, deleteUnmanagedResult.Error ?? "Failed to delete unmanaged interface");
+
+            case "interfaces.unmanaged.assign":
+                if (!CoreRequestParsing.TryGetPayload(request, out InterfaceAssignmentDeleteRequest assignUnmanagedRequest, out var assignUnmanagedError))
+                {
+                    return new ApiResponse(false, null, assignUnmanagedError);
+                }
+
+                var assignUnmanagedResult = await context.InterfaceAssignments.AssignUnmanagedInterfaceAsync(assignUnmanagedRequest.Interface, cancellationToken);
+                return assignUnmanagedResult.Success
+                    ? new ApiResponse(true, assignUnmanagedResult.Assignment, null)
+                    : new ApiResponse(false, null, assignUnmanagedResult.Error ?? "Failed to assign unmanaged interface");
         }
 
         return new ApiResponse(false, null, $"Unhandled action: {action}");

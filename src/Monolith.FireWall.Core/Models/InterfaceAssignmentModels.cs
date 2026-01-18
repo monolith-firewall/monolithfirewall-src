@@ -182,6 +182,7 @@ public sealed class InterfaceAssignmentView
     public string Status { get; set; } = string.Empty;
     public string? IpAddress { get; set; }
     public bool Managed { get; set; }
+    public bool IsUnmanaged { get; set; }
     public string? SourceFile { get; set; }
     public InterfaceIpMode IpMode { get; set; }
     public InterfaceRole Role { get; set; } = InterfaceRole.Unknown;

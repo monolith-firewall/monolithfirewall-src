@@ -12,19 +12,8 @@ $(document).ready(function() {
         if (!isAuthenticated) {
             window.location.href = '/login';
         } else {
-            // Check if setup is needed (skip if already on setup page)
-            if (!window.location.pathname.startsWith('/setup')) {
-                try {
-                    const setupStatus = await Monolith.API.get('/setup/status');
-                    if (setupStatus.needsSetup) {
-                        window.location.href = '/setup';
-                        return;
-                    }
-                } catch (err) {
-                    console.error('Failed to check setup status:', err);
-                    // Continue normally if check fails
-                }
-            }
+            // Setup check is now handled by SetupRedirectMiddleware
+            // No need to check here - middleware will redirect if needed
 
             // Update user info in navbar
             updateUserInfo();
@@ -496,7 +485,18 @@ function renderPackagesMenu(packages, menus) {
                 } else {
                     // Direct module link (no submenu) - still show badge
                     const moduleIdForRoute = menu.moduleId || menuId.split('-').pop();
-                    const route = `/p/${pkgId}/${moduleIdForRoute}`;
+                    // Check if menuId contains a page name (has multiple parts separated by '-')
+                    // e.g., "diagnostics-ping" -> route should be /p/pkg/diagnostics/ping
+                    const menuIdParts = menuId.split('-');
+                    let route;
+                    if (menuIdParts.length > 1 && menuIdParts[0] === moduleIdForRoute) {
+                        // Menu ID is like "diagnostics-ping", extract page name
+                        const pageName = menuIdParts.slice(1).join('-');
+                        route = `/p/${pkgId}/${moduleIdForRoute}/${pageName}`;
+                    } else {
+                        // Standard route without page name
+                        route = `/p/${pkgId}/${moduleIdForRoute}`;
+                    }
                     const displayLabel = `<span class="badge bg-primary me-2" style="font-size: 0.7rem; font-weight: 600;">${moduleDisplayName}</span>${menuLabel}`;
                     
                     html += `

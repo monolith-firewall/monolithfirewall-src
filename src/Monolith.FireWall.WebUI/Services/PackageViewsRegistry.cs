@@ -74,9 +74,9 @@ public class PackageViewsRegistry
                 {
                     var assembly = Assembly.LoadFrom(assemblyPath);
                     
-                    // Use AssemblyPart but filter out controllers during discovery
+                    // Register only compiled Razor parts so MVC won't scan for controllers
                     // Package assemblies should only expose Razor pages, not controllers
-                    var assemblyPart = new AssemblyPart(assembly);
+                    var assemblyPart = new CompiledRazorAssemblyPart(assembly);
                     partManager.ApplicationParts.Add(assemblyPart);
                     _registeredAssemblies.Add(assemblyPath);
                     _logger.LogInformation($"Registered Views assembly: {assembly.FullName} from {assemblyPath}");
@@ -98,7 +98,7 @@ public class PackageViewsRegistry
                     try
                     {
                         var assembly = Assembly.LoadFrom(assemblyPath);
-                        var assemblyPart = new AssemblyPart(assembly);
+                        var assemblyPart = new CompiledRazorAssemblyPart(assembly);
                         partManager.ApplicationParts.Add(assemblyPart);
                         _registeredAssemblies.Add(assemblyPath);
                         _logger.LogInformation($"Registered Views assembly (with type load exceptions): {assembly.FullName} from {assemblyPath}");

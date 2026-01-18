@@ -15,11 +15,26 @@ const SetupWizard = {
     loadSetupStatus: async function() {
         try {
             const response = await Monolith.API.get('/api/setup/status');
-            const data = response.data || response.Data || response;
+            // Core API returns { Success: true, Data: {...}, Error: null }
+            // Extract the actual status data from Data property
+            const statusData = response.Data || response.data;
+            const data = statusData || response;
             this.setupStatus = data;
             
-            if (!data.needsSetup && !data.NeedsSetup && window.location.pathname.startsWith('/setup')) {
-                // Redirect to dashboard if setup not needed
+            // Check if setup is needed (default to true if property is missing)
+            // Core API uses PascalCase: NeedsSetup
+            const needsSetup = data.NeedsSetup !== undefined ? data.NeedsSetup : 
+                              (data.needsSetup !== undefined ? data.needsSetup : true);
+            
+            // Allow forcing access with ?force=true query parameter
+            const forceAccess = new URLSearchParams(window.location.search).get('force') === 'true';
+            
+            console.log('Setup status:', { needsSetup, forceAccess, data });
+            
+            // Only redirect if setup is explicitly NOT needed AND user didn't force access
+            if (needsSetup === false && !forceAccess && window.location.pathname.startsWith('/setup')) {
+                // Redirect to dashboard if setup not needed (unless forced)
+                console.log('Setup not needed, redirecting to dashboard');
                 window.location.href = '/';
                 return;
             }
@@ -30,11 +45,18 @@ const SetupWizard = {
             this.updateNavigation();
         } catch (err) {
             console.error('Failed to load setup status:', err);
+            // Don't redirect on error - show the setup page with error message
+            // This allows users to see what went wrong
             if (typeof Monolith !== 'undefined' && Monolith.UI) {
                 Monolith.UI.showError('Failed to load setup wizard. Please refresh the page.');
             } else {
                 alert('Failed to load setup wizard. Please refresh the page.');
             }
+            // Still try to render the setup page even if status failed
+            await this.buildSteps();
+            this.renderCurrentStep();
+            this.updateProgress();
+            this.updateNavigation();
         }
     },
 
@@ -117,8 +139,11 @@ const SetupWizard = {
         // For router, network, and package steps, redirect to their pages
         // The pages will handle their own navigation
         if (step.component === 'router' || step.component === 'network' || step.component === 'package') {
-            if (window.location.pathname !== step.route) {
-                window.location.href = step.route;
+            const targetRoute = (step.component === 'package' && step.packageId && step.pageId)
+                ? `/setup/package-step/${step.packageId}/${step.pageId}`
+                : step.route;
+            if (window.location.pathname !== targetRoute) {
+                window.location.href = targetRoute;
             } else {
                 // Already on the correct page, just update navigation
                 this.updateNavigation();

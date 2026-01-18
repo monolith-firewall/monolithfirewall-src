@@ -115,15 +115,16 @@ public class RazorPartialRenderer
         {
             // First try to get assembly from ApplicationPartManager
             var partManager = httpContext.RequestServices.GetRequiredService<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPartManager>();
-            var assemblyPart = partManager.ApplicationParts
+            var assembly = partManager.ApplicationParts
                 .OfType<Microsoft.AspNetCore.Mvc.ApplicationParts.AssemblyPart>()
-                .FirstOrDefault(ap => ap.Assembly.GetName().Name == assemblyName);
+                .Select(ap => ap.Assembly)
+                .Concat(partManager.ApplicationParts
+                    .OfType<Microsoft.AspNetCore.Mvc.ApplicationParts.CompiledRazorAssemblyPart>()
+                    .Select(ap => ap.Assembly))
+                .FirstOrDefault(ap => ap.GetName().Name == assemblyName);
             
-            Assembly? assembly = null;
-            
-            if (assemblyPart != null)
+            if (assembly != null)
             {
-                assembly = assemblyPart.Assembly;
                 _logger.LogDebug($"Found assembly {assemblyName} in ApplicationPartManager");
             }
             else
@@ -282,13 +283,16 @@ public class RazorPartialRenderer
             try
             {
                 var partManager = httpContext.RequestServices.GetRequiredService<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPartManager>();
-                var assemblyPart = partManager.ApplicationParts
+                var assembly = partManager.ApplicationParts
                     .OfType<Microsoft.AspNetCore.Mvc.ApplicationParts.AssemblyPart>()
-                    .FirstOrDefault(ap => ap.Assembly.GetName().Name == assemblyName);
+                    .Select(ap => ap.Assembly)
+                    .Concat(partManager.ApplicationParts
+                        .OfType<Microsoft.AspNetCore.Mvc.ApplicationParts.CompiledRazorAssemblyPart>()
+                        .Select(ap => ap.Assembly))
+                    .FirstOrDefault(ap => ap.GetName().Name == assemblyName);
                 
-                if (assemblyPart != null)
+                if (assembly != null)
                 {
-                    var assembly = assemblyPart.Assembly;
                     var pageType = assembly.GetType(configClassName, throwOnError: false);
                     
                     if (pageType != null && typeof(PageBase).IsAssignableFrom(pageType))

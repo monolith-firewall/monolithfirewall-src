@@ -47,6 +47,29 @@ public sealed class InterfaceAssignmentManager
         var views = assignments.Select(a => BuildAssignmentView(a, ifaceMap, addressMap)).ToList();
         var assignedIfaces = new HashSet<string>(assignments.Select(a => a.InterfaceName), StringComparer.OrdinalIgnoreCase);
 
+        // Read unmanaged interfaces (only those not already assigned)
+        var unmanagedStanzas = await _configManager.ReadUnmanagedInterfacesAsync(cancellationToken);
+        var unmanagedViews = new List<InterfaceAssignmentView>();
+        
+        foreach (var stanza in unmanagedStanzas)
+        {
+            // Skip if already assigned (managed)
+            if (assignedIfaces.Contains(stanza.Interface))
+            {
+                continue;
+            }
+            
+            if (ifaceMap.TryGetValue(stanza.Interface, out var iface))
+            {
+                var view = BuildUnmanagedView(stanza, iface, addressMap);
+                unmanagedViews.Add(view);
+                assignedIfaces.Add(stanza.Interface); // Exclude from unassigned
+            }
+        }
+
+        // Combine managed and unmanaged views
+        var allAssigned = views.Where(v => v.Type == "physical").Concat(unmanagedViews).ToList();
+
         var unassigned = interfaces
             .Where(i => !assignedIfaces.Contains(i.Name))
             .Where(i => IsPhysicalInterface(i.Name))
@@ -66,7 +89,7 @@ public sealed class InterfaceAssignmentManager
 
         return new InterfaceAssignmentsSnapshot
         {
-            Assigned = views.Where(v => v.Type == "physical").ToList(),
+            Assigned = allAssigned,
             Vlans = views.Where(v => v.Type == "vlan").ToList(),
             Bridges = views.Where(v => v.Type == "bridge").ToList(),
             Unassigned = unassigned,
@@ -276,6 +299,31 @@ public sealed class InterfaceAssignmentManager
         assignment.BridgeForwardDelay = request.BridgeForwardDelay;
         assignment.UpdatedAt = DateTime.UtcNow;
 
+        // Check if this interface exists in unmanaged interfaces and remove it from its file
+        var unmanagedStanzas = await _configManager.ReadUnmanagedInterfacesAsync(cancellationToken);
+        var existingStanza = unmanagedStanzas.FirstOrDefault(s => 
+            string.Equals(s.Interface, ifaceName, StringComparison.OrdinalIgnoreCase));
+        
+        if (existingStanza != null && !string.IsNullOrWhiteSpace(existingStanza.FilePath))
+        {
+            // Remove the interface from its original file
+            var removeResult = await _configManager.RemoveInterfaceFromFileAsync(existingStanza.FilePath, ifaceName, cancellationToken);
+            if (!removeResult.Success)
+            {
+                await _loggingManager.LogSystemAsync(
+                    "Network",
+                    "warning",
+                    "InterfaceAssignmentManager",
+                    $"Assigned interface {ifaceName} but failed to remove from original file: {existingStanza.FilePath}",
+                    new Dictionary<string, object>
+                    {
+                        ["interface"] = ifaceName,
+                        ["file"] = existingStanza.FilePath,
+                        ["error"] = removeResult.Error ?? "Unknown error"
+                    });
+            }
+        }
+
         var saved = await _store.UpsertAsync(assignment);
         if (!saved)
         {
@@ -338,6 +386,206 @@ public sealed class InterfaceAssignmentManager
             });
 
         return (true, null);
+    }
+
+    /// <summary>
+    /// Delete an unmanaged interface (remove from unmanaged file).
+    /// </summary>
+    public async Task<(bool Success, string? Error)> DeleteUnmanagedInterfaceAsync(string iface, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(iface))
+        {
+            return (false, "Interface is required");
+        }
+
+        var unmanagedStanzas = await _configManager.ReadUnmanagedInterfacesAsync(cancellationToken);
+        var targetStanza = unmanagedStanzas.FirstOrDefault(s => 
+            string.Equals(s.Interface, iface, StringComparison.OrdinalIgnoreCase));
+
+        if (targetStanza == null)
+        {
+            return (false, "Interface not found in unmanaged interfaces");
+        }
+
+        // Remove the unmanaged block from the file
+        var unmanagedPath = _configManager.UnmanagedPath;
+        if (!File.Exists(unmanagedPath))
+        {
+            return (true, null); // Already removed
+        }
+
+        try
+        {
+            var lines = (await File.ReadAllLinesAsync(unmanagedPath, cancellationToken)).ToList();
+            var updated = RemoveUnmanagedBlock(lines, iface, out var removed);
+
+            if (!removed)
+            {
+                return (false, "Interface block not found in unmanaged file");
+            }
+
+            // Write back the file (or delete if empty)
+            if (updated.All(string.IsNullOrWhiteSpace) || updated.Count == 0)
+            {
+                File.Delete(unmanagedPath);
+            }
+            else
+            {
+                await File.WriteAllLinesAsync(unmanagedPath, updated, cancellationToken);
+            }
+
+            await _loggingManager.LogSystemAsync(
+                "Network",
+                "info",
+                "InterfaceAssignmentManager",
+                $"Deleted unmanaged interface {iface}",
+                new Dictionary<string, object>
+                {
+                    ["interface"] = iface
+                });
+
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Failed to delete unmanaged interface: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Assign an unmanaged interface (read config and create assignment).
+    /// </summary>
+    public async Task<(bool Success, string? Error, InterfaceAssignmentEntity? Assignment)> AssignUnmanagedInterfaceAsync(
+        string iface,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(iface))
+        {
+            return (false, "Interface is required", null);
+        }
+
+        // Check if already assigned
+        var existing = await _store.GetAssignmentAsync(iface);
+        if (existing != null)
+        {
+            return (false, "Interface is already assigned", null);
+        }
+
+        // Read unmanaged interfaces
+        var unmanagedStanzas = await _configManager.ReadUnmanagedInterfacesAsync(cancellationToken);
+        var stanza = unmanagedStanzas.FirstOrDefault(s => 
+            string.Equals(s.Interface, iface, StringComparison.OrdinalIgnoreCase));
+
+        if (stanza == null)
+        {
+            return (false, "Interface not found in unmanaged interfaces", null);
+        }
+
+        // Convert stanza to assignment
+        var assignment = new InterfaceAssignmentEntity
+        {
+            InterfaceName = stanza.Interface,
+            Name = stanza.Interface,
+            Type = InterfaceAssignmentType.Physical,
+            Description = "Imported from unmanaged configuration",
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        // Parse IP configuration
+        if (stanza.Method == "static")
+        {
+            assignment.IpMode = InterfaceIpMode.Static;
+            if (stanza.Options.TryGetValue("address", out var address))
+            {
+                assignment.IpAddress = address;
+            }
+            if (stanza.Options.TryGetValue("netmask", out var netmask))
+            {
+                assignment.PrefixLength = NetmaskToPrefixLength(netmask);
+            }
+            if (stanza.Options.TryGetValue("gateway", out var gateway))
+            {
+                assignment.Gateway = gateway;
+            }
+        }
+        else if (stanza.Method == "dhcp")
+        {
+            assignment.IpMode = InterfaceIpMode.Dhcp;
+        }
+        else
+        {
+            assignment.IpMode = InterfaceIpMode.None;
+        }
+
+        // Save assignment
+        var saved = await _store.UpsertAsync(assignment);
+        if (!saved)
+        {
+            return (false, "Failed to save assignment", null);
+        }
+
+        // Remove from unmanaged file
+        var deleteResult = await DeleteUnmanagedInterfaceAsync(iface, cancellationToken);
+        if (!deleteResult.Success)
+        {
+            // Log warning but don't fail - assignment is saved
+            await _loggingManager.LogSystemAsync(
+                "Network",
+                "warning",
+                "InterfaceAssignmentManager",
+                $"Assigned interface {iface} but failed to remove from unmanaged file",
+                new Dictionary<string, object>
+                {
+                    ["interface"] = iface,
+                    ["error"] = deleteResult.Error ?? "Unknown error"
+                });
+        }
+
+        await _loggingManager.LogSystemAsync(
+            "Network",
+            "info",
+            "InterfaceAssignmentManager",
+            $"Assigned unmanaged interface {iface}",
+            new Dictionary<string, object>
+            {
+                ["interface"] = iface,
+                ["type"] = assignment.Type.ToString(),
+                ["ipMode"] = assignment.IpMode.ToString()
+            });
+
+        return (true, null, assignment);
+    }
+
+    private static List<string> RemoveUnmanagedBlock(List<string> lines, string iface, out bool removed)
+    {
+        removed = false;
+        var begin = $"# BEGIN MONOLITH UNMANAGED {iface}";
+        var end = $"# END MONOLITH UNMANAGED {iface}";
+        var output = new List<string>(lines.Count);
+        var inBlock = false;
+
+        foreach (var line in lines)
+        {
+            if (!inBlock && line.Trim().Equals(begin, StringComparison.OrdinalIgnoreCase))
+            {
+                inBlock = true;
+                removed = true;
+                continue;
+            }
+
+            if (inBlock)
+            {
+                if (line.Trim().Equals(end, StringComparison.OrdinalIgnoreCase))
+                {
+                    inBlock = false;
+                }
+                continue;
+            }
+
+            output.Add(line);
+        }
+
+        return output;
     }
 
     public async Task<InterfaceConfigCheckResult> CheckConfigAsync(CancellationToken cancellationToken)
@@ -511,6 +759,7 @@ public sealed class InterfaceAssignmentManager
             Status = status,
             IpAddress = ip,
             Managed = true,
+            IsUnmanaged = false,
             SourceFile = "/etc/network/interfaces.d/monolith",
             IpMode = assignment.IpMode,
             Ipv6Mode = assignment.Ipv6Mode,
@@ -530,6 +779,95 @@ public sealed class InterfaceAssignmentManager
             BridgeStp = assignment.BridgeStp,
             BridgeForwardDelay = assignment.BridgeForwardDelay
         };
+    }
+
+    private InterfaceAssignmentView BuildUnmanagedView(
+        InterfaceConfigManager.InterfaceStanza stanza,
+        Monolith.FireWall.Platform.Models.InterfaceInfo iface,
+        IReadOnlyDictionary<string, List<Monolith.FireWall.Platform.Models.AddressInfo>> addressMap)
+    {
+        var status = iface.IsUp ? "up" : "down";
+        var liveIpv4 = ResolveAddress(addressMap, stanza.Interface, "inet");
+        var liveIpv6 = ResolveAddress(addressMap, stanza.Interface, "inet6");
+        var ip = liveIpv4 ?? liveIpv6;
+
+        // Parse configuration from stanza options
+        var ipMode = InterfaceIpMode.None;
+        string? configAddress = null;
+        int? configPrefixLength = null;
+        string? gateway = null;
+
+        if (stanza.Method == "static" && stanza.Options.TryGetValue("address", out var address))
+        {
+            ipMode = InterfaceIpMode.Static;
+            configAddress = address;
+            
+            if (stanza.Options.TryGetValue("netmask", out var netmask))
+            {
+                configPrefixLength = NetmaskToPrefixLength(netmask);
+            }
+            
+            if (stanza.Options.TryGetValue("gateway", out var gw))
+            {
+                gateway = gw;
+            }
+        }
+        else if (stanza.Method == "dhcp")
+        {
+            ipMode = InterfaceIpMode.Dhcp;
+        }
+
+        return new InterfaceAssignmentView
+        {
+            Interface = stanza.Interface,
+            Name = stanza.Interface,
+            Type = "physical",
+            Description = "Unmanaged interface",
+            Status = status,
+            IpAddress = ip,
+            Managed = false,
+            IsUnmanaged = true,
+            SourceFile = _configManager.UnmanagedPath,
+            IpMode = ipMode,
+            Ipv6Mode = InterfaceIpMode.None,
+            Role = InterfaceRole.Unknown,
+            IsManagement = false,
+            ConfigAddress = configAddress,
+            ConfigPrefixLength = configPrefixLength,
+            Gateway = gateway
+        };
+    }
+
+    private static int? NetmaskToPrefixLength(string netmask)
+    {
+        if (string.IsNullOrWhiteSpace(netmask))
+        {
+            return null;
+        }
+
+        var parts = netmask.Split('.');
+        if (parts.Length != 4)
+        {
+            return null;
+        }
+
+        if (!int.TryParse(parts[0], out var b0) ||
+            !int.TryParse(parts[1], out var b1) ||
+            !int.TryParse(parts[2], out var b2) ||
+            !int.TryParse(parts[3], out var b3))
+        {
+            return null;
+        }
+
+        var mask = (uint)((b0 << 24) | (b1 << 16) | (b2 << 8) | b3);
+        var prefix = 0;
+        while (mask != 0 && (mask & 0x80000000) != 0)
+        {
+            prefix++;
+            mask <<= 1;
+        }
+
+        return prefix;
     }
 
     private static InterfaceAssignmentType? ParseType(string value)

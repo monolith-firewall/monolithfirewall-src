@@ -1,6 +1,7 @@
 using CodeLogic;
 using Monolith.FireWall.WebUI.Services;
 using Monolith.FireWall.WebUI.Middleware;
+using Monolith.FireWall.WebUI.Middleware;
 using Monolith.FireWall.WebUI.Features.Users.Repositories;
 using Monolith.FireWall.WebUI.Features.Users.Services;
 using Monolith.FireWall.WebUI.Features.SystemLogs;
@@ -204,6 +205,9 @@ catch (Exception ex)
 
 // No-cache middleware FIRST (before static files)
 app.UseNoCache();
+
+// Setup redirect middleware - must be early to catch all requests
+app.UseMiddleware<SetupRedirectMiddleware>();
 
 // Static files (WebUI) - with no-cache headers
 app.UseStaticFiles(new StaticFileOptions
@@ -977,6 +981,44 @@ app.MapDelete("/api/interfaces/assignments/{iface}", async (string iface, CoreAp
     }
 });
 
+app.MapDelete("/api/interfaces/unmanaged/{iface}", async (string iface, CoreApiClient coreClient) =>
+{
+    try
+    {
+        var coreRequest = new
+        {
+            action = "interfaces.unmanaged.delete",
+            payload = new { Interface = iface }
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPost("/api/interfaces/unmanaged/{iface}/assign", async (string iface, CoreApiClient coreClient) =>
+{
+    try
+    {
+        var coreRequest = new
+        {
+            action = "interfaces.unmanaged.assign",
+            payload = new { Interface = iface }
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
 app.MapPost("/api/interfaces/config/check", async (HttpContext context, CoreApiClient coreClient) =>
 {
     try
@@ -1585,6 +1627,42 @@ app.MapPost("/api/setup/finish", async (HttpContext context, CoreApiClient coreC
         {
             action = "setup.finish",
             skipRemaining = doc.RootElement.TryGetProperty("skipRemaining", out var skipEl) && skipEl.GetBoolean()
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPost("/api/setup/skip", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        var coreRequest = new { action = "setup.skip" };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+app.MapPost("/api/setup/skip-step", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        using var doc = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+        var stepId = doc.RootElement.GetProperty("stepId").GetString();
+        var coreRequest = new
+        {
+            action = "setup.skip-step",
+            stepId = stepId
         };
         var requestJson = JsonSerializer.Serialize(coreRequest);
         var responseJson = await coreClient.SendRequestAsync(requestJson);

@@ -1,0 +1,87 @@
+@page "/setup/complete"
+@model Monolith.FireWall.WebUI.Pages.Setup.CompleteModel
+@{
+    Layout = "_SetupLayout";
+    ViewData["Title"] = "Setup Complete";
+}
+
+<div class="setup-card">
+    <div class="setup-card-body">
+        <div class="setup-complete">
+            <div class="setup-complete-icon">
+                <i class="bi bi-check-circle-fill"></i>
+            </div>
+            <h1>Setup Complete!</h1>
+            <p class="lead text-muted mb-4">Your Monolith FireWall has been configured successfully.</p>
+            
+            <div class="setup-complete-summary">
+                <h3><i class="bi bi-list-check me-2"></i>Configuration Summary</h3>
+                <ul id="setup-summary-list">
+                    <li>
+                        <i class="bi bi-check-circle-fill"></i>
+                        <span>Router & System configuration completed</span>
+                    </li>
+                    <li>
+                        <i class="bi bi-check-circle-fill"></i>
+                        <span>Network interfaces configured</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="setup-btn-group">
+                <a href="/" class="btn btn-setup-primary">
+                    <i class="bi bi-speedometer2 me-2"></i> Go to Dashboard
+                </a>
+                <a href="/setup/router?force=true" class="btn btn-setup-secondary">
+                    <i class="bi bi-arrow-clockwise me-2"></i> Restart Setup
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            // Load completed steps and show summary
+            loadSetupSummary();
+        });
+
+        async function loadSetupSummary() {
+            try {
+                const response = await Monolith.API.get('/api/setup/status');
+                const statusData = response.Data || response.data || response;
+                const completedSteps = statusData.CompletedSteps || statusData.completedSteps || [];
+
+                // Build summary list
+                const summaryItems = [];
+                
+                if (completedSteps.includes('router')) {
+                    summaryItems.push('<li><i class="bi bi-check-circle-fill"></i><span>Router & System configuration completed</span></li>');
+                }
+                
+                if (completedSteps.includes('network')) {
+                    summaryItems.push('<li><i class="bi bi-check-circle-fill"></i><span>Network interfaces configured</span></li>');
+                }
+
+                // Add package steps
+                completedSteps.forEach(stepId => {
+                    if (stepId.startsWith('package:')) {
+                        const parts = stepId.split(':');
+                        if (parts.length === 3) {
+                            const packageId = parts[1];
+                            const pageId = parts[2];
+                            summaryItems.push(`<li><i class="bi bi-check-circle-fill"></i><span>${packageId} - ${pageId} configured</span></li>`);
+                        }
+                    }
+                });
+
+                if (summaryItems.length > 0) {
+                    $('#setup-summary-list').html(summaryItems.join(''));
+                }
+            } catch (err) {
+                console.error('Failed to load setup summary:', err);
+            }
+        }
+    </script>
+}

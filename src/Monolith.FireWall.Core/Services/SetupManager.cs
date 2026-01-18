@@ -14,11 +14,13 @@ public class SetupManager
     private const string SetupProgressFile = "/var/lib/monolith-firewall/.setup-progress.json";
     private readonly ILogger _logger;
     private readonly ModuleRegistry _moduleRegistry;
+    private readonly SetupStateStore _setupStateStore;
 
     public SetupManager(ILogger logger, ModuleRegistry moduleRegistry)
     {
         _logger = logger;
         _moduleRegistry = moduleRegistry;
+        _setupStateStore = new SetupStateStore();
     }
 
     /// <summary>
@@ -26,7 +28,32 @@ public class SetupManager
     /// </summary>
     public bool NeedsSetup()
     {
-        // Check if setup completion flag exists
+        // First check database marker - most reliable indicator
+        try
+        {
+            var setupState = _setupStateStore.GetSetupStateAsync().GetAwaiter().GetResult();
+            if (setupState != null)
+            {
+                // If setup is marked as completed in database, no setup needed
+                if (setupState.SetupCompleted)
+                {
+                    return false;
+                }
+                
+                // If marked as fresh install, definitely needs setup
+                if (setupState.IsFreshInstall)
+                {
+                    return true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning($"Failed to check setup state from database: {ex.Message}");
+            // Fall through to file-based checks
+        }
+
+        // Fallback: Check if setup completion flag exists
         if (File.Exists(SetupCompleteFlag))
         {
             return false;
@@ -99,9 +126,17 @@ public class SetupManager
     }
 
     /// <summary>
-    /// Finish setup
+    /// Finish setup wizard (legacy sync method for compatibility)
     /// </summary>
     public void FinishSetup(bool skipRemaining = false)
+    {
+        FinishSetupAsync(skipRemaining).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Finish setup wizard
+    /// </summary>
+    public async Task FinishSetupAsync(bool skipRemaining = false)
     {
         if (skipRemaining)
         {
@@ -113,7 +148,32 @@ public class SetupManager
 
         // Create setup complete flag
         File.WriteAllText(SetupCompleteFlag, DateTime.UtcNow.ToString("O"));
+        
+        // Mark as completed in database
+        await _setupStateStore.MarkSetupCompletedAsync();
+        
         _logger.LogInformation("Setup wizard completed");
+    }
+
+    /// <summary>
+    /// Skip setup wizard
+    /// </summary>
+    public async Task SkipSetupAsync()
+    {
+        // Mark all optional steps as skipped
+        var progress = LoadProgress();
+        var allSteps = GetAllSteps();
+        var optionalSteps = allSteps.Except(new[] { "router" }); // Router is required, but we'll skip it anyway
+        progress.CompletedSteps = optionalSteps.ToList();
+        SaveProgress(progress);
+
+        // Create setup complete flag
+        File.WriteAllText(SetupCompleteFlag, DateTime.UtcNow.ToString("O"));
+        
+        // Mark as skipped in database
+        await _setupStateStore.MarkSetupSkippedAsync();
+        
+        _logger.LogInformation("Setup wizard skipped");
     }
 
     /// <summary>

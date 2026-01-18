@@ -6,13 +6,34 @@ window.Monolith = Monolith;
 
 Monolith.API = {
     baseUrl: '/api',
+    buildUrl: function(endpoint) {
+        if (!endpoint) {
+            return this.baseUrl;
+        }
+
+        if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
+            return endpoint;
+        }
+
+        let normalized = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+        if (normalized === this.baseUrl || normalized.startsWith(`${this.baseUrl}/`)) {
+            return normalized;
+        }
+
+        if (normalized.startsWith('/api/')) {
+            return `${this.baseUrl}${normalized.slice('/api'.length)}`;
+        }
+
+        return `${this.baseUrl}${normalized}`;
+    },
 
     /**
      * GET request
      */
     get: async function(endpoint) {
         try {
-            const response = await fetch(`${this.baseUrl}${endpoint}`, {
+            const response = await fetch(this.buildUrl(endpoint), {
                 headers: {
                     'Content-Type': 'application/json',
                     'Cache-Control': 'no-cache',
@@ -40,7 +61,7 @@ Monolith.API = {
      */
     post: async function(endpoint, data) {
         try {
-            const response = await fetch(`${this.baseUrl}${endpoint}`, {
+            const response = await fetch(this.buildUrl(endpoint), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -71,7 +92,7 @@ Monolith.API = {
      */
     put: async function(endpoint, data) {
         try {
-            const response = await fetch(`${this.baseUrl}${endpoint}`, {
+            const response = await fetch(this.buildUrl(endpoint), {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -101,7 +122,7 @@ Monolith.API = {
      */
     delete: async function(endpoint) {
         try {
-            const response = await fetch(`${this.baseUrl}${endpoint}`, {
+            const response = await fetch(this.buildUrl(endpoint), {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',

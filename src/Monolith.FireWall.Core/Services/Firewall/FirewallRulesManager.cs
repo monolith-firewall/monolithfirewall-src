@@ -534,6 +534,57 @@ public sealed class FirewallRulesManager
                 "webui"));
         }
 
+        if (defaults.AllowDeveloperSystemAccess)
+        {
+            // Allow SSH on all interfaces
+            rules.Add(BuildSystemRule(
+                interfaceName,
+                "in",
+                "pass",
+                "dual",
+                "tcp",
+                "any",
+                null,
+                null,
+                "any",
+                null,
+                "22",
+                "Developer system: Allow SSH",
+                "dev_ssh"));
+
+            // Allow HTTP on all interfaces
+            rules.Add(BuildSystemRule(
+                interfaceName,
+                "in",
+                "pass",
+                "dual",
+                "tcp",
+                "any",
+                null,
+                null,
+                "any",
+                null,
+                "80",
+                "Developer system: Allow HTTP",
+                "dev_http"));
+
+            // Allow HTTPS on all interfaces
+            rules.Add(BuildSystemRule(
+                interfaceName,
+                "in",
+                "pass",
+                "dual",
+                "tcp",
+                "any",
+                null,
+                null,
+                "any",
+                null,
+                "443",
+                "Developer system: Allow HTTPS",
+                "dev_https"));
+        }
+
         return rules;
     }
 

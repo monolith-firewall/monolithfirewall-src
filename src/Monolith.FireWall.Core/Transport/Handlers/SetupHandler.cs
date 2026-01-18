@@ -15,7 +15,9 @@ public class SetupHandler : ICoreRequestHandler
         "setup.status",
         "setup.complete-step",
         "setup.packages",
-        "setup.finish"
+        "setup.finish",
+        "setup.skip",
+        "setup.skip-step"
     };
 
     private readonly SetupManager _setupManager;
@@ -40,7 +42,9 @@ public class SetupHandler : ICoreRequestHandler
                 "setup.status" => HandleGetStatus(),
                 "setup.complete-step" => HandleCompleteStep(request),
                 "setup.packages" => HandleGetPackages(),
-                "setup.finish" => HandleFinish(request),
+                "setup.finish" => await HandleFinishAsync(request),
+                "setup.skip" => await HandleSkipAsync(),
+                "setup.skip-step" => HandleSkipStep(request),
                 _ => new ApiResponse(false, null, $"Unknown setup action: {action}")
             };
         }
@@ -87,7 +91,7 @@ public class SetupHandler : ICoreRequestHandler
         return new ApiResponse(true, new { packages }, null);
     }
 
-    private ApiResponse HandleFinish(JsonElement request)
+    private async Task<ApiResponse> HandleFinishAsync(JsonElement request)
     {
         try
         {
@@ -104,13 +108,51 @@ public class SetupHandler : ICoreRequestHandler
                 // Use defaults if deserialization fails
             }
 
-            _setupManager.FinishSetup(finishRequest.SkipRemaining);
+            await _setupManager.FinishSetupAsync(finishRequest.SkipRemaining);
             return new ApiResponse(true, new { completed = true }, null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error finishing setup");
             return new ApiResponse(false, null, $"Error finishing setup: {ex.Message}");
+        }
+    }
+
+    private async Task<ApiResponse> HandleSkipAsync()
+    {
+        try
+        {
+            await _setupManager.SkipSetupAsync();
+            return new ApiResponse(true, new { skipped = true }, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error skipping setup");
+            return new ApiResponse(false, null, $"Error skipping setup: {ex.Message}");
+        }
+    }
+
+    private ApiResponse HandleSkipStep(JsonElement request)
+    {
+        try
+        {
+            var stepId = request.TryGetProperty("stepId", out var stepIdEl) 
+                ? stepIdEl.GetString() 
+                : null;
+
+            if (string.IsNullOrEmpty(stepId))
+            {
+                return new ApiResponse(false, null, "Step ID is required");
+            }
+
+            // Mark step as completed (skipped)
+            _setupManager.CompleteStep(stepId, null);
+            return new ApiResponse(true, new { stepId, skipped = true }, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error skipping setup step");
+            return new ApiResponse(false, null, $"Error skipping step: {ex.Message}");
         }
     }
 }

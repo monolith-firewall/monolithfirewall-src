@@ -41,16 +41,6 @@ var Interfaces = {
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="unassigned-tab" data-bs-toggle="tab" data-bs-target="#unassigned" 
-                                type="button" role="tab" aria-controls="unassigned" aria-selected="false">
-                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
-                                <path d="M3 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3z"/>
-                                <path fill-rule="evenodd" d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
-                            </svg>
-                            Unassigned Interfaces <span class="badge bg-secondary ms-1" id="unassigned-count">0</span>
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
                         <button class="nav-link" id="vlans-tab" data-bs-toggle="tab" data-bs-target="#vlans" 
                                 type="button" role="tab" aria-controls="vlans" aria-selected="false">
                             <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
@@ -106,39 +96,6 @@ var Interfaces = {
                                                 <td colspan="7" class="text-center text-muted">
                                                     <div class="spinner-border spinner-border-sm me-2" role="status"></div>
                                                     Loading assignments...
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Unassigned Tab -->
-                    <div class="tab-pane fade" id="unassigned" role="tabpanel" aria-labelledby="unassigned-tab">
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">Unassigned Interfaces</h5>
-                                <span class="text-muted small">Not managed by Monolith</span>
-                            </div>
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table class="table table-hover" id="unassignedTable">
-                                        <thead>
-                                            <tr>
-                                                <th>Interface</th>
-                                                <th>MAC</th>
-                                                <th>Status</th>
-                                                <th>IP Address</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr>
-                                                <td colspan="5" class="text-center text-muted">
-                                                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                                                    Loading interfaces...
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -290,7 +247,6 @@ var Interfaces = {
             this.assignments = [];
             this.unassigned = [];
             this.renderAssignments();
-            this.renderUnassigned();
             this.renderIssues();
         }
     },
@@ -371,9 +327,14 @@ var Interfaces = {
                 ? '<span class="badge bg-success">UP</span>'
                 : '<span class="badge bg-secondary">DOWN</span>';
             const typeLabel = assignment.type ? assignment.type.toUpperCase() : 'N/A';
-            const managedBadge = assignment.managed
-                ? '<span class="badge bg-primary-subtle text-primary border">Managed</span>'
-                : '<span class="badge bg-light text-muted border">External</span>';
+            let managedBadge = '';
+            if (assignment.isUnmanaged) {
+                managedBadge = '<span class="badge bg-warning text-dark border">Unmanaged</span>';
+            } else if (assignment.managed) {
+                managedBadge = '<span class="badge bg-primary-subtle text-primary border">Managed</span>';
+            } else {
+                managedBadge = '<span class="badge bg-light text-muted border">External</span>';
+            }
             const ipLines = [];
             if (assignment.ip) {
                 ipLines.push(`<div><span class="badge bg-secondary me-1">IPv4</span><code>${assignment.ip}</code></div>`);
@@ -383,30 +344,64 @@ var Interfaces = {
             }
             const ipDisplay = ipLines.length ? ipLines.join('') : '-';
             
+            // Show configuration details for unmanaged interfaces
+            let configDetails = '';
+            if (assignment.isUnmanaged) {
+                const configParts = [];
+                if (assignment.configAddress && assignment.configPrefixLength) {
+                    configParts.push(`<div class="small text-muted">Config: ${assignment.configAddress}/${assignment.configPrefixLength}</div>`);
+                }
+                if (assignment.gateway) {
+                    configParts.push(`<div class="small text-muted">Gateway: ${assignment.gateway}</div>`);
+                }
+                if (assignment.ipMode && assignment.ipMode !== 'none') {
+                    configParts.push(`<div class="small text-muted">Mode: ${assignment.ipMode.toUpperCase()}</div>`);
+                }
+                if (configParts.length > 0) {
+                    configDetails = `<div class="mt-1">${configParts.join('')}</div>`;
+                }
+            }
+            
             html += `
                 <tr>
                     <td>
                         <code>${assignment.interface}</code>
                         <div class="mt-1">${managedBadge}</div>
                     </td>
-                    <td><strong>${assignment.name}</strong></td>
+                    <td><strong>${assignment.name}</strong>${configDetails}</td>
                     <td>${typeLabel}</td>
                     <td>${statusBadge}</td>
                     <td>${ipDisplay}</td>
                     <td>${assignment.description || '-'}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-primary me-1" onclick="Interfaces.editAssignment('${assignment.interface}')">
-                            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
-                                <path d="M12.854.146a.5.5 0 0 0-.707 0L7.5 4.793 2.854.146a.5.5 0 0 0-.707.707L6.793 5.5.146 12.146a.5.5 0 0 0 .708.708L7.5 6.207l6.146 6.147a.5.5 0 0 0 .708-.708L8.207 5.5l4.647-4.646a.5.5 0 0 0 0-.707z"/>
-                            </svg>
-                            Edit
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="Interfaces.deleteAssignment('${assignment.interface}')">
-                            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
-                                <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
-                                <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
-                            </svg>
-                        </button>
+                        ${assignment.isUnmanaged ? `
+                            <button class="btn btn-sm btn-outline-success me-1" onclick="Interfaces.assignUnmanaged('${assignment.interface}')" title="Assign this interface with current settings">
+                                <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                                    <path d="M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 2.53 4.97a.75.75 0 0 1 1.06-1.06l4.417 4.417 3.97-3.97a.75.75 0 0 1 1.06 0z"/>
+                                </svg>
+                                Assign
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="Interfaces.deleteUnmanaged('${assignment.interface}')" title="Delete from unmanaged interfaces">
+                                <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                                </svg>
+                            </button>
+                        ` : `
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="Interfaces.editAssignment('${assignment.interface}')">
+                                <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M12.854.146a.5.5 0 0 0-.707 0L7.5 4.793 2.854.146a.5.5 0 0 0-.707.707L6.793 5.5.146 12.146a.5.5 0 0 0 .708.708L7.5 6.207l6.146 6.147a.5.5 0 0 0 .708-.708L8.207 5.5l4.647-4.646a.5.5 0 0 0 0-.707z"/>
+                                </svg>
+                                Edit
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="Interfaces.deleteAssignment('${assignment.interface}')">
+                                <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                                </svg>
+                            </button>
+                        `}
                     </td>
                 </tr>
             `;
@@ -572,6 +567,7 @@ var Interfaces = {
             ipv6: raw.Ipv6Address || raw.ipv6Address || null,
             description: raw.Description || raw.description || '',
             managed: raw.Managed !== undefined ? raw.Managed : (raw.managed !== undefined ? raw.managed : true),
+            isUnmanaged: raw.IsUnmanaged !== undefined ? raw.IsUnmanaged : (raw.isUnmanaged !== undefined ? raw.isUnmanaged : false),
             sourceFile: raw.SourceFile || raw.sourceFile,
             ipMode: ipMode || 'none',
             ipv6Mode: ipv6Mode || 'none',
@@ -694,11 +690,75 @@ var Interfaces = {
     /**
      * Show add assignment modal
      */
-    showAddAssignmentModal: function(prefillInterface) {
-        this.showAssignmentModal({
+    showAddAssignmentModal: async function(prefillInterface) {
+        let assignment = {
             interface: prefillInterface || '',
             type: 'physical'
-        });
+        };
+
+        // If we have an interface name, try to get current settings from unassigned interfaces
+        if (prefillInterface) {
+            const unassigned = this.unassigned.find(u => u.interface === prefillInterface);
+            if (unassigned && unassigned.ip) {
+                // Parse IP address (format: "address/prefix")
+                const ipMatch = unassigned.ip.match(/^([^\/]+)\/(\d+)$/);
+                if (ipMatch) {
+                    const address = ipMatch[1];
+                    const prefix = parseInt(ipMatch[2], 10);
+                    
+                    // Determine if it's IPv4 or IPv6
+                    const isIPv6 = address.includes(':');
+                    if (isIPv6) {
+                        assignment.ipv6Address = address;
+                        assignment.ipv6PrefixLength = prefix;
+                        assignment.ipv6Mode = 'static';
+                        // If only IPv6, set IPv4 mode to 'none'
+                        assignment.ipMode = 'none';
+                    } else {
+                        assignment.configAddress = address;
+                        assignment.configPrefixLength = prefix;
+                        assignment.ipMode = 'static';
+                    }
+                }
+            } else {
+                // No IP address, likely DHCP for IPv4
+                assignment.ipMode = 'dhcp';
+            }
+
+            // Try to get gateway information from routing table
+            try {
+                const routesResponse = await Monolith.API.get('/routing/routes');
+                if (routesResponse.Success || routesResponse.success) {
+                    const routes = routesResponse.Data?.Routes || routesResponse.data?.routes || [];
+                    // Find default route for this interface (IPv4)
+                    const defaultRoute = routes.find(r => 
+                        (r.Destination === '0.0.0.0/0' || r.destination === '0.0.0.0/0' || 
+                         r.Destination === 'default' || r.destination === 'default') &&
+                        (r.Interface === prefillInterface || r.interface === prefillInterface) &&
+                        (r.AddressFamily === 'ipv4' || r.addressFamily === 'ipv4' || !r.AddressFamily)
+                    );
+                    if (defaultRoute) {
+                        assignment.gateway = defaultRoute.Gateway || defaultRoute.gateway || null;
+                    }
+                    
+                    // Find default route for IPv6
+                    const defaultRoute6 = routes.find(r => 
+                        (r.Destination === '::/0' || r.destination === '::/0' || 
+                         r.Destination === 'default' || r.destination === 'default') &&
+                        (r.Interface === prefillInterface || r.interface === prefillInterface) &&
+                        (r.AddressFamily === 'ipv6' || r.addressFamily === 'ipv6')
+                    );
+                    if (defaultRoute6) {
+                        assignment.ipv6Gateway = defaultRoute6.Gateway || defaultRoute6.gateway || null;
+                    }
+                }
+            } catch (error) {
+                console.log('Could not fetch gateway info:', error);
+                // Continue without gateway info
+            }
+        }
+
+        this.showAssignmentModal(assignment);
     },
 
     /**
@@ -1391,6 +1451,48 @@ var Interfaces = {
                 .catch(error => {
                     console.error('Delete bridge failed:', error);
                     Monolith.UI.toast('Failed to delete bridge', 'error');
+                });
+        }
+    },
+
+    /**
+     * Delete unmanaged interface
+     */
+    deleteUnmanaged: function(interfaceName) {
+        const warning = `Delete unmanaged interface ${interfaceName}? This will remove it from the unmanaged interfaces file.`;
+        if (confirm(warning)) {
+            Monolith.API.delete(`/interfaces/unmanaged/${encodeURIComponent(interfaceName)}`)
+                .then(response => {
+                    if (!(response.Success || response.success)) {
+                        throw new Error(response.Error || response.error || 'Delete failed');
+                    }
+                    Monolith.UI.toast('Unmanaged interface removed', 'success');
+                    this.loadData();
+                })
+                .catch(error => {
+                    console.error('Delete unmanaged interface failed:', error);
+                    Monolith.UI.toast('Failed to delete unmanaged interface', 'error');
+                });
+        }
+    },
+
+    /**
+     * Assign unmanaged interface (read config and create assignment)
+     */
+    assignUnmanaged: function(interfaceName) {
+        const message = `Assign interface ${interfaceName}? This will read its current configuration and create a managed assignment.`;
+        if (confirm(message)) {
+            Monolith.API.post(`/interfaces/unmanaged/${encodeURIComponent(interfaceName)}/assign`, {})
+                .then(response => {
+                    if (!(response.Success || response.success)) {
+                        throw new Error(response.Error || response.error || 'Assign failed');
+                    }
+                    Monolith.UI.toast('Interface assigned successfully', 'success');
+                    this.loadData();
+                })
+                .catch(error => {
+                    console.error('Assign unmanaged interface failed:', error);
+                    Monolith.UI.toast('Failed to assign interface', 'error');
                 });
         }
     },

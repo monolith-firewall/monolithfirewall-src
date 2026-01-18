@@ -1,21 +1,16 @@
 @page "/setup/router"
 @model Monolith.FireWall.WebUI.Pages.Setup.RouterModel
 @{
-    Layout = "_Layout";
-    ViewData["Title"] = "Router Setup";
+    Layout = "_SetupLayout";
+    ViewData["Title"] = "Router & System Setup";
 }
 
-<div class="container-fluid py-4">
-    <div class="row justify-content-center">
-        <div class="col-lg-8 col-xl-7">
-            <div class="card shadow-sm">
-                <div class="card-header">
-                    <h5 class="mb-0">
-                        <i class="bi bi-router me-2"></i>
-                        Router & System Configuration
-                    </h5>
-                </div>
-                <div class="card-body">
+<div class="setup-card">
+    <div class="setup-card-header">
+        <h2><i class="bi bi-router me-2"></i>Router & System Configuration</h2>
+        <p class="lead">Configure basic system settings including hostname, timezone, and time synchronization</p>
+    </div>
+    <div class="setup-card-body">
                     <p class="text-muted mb-4">
                         Configure basic system settings including hostname, timezone, and time synchronization.
                     </p>
@@ -25,7 +20,6 @@
                         <div class="mb-3">
                             <label for="hostname" class="form-label">Hostname <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="hostname" required 
-                                   pattern="[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
                                    placeholder="monolith-firewall">
                             <div class="form-text">System hostname (e.g., monolith-firewall)</div>
                         </div>
@@ -195,5 +189,27 @@
 
             return true;
         };
+
+        // Setup navigation functions for setup wizard
+        window.validateCurrentStep = window.validateRouterSetup;
+        window.getCurrentStepData = window.getRouterSetupData;
     </script>
+
+    <!-- Navigation Buttons -->
+    <div class="setup-nav">
+        <div class="setup-nav-left">
+            <button type="button" class="btn btn-outline-secondary" id="btn-setup-back">
+                <i class="bi bi-arrow-left me-1"></i> Back
+            </button>
+        </div>
+        <div class="setup-nav-right">
+            <button type="button" class="btn btn-outline-warning me-2" id="btn-setup-skip" style="display: none;">
+                Skip
+            </button>
+            <button type="button" class="btn btn-primary" id="btn-setup-next">
+                Next <i class="bi bi-arrow-right ms-1"></i>
+            </button>
+        </div>
+    </div>
+</div>
 }

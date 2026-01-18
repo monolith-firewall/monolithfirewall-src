@@ -73,6 +73,11 @@ public class NamedPipeListener
                         // Wait a moment for the file to be created, then set permissions
                         _ = Task.Run(async () =>
                         {
+                            if (!OperatingSystem.IsLinux())
+                            {
+                                return;
+                            }
+
                             await Task.Delay(200); // Give .NET time to create the file
                             for (int i = 0; i < 10; i++)
                             {

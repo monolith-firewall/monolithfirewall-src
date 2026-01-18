@@ -25,6 +25,148 @@ public sealed class InterfaceConfigManager
     public string UnmanagedPath => UnmanagedFilePath;
     public string BackupPath => BackupDirPath;
 
+    /// <summary>
+    /// Read unmanaged interfaces from all files in interfaces.d except monolith-managed files.
+    /// </summary>
+    public async Task<List<InterfaceStanza>> ReadUnmanagedInterfacesAsync(CancellationToken cancellationToken)
+    {
+        var unmanaged = new List<InterfaceStanza>();
+        var interfacesDir = "/etc/network/interfaces.d";
+        
+        if (!Directory.Exists(interfacesDir))
+        {
+            return unmanaged;
+        }
+
+        try
+        {
+            // Read from all files in interfaces.d except monolith-managed files
+            foreach (var filePath in Directory.GetFiles(interfacesDir))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                
+                // Skip monolith-managed files
+                if (IsManagedFilePath(filePath))
+                {
+                    continue;
+                }
+                
+                // Skip backup files
+                if (IsBackupFilePath(filePath))
+                {
+                    continue;
+                }
+                
+                // Skip the unmanaged file itself (it's handled separately below)
+                if (string.Equals(Path.GetFullPath(filePath), Path.GetFullPath(UnmanagedFilePath), StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(filePath, UnmanagedFilePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                
+                // Parse stanzas from this file
+                var stanzas = ParseStanzas(filePath);
+                unmanaged.AddRange(stanzas);
+            }
+            
+            // Also read from the unmanaged file (monolith-unmanaged) if it exists
+            if (File.Exists(UnmanagedFilePath))
+            {
+                var lines = await File.ReadAllLinesAsync(UnmanagedFilePath, cancellationToken);
+                var inUnmanagedBlock = false;
+                var currentBlockInterface = string.Empty;
+                var currentStanza = new List<string>();
+
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    
+                    // Check for BEGIN MONOLITH UNMANAGED marker
+                    if (trimmed.StartsWith("# BEGIN MONOLITH UNMANAGED ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        inUnmanagedBlock = true;
+                        var parts = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length >= 4)
+                        {
+                            currentBlockInterface = parts[3];
+                        }
+                        currentStanza.Clear();
+                        continue;
+                    }
+
+                    // Check for END MONOLITH UNMANAGED marker
+                    if (trimmed.StartsWith("# END MONOLITH UNMANAGED ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (inUnmanagedBlock && !string.IsNullOrEmpty(currentBlockInterface) && currentStanza.Count > 0)
+                        {
+                            // Parse the stanza
+                            var stanza = ParseStanzaFromLines(currentBlockInterface, currentStanza);
+                            if (stanza != null)
+                            {
+                                unmanaged.Add(stanza);
+                            }
+                        }
+                        inUnmanagedBlock = false;
+                        currentBlockInterface = string.Empty;
+                        currentStanza.Clear();
+                        continue;
+                    }
+
+                    // Collect lines within unmanaged block
+                    if (inUnmanagedBlock)
+                    {
+                        currentStanza.Add(line);
+                    }
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Return what we've collected so far on error
+        }
+
+        return unmanaged;
+    }
+
+    private static InterfaceStanza? ParseStanzaFromLines(string interfaceName, List<string> lines)
+    {
+        var stanza = new InterfaceStanza
+        {
+            Interface = interfaceName,
+            FilePath = UnmanagedFilePath,
+            Method = "manual"
+        };
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith("#", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // Parse iface line
+            if (trimmed.StartsWith("iface ", StringComparison.Ordinal))
+            {
+                var parts = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 4 && parts[1] == interfaceName)
+                {
+                    stanza.Method = parts[3];
+                }
+                continue;
+            }
+
+            // Parse options
+            var optionParts = trimmed.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (optionParts.Length == 2)
+            {
+                stanza.Options[optionParts[0]] = optionParts[1];
+            }
+        }
+
+        return stanza;
+    }
+
     public string BuildManagedConfig(IEnumerable<InterfaceAssignmentEntity> assignments, IReadOnlyList<string>? dnsServers)
     {
         var lines = new List<string>
@@ -439,6 +581,91 @@ public sealed class InterfaceConfigManager
         lines.Insert(insertIndex + 1, string.Empty);
         await File.WriteAllLinesAsync(MainInterfacesPath, lines, cancellationToken);
         return (true, backupPath);
+    }
+
+    public async Task<(bool Success, string? Error, string? BackupFile)> RemoveInterfaceFromFileAsync(
+        string filePath,
+        string interfaceName,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || string.IsNullOrWhiteSpace(interfaceName))
+        {
+            return (false, "File path and interface name are required", null);
+        }
+
+        if (!File.Exists(filePath))
+        {
+            return (true, null, null); // File doesn't exist, nothing to remove
+        }
+
+        // Skip monolith-managed files
+        if (IsManagedFilePath(filePath))
+        {
+            return (false, "Cannot remove interface from monolith-managed file", null);
+        }
+
+        try
+        {
+            var lines = (await File.ReadAllLinesAsync(filePath, cancellationToken)).ToList();
+            var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { interfaceName };
+            
+            // Check if it's the unmanaged file - use special handling for unmanaged blocks
+            if (string.Equals(Path.GetFullPath(filePath), Path.GetFullPath(UnmanagedFilePath), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(filePath, UnmanagedFilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                var updated = RemoveUnmanagedBlock(lines, interfaceName, out var removed);
+                if (!removed)
+                {
+                    // Try regular removal as fallback
+                    updated = RemoveInterfacesFromLines(updated, targets, out var changed, out _);
+                    if (!changed)
+                    {
+                        return (false, "Interface not found in file", null);
+                    }
+                }
+
+                // Write back the file (or delete if empty)
+                if (updated.All(string.IsNullOrWhiteSpace) || updated.Count == 0)
+                {
+                    var backup = await BackupIfExistsAsync(filePath, cancellationToken);
+                    File.Delete(filePath);
+                    return (true, null, backup);
+                }
+                else
+                {
+                    var backup = await BackupIfExistsAsync(filePath, cancellationToken);
+                    await File.WriteAllLinesAsync(filePath, updated, cancellationToken);
+                    return (true, null, backup);
+                }
+            }
+            else
+            {
+                // Regular file - use standard removal
+                var updated = RemoveInterfacesFromLines(lines, targets, out var changed, out var removed);
+                if (!changed || removed == 0)
+                {
+                    return (false, "Interface not found in file", null);
+                }
+
+                var backup = await BackupIfExistsAsync(filePath, cancellationToken);
+                
+                // Write back the file (or delete if empty)
+                if (updated.All(string.IsNullOrWhiteSpace) || updated.Count == 0)
+                {
+                    File.Delete(filePath);
+                }
+                else
+                {
+                    await File.WriteAllLinesAsync(filePath, updated, cancellationToken);
+                }
+
+                return (true, null, backup);
+            }
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Failed to remove interface from file: {ex.Message}", null);
+        }
     }
 
     public async Task<(int RemovedStanzas, List<string> BackupFiles)> RemoveConflictsAsync(
@@ -1142,7 +1369,7 @@ public sealed class InterfaceConfigManager
         return Path.Combine(dir, $"{name}-{DateTime.UtcNow:yyyyMMddHHmmss}{ext}");
     }
 
-    private sealed class InterfaceStanza
+    public sealed class InterfaceStanza
     {
         public string Interface { get; set; } = string.Empty;
         public string Method { get; set; } = string.Empty;

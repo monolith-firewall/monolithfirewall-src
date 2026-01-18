@@ -660,32 +660,16 @@ Monolith.Pages.Dashboard = {
         }).join('');
 
         return `
-            <div class="traffic-summary mb-3 p-2 bg-light rounded">
-                <div class="d-flex justify-content-around">
-                    <div class="traffic-metric text-center">
-                        <div class="traffic-label text-muted small">Total RX</div>
-                        <div class="traffic-value text-primary fw-bold">${rxRate}</div>
+            <div class="traffic-summary mb-3 p-3 bg-light rounded">
+                <div class="d-flex justify-content-between gap-3">
+                    <div class="traffic-metric text-center flex-fill">
+                        <div class="traffic-label text-muted small mb-1">Total RX</div>
+                        <div class="traffic-value text-primary fw-bold fs-5">${rxRate}</div>
                     </div>
-                    <div class="traffic-metric text-center">
-                        <div class="traffic-label text-muted small">Total TX</div>
-                        <div class="traffic-value text-success fw-bold">${txRate}</div>
+                    <div class="traffic-metric text-center flex-fill">
+                        <div class="traffic-label text-muted small mb-1">Total TX</div>
+                        <div class="traffic-value text-success fw-bold fs-5">${txRate}</div>
                     </div>
-                </div>
-            </div>
-            <div class="traffic-charts-container mb-3">
-                <div class="traffic-chart-item mb-3 p-2 border rounded">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <strong class="text-primary">Total RX Traffic</strong>
-                        <small class="text-muted">${rxRate}</small>
-                    </div>
-                    ${rxChart}
-                </div>
-                <div class="traffic-chart-item p-2 border rounded">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <strong class="text-success">Total TX Traffic</strong>
-                        <small class="text-muted">${txRate}</small>
-                    </div>
-                    ${txChart}
                 </div>
             </div>
             <div class="interface-traffic-section">

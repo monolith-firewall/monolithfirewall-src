@@ -1,63 +1,181 @@
 @page "/setup"
 @model Monolith.FireWall.WebUI.Pages.Setup.IndexModel
 @{
-    Layout = "_Layout";
-    ViewData["Title"] = "Setup Wizard";
+    Layout = "_SetupLayout";
+    ViewData["Title"] = "Welcome to Setup";
 }
 
-<div class="container-fluid py-4">
-    <div class="row justify-content-center">
-        <div class="col-lg-8 col-xl-7">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h4 class="mb-0">
-                        <i class="bi bi-gear-fill me-2"></i>
-                        Monolith FireWall - Setup Wizard
-                    </h4>
+<div class="setup-card">
+    <div class="setup-card-header">
+        <div class="setup-welcome">
+            <div class="setup-welcome-icon">
+                <i class="bi bi-shield-check"></i>
+            </div>
+            <h1>Welcome to Monolith FireWall</h1>
+            <p class="lead">Let's get your firewall configured and ready to protect your network</p>
+        </div>
+    </div>
+    <div class="setup-card-body">
+        <div id="setup-welcome-content">
+            <div class="setup-loading">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
                 </div>
-                <div class="card-body">
-                    <!-- Progress Bar -->
-                    <div class="mb-4">
-                        <div class="d-flex justify-content-between mb-2">
-                            <span class="text-muted small">Setup Progress</span>
-                            <span class="text-muted small" id="progress-text">0%</span>
-                        </div>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                                 role="progressbar" 
-                                 id="progress-bar" 
-                                 style="width: 0%"></div>
-                        </div>
-                    </div>
-
-                    <!-- Setup Steps -->
-                    <div id="setup-steps-container">
-                        <!-- Steps will be loaded dynamically -->
-                    </div>
-
-                    <!-- Navigation Buttons -->
-                    <div class="d-flex justify-content-between mt-4">
-                        <button type="button" class="btn btn-outline-secondary" id="btn-back" disabled>
-                            <i class="bi bi-arrow-left me-1"></i> Back
-                        </button>
-                        <div>
-                            <button type="button" class="btn btn-outline-warning me-2" id="btn-skip" style="display: none;">
-                                Skip
-                            </button>
-                            <button type="button" class="btn btn-primary" id="btn-next">
-                                Next <i class="bi bi-arrow-right ms-1"></i>
-                            </button>
-                            <button type="button" class="btn btn-success" id="btn-finish" style="display: none;">
-                                <i class="bi bi-check-circle me-1"></i> Finish Setup
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <p class="mt-3 text-muted">Loading setup wizard...</p>
             </div>
         </div>
     </div>
 </div>
 
 @section Scripts {
-    <script src="~/js/pages/setup.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Load setup status and render welcome page
+            if (typeof Monolith !== 'undefined' && Monolith.API) {
+                loadWelcomePage();
+            } else {
+                // Wait for API to load
+                setTimeout(loadWelcomePage, 500);
+            }
+        });
+
+        async function loadWelcomePage() {
+            try {
+                const response = await Monolith.API.get('/api/setup/status');
+                const statusData = response.Data || response.data || response;
+                const needsSetup = statusData.NeedsSetup !== undefined ? statusData.NeedsSetup : 
+                                 (statusData.needsSetup !== undefined ? statusData.needsSetup : true);
+                
+                const completedSteps = statusData.CompletedSteps || statusData.completedSteps || [];
+                const totalSteps = statusData.TotalSteps || statusData.totalSteps || 0;
+                const progress = statusData.Progress || statusData.progress || 0;
+
+                // Load package steps
+                let packageSteps = [];
+                try {
+                    const packagesResponse = await Monolith.API.get('/api/setup/packages');
+                    const packagesData = packagesResponse.Data || packagesResponse.data || packagesResponse;
+                    const packages = packagesData.packages || packagesData.Packages || [];
+                    
+                    packages.forEach(pkg => {
+                        const setupPages = pkg.setupPages || pkg.SetupPages || [];
+                        if (setupPages && setupPages.length > 0) {
+                            setupPages.forEach(page => {
+                                packageSteps.push({
+                                    title: page.title || page.Title,
+                                    description: page.description || page.Description,
+                                    required: page.isRequired !== undefined ? page.isRequired : 
+                                             (page.IsRequired !== undefined ? page.IsRequired : false)
+                                });
+                            });
+                        }
+                    });
+                } catch (err) {
+                    console.error('Failed to load package steps:', err);
+                }
+
+                // Build steps list
+                const steps = [
+                    { title: 'Router & System', description: 'Configure hostname, timezone, and time synchronization', required: true },
+                    { title: 'Network', description: 'Configure WAN and LAN interfaces', required: false },
+                    ...packageSteps
+                ];
+
+                // Render welcome content
+                renderWelcomeContent(needsSetup, steps, completedSteps, progress);
+            } catch (err) {
+                console.error('Failed to load setup status:', err);
+                renderWelcomeContent(true, [], [], 0);
+            }
+        }
+
+        function renderWelcomeContent(needsSetup, steps, completedSteps, progress) {
+            const html = `
+                ${needsSetup ? `
+                    <div class="setup-welcome">
+                        <h2 class="mb-4">Setup Steps</h2>
+                        <p class="text-muted mb-4">We'll guide you through ${steps.length} quick steps to configure your firewall:</p>
+                        
+                        <ul class="setup-steps-list">
+                            ${steps.map((step, index) => {
+                                const stepId = step.id || `step-${index}`;
+                                const isCompleted = completedSteps.includes(stepId);
+                                return `
+                                    <li class="${isCompleted ? 'completed' : ''}">
+                                        <i class="bi ${isCompleted ? 'bi-check-circle-fill' : 'bi-circle'}"></i>
+                                        <div>
+                                            <strong>${step.title}</strong>
+                                            ${step.required ? '<span class="badge bg-primary ms-2">Required</span>' : '<span class="badge bg-secondary ms-2">Optional</span>'}
+                                            <div class="text-muted small">${step.description}</div>
+                                        </div>
+                                    </li>
+                                `;
+                            }).join('')}
+                        </ul>
+
+                        <div class="setup-btn-group">
+                            <a href="/" class="btn btn-setup-secondary">
+                                <i class="bi bi-arrow-left me-2"></i> Back to Dashboard
+                            </a>
+                            <button type="button" class="btn btn-setup-primary" id="btn-start-setup">
+                                <i class="bi bi-play-circle me-2"></i> Start Setup
+                            </button>
+                            <button type="button" class="btn btn-setup-skip" id="btn-skip-setup">
+                                <i class="bi bi-x-circle me-2"></i> Skip Setup
+                            </button>
+                        </div>
+                    </div>
+                ` : `
+                    <div class="setup-complete">
+                        <div class="setup-complete-icon">
+                            <i class="bi bi-check-circle-fill"></i>
+                        </div>
+                        <h1>Setup Complete!</h1>
+                        <p class="lead text-muted mb-4">Your firewall has been configured successfully.</p>
+                        
+                        <div class="setup-btn-group">
+                            <a href="/" class="btn btn-setup-primary">
+                                <i class="bi bi-speedometer2 me-2"></i> Go to Dashboard
+                            </a>
+                            <a href="/setup/router?force=true" class="btn btn-setup-secondary">
+                                <i class="bi bi-arrow-clockwise me-2"></i> Restart Setup
+                            </a>
+                        </div>
+                    </div>
+                `}
+            `;
+
+            $('#setup-welcome-content').html(html);
+
+            // Setup event handlers
+            $('#btn-start-setup').on('click', function() {
+                window.location.href = '/setup/router';
+            });
+
+            $('#btn-skip-setup').on('click', function() {
+                if (confirm('Skip the entire setup wizard? You can configure these settings later in the dashboard.')) {
+                    skipSetup();
+                }
+            });
+        }
+
+        async function skipSetup() {
+            try {
+                await Monolith.API.post('/api/setup/skip', {});
+                if (typeof Monolith !== 'undefined' && Monolith.UI && Monolith.UI.showSuccess) {
+                    Monolith.UI.showSuccess('Setup skipped. Redirecting to dashboard...');
+                }
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            } catch (err) {
+                console.error('Failed to skip setup:', err);
+                if (typeof Monolith !== 'undefined' && Monolith.UI && Monolith.UI.showError) {
+                    Monolith.UI.showError('Failed to skip setup. Please try again.');
+                } else {
+                    alert('Failed to skip setup. Please try again.');
+                }
+            }
+        }
+    </script>
 }

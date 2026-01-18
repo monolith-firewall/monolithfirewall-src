@@ -1,7 +1,3 @@
-using System.Reflection;
-using Microsoft.AspNetCore.Mvc.ApplicationParts;
-using Microsoft.AspNetCore.Mvc.Controllers;
-
 namespace Monolith.FireWall.WebUI.Services;
 
 /// <summary>

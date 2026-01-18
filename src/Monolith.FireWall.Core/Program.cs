@@ -114,6 +114,7 @@ class Program
                 await sqlite.TableSyncService.SyncTableAsync<FirewallScheduleEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<FirewallRuleEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<WebUiSettingsEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<SetupStateEntity>();
                 
                 // Sync DHCP tables (from monolith-network package)
                 // Note: These are in a package, but we sync them here to ensure tables exist
@@ -162,6 +163,37 @@ class Program
         catch (Exception ex)
         {
             Console.WriteLine($"  ⚠ Failed to sync Core tables: {ex.Message}");
+        }
+
+        // Initialize setup state - check if this is a fresh install
+        try
+        {
+            if (sqlite?.TableSyncService != null)
+            {
+                // Check if setup state exists
+                var setupStateStore = new Services.SetupStateStore();
+                var setupState = await setupStateStore.GetSetupStateAsync();
+                
+                if (setupState == null)
+                {
+                    // First time - create fresh install marker
+                    Console.WriteLine("  ✓ Fresh installation detected - setup wizard will be available");
+                    await setupStateStore.InitializeFreshInstallAsync();
+                }
+                else if (setupState.IsFreshInstall && !setupState.SetupCompleted)
+                {
+                    Console.WriteLine("  ✓ Fresh installation marker found - setup wizard available");
+                }
+                else
+                {
+                    Console.WriteLine("  ✓ Setup already completed");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  ⚠ Failed to initialize setup state: {ex.Message}");
+            // Continue anyway - setup manager will handle it
         }
 
         // Create Core services

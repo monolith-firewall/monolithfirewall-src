@@ -324,6 +324,9 @@ public sealed class FirewallDefaultsEntity
     [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "1")]
     public bool AllowManagementWebUi { get; set; } = true;
 
+    [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "1")]
+    public bool AllowDeveloperSystemAccess { get; set; } = true;
+
     [SQLiteColumn(DataType = SQLiteDataType.DATETIME)]
     public DateTime UpdatedAt { get; set; }
 }
@@ -419,6 +422,7 @@ public sealed class FirewallDefaultsView
     public string OptDefaultAction { get; set; } = "block";
     public bool BlockReservedOnWan { get; set; } = true;
     public bool AllowManagementWebUi { get; set; } = true;
+    public bool AllowDeveloperSystemAccess { get; set; } = true;
 }
 
 public sealed class FirewallDefaultsRequest
@@ -428,6 +432,7 @@ public sealed class FirewallDefaultsRequest
     public string? OptDefaultAction { get; set; }
     public bool BlockReservedOnWan { get; set; }
     public bool AllowManagementWebUi { get; set; }
+    public bool AllowDeveloperSystemAccess { get; set; }
 }
 
 public sealed class FirewallInterfaceSettingsRequest

@@ -1,32 +1,25 @@
-@page "/setup/package/{packageId}/{pageId}"
+@page "/setup/package-step/{packageId}/{pageId}"
 @model Monolith.FireWall.WebUI.Pages.Setup.PackageStepModel
 @{
-    Layout = "_Layout";
+    Layout = "_SetupLayout";
     ViewData["Title"] = Model.PageTitle ?? "Package Setup";
 }
 
-<div class="container-fluid py-4">
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h4 class="mb-0">
-                        <i class="bi bi-box-seam me-2"></i>
-                        @(Model.PageTitle ?? "Package Setup")
-                    </h4>
-                </div>
-                <div class="card-body">
+<div class="setup-card">
+    <div class="setup-card-header">
+        <h2><i class="bi bi-box-seam me-2"></i>@(Model.PageTitle ?? "Package Setup")</h2>
+        @if (!string.IsNullOrEmpty(Model.Description))
+        {
+            <p class="lead">@Model.Description</p>
+        }
+    </div>
+    <div class="setup-card-body">
                     @if (!string.IsNullOrEmpty(Model.ErrorMessage))
                     {
-                        <div class="alert alert-danger">
+                        <div class="alert alert-danger setup-alert">
                             <i class="bi bi-exclamation-circle me-2"></i>
                             @Model.ErrorMessage
                         </div>
-                    }
-
-                    @if (!string.IsNullOrEmpty(Model.Description))
-                    {
-                        <p class="text-muted mb-4">@Model.Description</p>
                     }
 
                     <div id="package-setup-container">
@@ -38,21 +31,22 @@
                         </div>
                     </div>
 
-                    <div id="setup-nav-buttons" class="d-flex justify-content-between mt-4">
-                        <button type="button" class="btn btn-outline-secondary" id="btn-setup-back">
-                            <i class="bi bi-arrow-left me-1"></i> Back
-                        </button>
-                        <div>
-                            <button type="button" class="btn btn-outline-warning me-2" id="btn-setup-skip" style="display: none;">
-                                Skip
-                            </button>
-                            <button type="button" class="btn btn-primary" id="btn-setup-next">
-                                Next <i class="bi bi-arrow-right ms-1"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    </div>
+
+    <!-- Navigation Buttons -->
+    <div class="setup-nav">
+        <div class="setup-nav-left">
+            <button type="button" class="btn btn-outline-secondary" id="btn-setup-back">
+                <i class="bi bi-arrow-left me-1"></i> Back
+            </button>
+        </div>
+        <div class="setup-nav-right">
+            <button type="button" class="btn btn-outline-warning me-2" id="btn-setup-skip" style="display: none;">
+                Skip
+            </button>
+            <button type="button" class="btn btn-primary" id="btn-setup-next">
+                Next <i class="bi bi-arrow-right ms-1"></i>
+            </button>
         </div>
     </div>
 </div>
@@ -61,7 +55,156 @@
     (function() {
         const packageId = '@Model.PackageId';
         const pageId = '@Model.PageId';
-        const route = '@Model.Route';
+        const route = '@(Model.Route ?? $"/setup/package/{Model.PackageId}/{Model.PageId}")';
+
+        function ensureJQuery(callback) {
+            if (window.jQuery || window.$) {
+                if (!window.$ && window.jQuery) {
+                    window.$ = window.jQuery;
+                }
+                callback();
+                return;
+            }
+
+            if (!ensureJQuery.loading) {
+                ensureJQuery.loading = true;
+                ensureJQuery.queue = [];
+                const script = document.createElement('script');
+                script.src = '/js/jquery.min.js';
+                script.async = false;
+                script.onload = () => {
+                    if (!window.$ && window.jQuery) {
+                        window.$ = window.jQuery;
+                    }
+                    const queued = ensureJQuery.queue.slice();
+                    ensureJQuery.queue = [];
+                    ensureJQuery.loading = false;
+                    queued.forEach(fn => fn());
+                };
+                script.onerror = () => {
+                    ensureJQuery.loading = false;
+                    console.warn('Failed to load jQuery for package setup scripts.');
+                    const queued = ensureJQuery.queue.slice();
+                    ensureJQuery.queue = [];
+                    queued.forEach(fn => fn());
+                };
+                document.head.appendChild(script);
+            }
+
+            ensureJQuery.queue.push(callback);
+        }
+
+        function runPackageScripts(scripts, onComplete) {
+            if (!scripts || scripts.length === 0) {
+                if (typeof onComplete === 'function') {
+                    onComplete();
+                }
+                return;
+            }
+
+            const queue = scripts.slice();
+
+            const runNext = () => {
+                if (queue.length === 0) {
+                    if (typeof onComplete === 'function') {
+                        onComplete();
+                    }
+                    return;
+                }
+
+                const script = queue.shift();
+                if (script.src) {
+                    const scriptEl = document.createElement('script');
+                    scriptEl.src = script.src;
+                    scriptEl.async = false;
+                    scriptEl.onload = runNext;
+                    scriptEl.onerror = runNext;
+                    document.body.appendChild(scriptEl);
+                    return;
+                }
+
+                const code = script.textContent || script.innerText || '';
+                if (code.trim().length > 0) {
+                    try {
+                        const wrapped = `
+                            (function() {
+                                const $ = window.jQuery || window.$;
+                                if (!$) {
+                                    console.warn('jQuery not available for package setup script.');
+                                    return;
+                                }
+                                ${code}
+                            })();
+                        `;
+                        new Function(wrapped)();
+                    } catch (err) {
+                        console.error('Failed to execute package setup script:', err);
+                    }
+                }
+
+                runNext();
+            };
+
+            ensureJQuery(runNext);
+        }
+
+        function parsePackageHtml(html) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const scripts = Array.from(doc.querySelectorAll('script'));
+
+            let contentEl = doc.querySelector('.setup-form-content');
+            if (!contentEl) {
+                const body = doc.body;
+                if (body) {
+                    contentEl = body.querySelector('.setup-form-content');
+                    if (!contentEl) {
+                        contentEl = body.firstElementChild;
+                    }
+                }
+            }
+
+            if (!contentEl) {
+                return { contentHtml: null, isWrapped: false, scripts };
+            }
+
+            let contentHtml = '';
+            const tagName = contentEl.tagName ? contentEl.tagName.toLowerCase() : '';
+            if (tagName === 'body') {
+                contentHtml = contentEl.innerHTML;
+            } else if (contentEl.outerHTML) {
+                contentHtml = contentEl.outerHTML;
+            } else {
+                contentHtml = contentEl.innerHTML;
+            }
+
+            const isWrapped = contentEl.classList && contentEl.classList.contains('setup-form-content');
+            return { contentHtml, isWrapped, scripts };
+        }
+
+        function applyPackageHtml(html) {
+            const parsed = parsePackageHtml(html);
+            if (!parsed.contentHtml) {
+                console.error('Could not extract content from HTML');
+                showPackagePageNotFound();
+                return;
+            }
+
+            if (parsed.isWrapped) {
+                $('#package-setup-container').html(parsed.contentHtml);
+            } else {
+                $('#package-setup-container').html('<div class="setup-form-content">' + parsed.contentHtml + '</div>');
+            }
+
+            console.log('Content loaded, applying styles...');
+
+            ensurePackagePageStyles();
+            $('.setup-nav').show();
+
+            runPackageScripts(parsed.scripts, () => {
+                initializePackagePage();
+            });
+        }
 
         // Load package setup page content
         function loadPackageSetupPage() {
@@ -71,8 +214,7 @@
                 .then(response => {
                     const data = response.data || response.Data || response;
                     if (data.html || data.Html) {
-                        $('#package-setup-container').html(data.html || data.Html);
-                        initializePackagePage();
+                        applyPackageHtml(data.html || data.Html);
                     } else {
                         // Fallback: try to navigate to the route directly
                         loadPackagePageViaRoute();
@@ -90,14 +232,8 @@
             // This assumes the package has a Razor page at the route
             $.get(route)
                 .then(html => {
-                    // Extract just the content from the page
-                    const $content = $(html).find('.card-body, .container, main').first();
-                    if ($content.length > 0) {
-                        $('#package-setup-container').html($content.html());
-                        initializePackagePage();
-                    } else {
-                        showPackagePageNotFound();
-                    }
+                    console.log('Loaded HTML from route:', route);
+                    applyPackageHtml(html);
                 })
                 .catch(err => {
                     console.error('Failed to load package page:', err);
@@ -116,47 +252,98 @@
             `);
         }
 
-        function initializePackagePage() {
-            // Initialize any package-specific JavaScript
-            // Check for common initialization functions
-            if (typeof window.initPackageSetupPage === 'function') {
-                window.initPackageSetupPage(packageId, pageId);
-            }
+               function ensurePackagePageStyles() {
+                   // Ensure all form elements in the loaded content have proper setup wizard styling
+                   const $container = $('#package-setup-container');
+                   
+                   // Ensure we have a setup-form-content wrapper
+                   let $formContent = $container.find('.setup-form-content').first();
+                   
+                   if ($formContent.length === 0) {
+                       // If container itself is setup-form-content, use it
+                       if ($container.hasClass('setup-form-content')) {
+                           $formContent = $container;
+                       } else {
+                           // Wrap the content
+                           $container.wrapInner('<div class="setup-form-content"></div>');
+                           $formContent = $container.find('.setup-form-content').first();
+                       }
+                   }
+                   
+                   // Remove duplicate wrappers
+                   if ($formContent.find('.setup-form-content').length > 0) {
+                       $formContent.find('.setup-form-content').each(function() {
+                           $(this).replaceWith($(this).contents());
+                       });
+                   }
+                   
+                   // Ensure form controls have proper Bootstrap classes (only if not already present)
+                   $formContent.find('input[type="text"]:not(.form-control), input[type="email"]:not(.form-control), input[type="number"]:not(.form-control), input[type="password"]:not(.form-control)')
+                       .addClass('form-control');
+                   $formContent.find('select:not(.form-select)').addClass('form-select');
+                   $formContent.find('label:not(.form-label)').addClass('form-label');
+                   
+                   // Ensure the container itself is visible
+                   $container.show();
+                   $formContent.show();
+                   
+                   // Ensure navigation stays visible (force it)
+                   $('.setup-nav').css({
+                       'display': 'flex !important',
+                       'visibility': 'visible !important',
+                       'opacity': '1 !important'
+                   });
+               }
 
-            // Setup validation and data getters
-            setupPackagePageHandlers();
-        }
+               function initializePackagePage() {
+                   // Wait for jQuery if needed
+                   if (typeof jQuery === 'undefined' && typeof $ === 'undefined') {
+                       setTimeout(initializePackagePage, 100);
+                       return;
+                   }
+                   
+                   // Initialize any package-specific JavaScript
+                   // Check for common initialization functions
+                   if (typeof window.initPackageSetupPage === 'function') {
+                       window.initPackageSetupPage(packageId, pageId);
+                   }
 
-        function setupPackagePageHandlers() {
-            // Setup validation function for this package page
-            window.validatePackageStep = function() {
-                // Check for package-specific validator
-                if (typeof window.validatePackageSetup === 'function') {
-                    return window.validatePackageSetup(packageId, pageId);
-                }
-                // Default: always valid
-                return true;
-            };
+                   // Setup validation and data getters
+                   setupPackagePageHandlers();
+                   
+                   // Ensure navigation is visible
+                   $('.setup-nav').show();
+               }
+               
+               function setupPackagePageHandlers() {
+                   // Setup validation function for this package page
+                   window.validateCurrentStep = function() {
+                       // Check for package-specific validator
+                       if (typeof window.validatePackageSetup === 'function') {
+                           return window.validatePackageSetup(packageId, pageId);
+                       }
+                       // Default: always valid
+                       return true;
+                   };
 
-            // Setup data getter for this package page
-            window.getPackageStepData = function() {
-                // Check for package-specific data getter
-                if (typeof window.getPackageSetupData === 'function') {
-                    return window.getPackageSetupData(packageId, pageId);
-                }
-                // Default: return empty object
-                return {};
-            };
-        }
+                   // Setup data getter for this package page
+                   window.getCurrentStepData = function() {
+                       // Check for package-specific data getter
+                       if (typeof window.getPackageSetupData === 'function') {
+                           return window.getPackageSetupData(packageId, pageId);
+                       }
+                       // Default: return empty object
+                       return {};
+                   };
+               }
+
 
         // Initialize when document is ready
         $(document).ready(function() {
-            loadPackageSetupPage();
+            // Ensure navigation is visible
+            $('.setup-nav').show();
             
-            // Setup navigation buttons
-            setTimeout(() => {
-                setupStepPageNavigation();
-            }, 100);
+            loadPackageSetupPage();
         });
     })();
 </script>

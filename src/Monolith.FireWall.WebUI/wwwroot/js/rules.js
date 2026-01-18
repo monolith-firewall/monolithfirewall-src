@@ -822,12 +822,16 @@ var Rules = {
         const allowWebUi = this.defaults.AllowManagementWebUi !== undefined
             ? this.defaults.AllowManagementWebUi
             : (this.defaults.allowManagementWebUi !== undefined ? this.defaults.allowManagementWebUi : true);
+        const allowDevAccess = this.defaults.AllowDeveloperSystemAccess !== undefined
+            ? this.defaults.AllowDeveloperSystemAccess
+            : (this.defaults.allowDeveloperSystemAccess !== undefined ? this.defaults.allowDeveloperSystemAccess : true);
 
         $('#defaultLanAction').val(lan);
         $('#defaultWanAction').val(wan);
         $('#defaultOptAction').val(opt);
         $('#defaultBlockReserved').prop('checked', !!blockReserved);
         $('#defaultAllowWebUi').prop('checked', !!allowWebUi);
+        $('#defaultAllowDevAccess').prop('checked', !!allowDevAccess);
     },
 
     saveDefaults: async function() {
@@ -836,7 +840,8 @@ var Rules = {
             wanDefaultAction: $('#defaultWanAction').val(),
             optDefaultAction: $('#defaultOptAction').val(),
             blockReservedOnWan: $('#defaultBlockReserved').is(':checked'),
-            allowManagementWebUi: $('#defaultAllowWebUi').is(':checked')
+            allowManagementWebUi: $('#defaultAllowWebUi').is(':checked'),
+            allowDeveloperSystemAccess: $('#defaultAllowDevAccess').is(':checked')
         };
 
         try {

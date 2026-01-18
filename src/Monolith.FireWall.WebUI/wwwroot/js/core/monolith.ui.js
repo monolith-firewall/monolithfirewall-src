@@ -40,6 +40,12 @@ Monolith.UI = {
             });
         }, 5000);
     },
+    showError: function(message) {
+        this.toast(message, 'error');
+    },
+    showSuccess: function(message) {
+        this.toast(message, 'success');
+    },
 
     /**
      * Show loading spinner
