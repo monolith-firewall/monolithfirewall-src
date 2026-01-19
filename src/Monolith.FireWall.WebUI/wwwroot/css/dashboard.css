@@ -500,3 +500,32 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* Traffic graph hover effects */
+.traffic-sparkline-wrapper,
+.interface-sparkline-wrapper {
+    position: relative;
+}
+
+.traffic-sparkline .hover-point,
+.interface-sparkline .hover-point-rx,
+.interface-sparkline .hover-point-tx {
+    transition: opacity 0.2s, r 0.2s;
+}
+
+.traffic-sparkline:hover .hover-point,
+.interface-sparkline:hover .hover-point-rx,
+.interface-sparkline:hover .hover-point-tx {
+    opacity: 0.7 !important;
+}
+
+.traffic-sparkline .hover-point:hover,
+.interface-sparkline .hover-point-rx:hover,
+.interface-sparkline .hover-point-tx:hover {
+    opacity: 1 !important;
+}
+
+.traffic-current-value,
+.interface-current-values {
+    font-size: 0.875rem;
+}

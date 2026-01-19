@@ -100,16 +100,30 @@ var NetworkCards = {
         const pciDevice = pciInfo?.Device || pciInfo?.device || 'Unknown';
         const pciSlot = pciInfo?.Slot || pciInfo?.slot || '';
         const driver = card.Driver || card.driver || 'Unknown';
-        const speedRaw = card.Speed || card.speed || 'N/A';
-        const duplexRaw = card.Duplex || card.duplex || 'N/A';
+        const driverVersion = card.Version || card.version || '';
+        let speedRaw = card.Speed || card.speed || 'N/A';
+        let duplexRaw = card.Duplex || card.duplex || 'N/A';
         const linkDetected = card.LinkDetected || card.linkDetected || 'no';
         const macAddress = card.MacAddress || card.macAddress || 'N/A';
         const busInfo = card.BusInfo || card.busInfo || '';
         const firmwareVersion = card.FirmwareVersion || card.firmwareVersion || 'N/A';
+        const supportedSpeeds = card.SupportedSpeeds || card.supportedSpeeds || [];
+        
+        // Clean up "Unknown!" and "(255)" from ethtool output
+        if (speedRaw && (speedRaw.includes('Unknown') || speedRaw.includes('!'))) {
+            speedRaw = 'Unknown';
+        }
+        if (duplexRaw && (duplexRaw.includes('Unknown') || duplexRaw.includes('(255)'))) {
+            // Remove "(255)" suffix if present
+            duplexRaw = duplexRaw.replace(/\s*\(255\)\s*/g, '').trim();
+            if (duplexRaw.includes('Unknown') || duplexRaw.includes('!')) {
+                duplexRaw = 'Unknown';
+            }
+        }
         
         // Extract speed number from string (e.g., "1000Mb/s" -> "1000")
         let speedNumber = '';
-        if (speedRaw !== 'N/A' && speedRaw) {
+        if (speedRaw !== 'N/A' && speedRaw && !speedRaw.includes('Unknown')) {
             const speedMatch = speedRaw.match(/(\d+)/);
             if (speedMatch) {
                 speedNumber = speedMatch[1];
@@ -126,10 +140,22 @@ var NetworkCards = {
         const linkBadgeClass = linkDetected === 'yes' ? 'bg-success' : 'bg-secondary';
         const linkText = linkDetected === 'yes' ? 'Link Up' : 'Link Down';
         const autonegOn = (card.AutoNegotiation || card.autoNegotiation) === 'on';
+        
+        // Check if speed/duplex configuration is supported
+        const supportsAutoNeg = card.OtherSettings?.['Supports auto-negotiation']?.toLowerCase() !== 'no';
+        const speedUnknown = speedRaw === 'Unknown' || speedRaw.includes('Unknown');
+        const duplexUnknown = duplexRaw === 'Unknown' || duplexRaw.includes('Unknown');
+        const configNotSupported = speedUnknown || duplexUnknown || !supportsAutoNeg;
 
         const interfaceName = card.Interface || card.interface;
         const collapseId = `network-card-${interfaceName}`;
         
+        const driverDisplay = driverVersion ? `${driver} v${driverVersion}` : driver;
+        const nicDisplay = pciVendor && pciDevice ? `${pciVendor} ${pciDevice}` : 'Unknown NIC';
+        const speedDisplay = supportedSpeeds.length > 0 
+            ? `Current: ${speedRaw} (Supported: ${supportedSpeeds.join('/')} Mb/s)`
+            : speedRaw;
+
         return `
             <div class="card mb-3 network-card-item" data-interface="${interfaceName}">
                 <div class="card-header" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
@@ -140,10 +166,20 @@ var NetworkCards = {
                                 <span class="badge ${linkBadgeClass} me-2">${linkText}</span>
                                 <strong>${interfaceName}</strong>
                             </h5>
-                            <small class="text-muted d-block mt-1">
-                                ${pciVendor} ${pciDevice}
-                                ${pciSlot ? `(${pciSlot})` : ''}
-                            </small>
+                            <div class="mt-1 small">
+                                <div class="text-muted">
+                                    <strong>NIC:</strong> ${nicDisplay}
+                                    ${pciSlot ? ` | <strong>PCI:</strong> ${pciSlot}` : ''}
+                                    ${busInfo ? ` | <strong>Bus:</strong> ${busInfo}` : ''}
+                                </div>
+                                <div class="text-muted">
+                                    <strong>Driver:</strong> ${driverDisplay}
+                                    ${firmwareVersion && firmwareVersion !== 'N/A' ? ` | <strong>Firmware:</strong> ${firmwareVersion}` : ''}
+                                </div>
+                                <div class="text-muted">
+                                    <strong>MAC:</strong> ${macAddress} | <strong>Speed:</strong> ${speedDisplay}
+                                </div>
+                            </div>
                         </div>
                         <div class="text-end" onclick="event.stopPropagation();">
                             <button class="btn btn-sm btn-outline-primary me-2" onclick="NetworkCards.refreshCard('${interfaceName}')">
@@ -239,10 +275,18 @@ var NetworkCards = {
                     
                     <div class="mt-3 border-top pt-3">
                         <h6 class="text-muted mb-3">Speed & Duplex Configuration</h6>
+                        ${configNotSupported ? `
+                        <div class="alert alert-warning mb-3">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>Configuration Not Supported</strong><br>
+                            <small>This network interface does not support manual speed/duplex configuration. These settings are controlled by the NIC and cannot be changed.</small>
+                        </div>
+                        ` : ''}
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <label class="form-label small">Speed (Mbps)</label>
-                                <select class="form-select form-select-sm" id="card-speed-${card.Interface || card.interface}">
+                                <select class="form-select form-select-sm" id="card-speed-${card.Interface || card.interface}" 
+                                        ${configNotSupported ? 'disabled' : ''}>
                                     <option value="">Auto (use current)</option>
                                     <option value="10">10</option>
                                     <option value="100">100</option>
@@ -259,7 +303,8 @@ var NetworkCards = {
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small">Duplex</label>
-                                <select class="form-select form-select-sm" id="card-duplex-${card.Interface || card.interface}">
+                                <select class="form-select form-select-sm" id="card-duplex-${card.Interface || card.interface}" 
+                                        ${configNotSupported ? 'disabled' : ''}>
                                     <option value="">Auto (use current)</option>
                                     <option value="half">Half</option>
                                     <option value="full">Full</option>
@@ -270,18 +315,22 @@ var NetworkCards = {
                                 <label class="form-label small">Auto-negotiation</label>
                                 <div class="form-check form-switch mt-2">
                                     <input class="form-check-input" type="checkbox" id="card-autoneg-${card.Interface || card.interface}" 
-                                           ${autonegOn ? 'checked' : ''}>
+                                           ${autonegOn ? 'checked' : ''}
+                                           ${configNotSupported ? 'disabled' : ''}>
                                     <label class="form-check-label small" for="card-autoneg-${card.Interface || card.interface}">
-                                        Enable auto-negotiation
+                                        ${autonegOn ? 'Auto-negotiation enabled' : 'Enable auto-negotiation'}
                                     </label>
                                 </div>
+                                <small class="text-muted">Current: ${autonegOn ? 'On' : 'Off'}</small>
                             </div>
                         </div>
                         <div class="mt-3">
-                            <button class="btn btn-sm btn-primary" onclick="NetworkCards.applySpeed('${card.Interface || card.interface}')">
+                            <button class="btn btn-sm btn-primary" onclick="NetworkCards.applySpeed('${card.Interface || card.interface}')"
+                                    ${configNotSupported ? 'disabled' : ''}>
                                 <i class="bi bi-check-circle"></i> Apply Speed/Duplex Settings
                             </button>
-                            <button class="btn btn-sm btn-outline-secondary ms-2" onclick="NetworkCards.resetSpeedForm('${card.Interface || card.interface}')">
+                            <button class="btn btn-sm btn-outline-secondary ms-2" onclick="NetworkCards.resetSpeedForm('${card.Interface || card.interface}')"
+                                    ${configNotSupported ? 'disabled' : ''}>
                                 <i class="bi bi-arrow-counterclockwise"></i> Reset
                             </button>
                         </div>
@@ -294,6 +343,8 @@ var NetworkCards = {
                     
                     ${this.renderOffloadsSection(card)}
                     ${this.renderBuffersSection(card)}
+                    ${this.renderCoalescingSection(card)}
+                    ${this.renderPauseSection(card)}
                     </div>
                 </div>
             </div>
@@ -302,6 +353,7 @@ var NetworkCards = {
 
     renderOffloadsSection: function(card) {
         const offloads = card.Offloads || card.offloads || {};
+        const locked = offloads.Locked || offloads.locked || {};
         const interfaceName = card.Interface || card.interface;
 
         // Group offloads by category
@@ -357,14 +409,20 @@ var NetworkCards = {
                 .filter(o => o.value !== null && o.value !== undefined)
                 .map(o => {
                     const checked = o.value === true || o.value === 'on' || o.value === 'yes';
+                    const offloadKey = o.key.replace(/-/g, '').toLowerCase();
+                    const isLocked = locked[offloadKey] || false;
+                    const lockedClass = isLocked ? 'opacity-50' : '';
+                    const lockedAttr = isLocked ? 'disabled readonly' : '';
                     return `
-                        <div class="form-check form-switch mb-2">
+                        <div class="form-check form-switch mb-2 ${lockedClass}">
                             <input class="form-check-input offload-toggle" type="checkbox" 
                                    id="offload-${interfaceName}-${o.key}" 
                                    data-offload-key="${o.key}"
-                                   ${checked ? 'checked' : ''}>
+                                   ${checked ? 'checked' : ''}
+                                   ${lockedAttr}>
                             <label class="form-check-label" for="offload-${interfaceName}-${o.key}">
                                 ${o.label}
+                                ${isLocked ? '<span class="badge bg-secondary ms-1">Locked</span>' : ''}
                             </label>
                         </div>
                     `;
@@ -616,6 +674,121 @@ var NetworkCards = {
         }
     },
 
+    applyCoalescing: async function(interfaceName) {
+        const inputs = $(`.coalescing-input[id^="coalescing-${interfaceName}-"]`);
+        const coalescing = {};
+
+        inputs.each((_, input) => {
+            const $input = $(input);
+            const key = $input.data('coalescing-key');
+            if ($input.prop('disabled') || $input.prop('readOnly')) {
+                return; // Skip locked parameters
+            }
+
+            if ($input.attr('type') === 'checkbox') {
+                coalescing[key] = $input.is(':checked');
+            } else {
+                const value = $input.val()?.trim();
+                if (value && value !== '') {
+                    const intValue = parseInt(value, 10);
+                    if (!isNaN(intValue) && intValue >= 0) {
+                        coalescing[key] = intValue;
+                    }
+                }
+            }
+        });
+
+        if (Object.keys(coalescing).length === 0) {
+            Monolith.UI.toast('No coalescing settings to apply', 'info');
+            return;
+        }
+
+        const request = {
+            Interface: interfaceName,
+            Coalescing: coalescing
+        };
+
+        const applyButton = $(`.network-card-item[data-interface="${interfaceName}"]`)
+            .find('button[onclick*="applyCoalescing"]');
+        
+        try {
+            applyButton.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Applying...');
+            
+            const response = await Monolith.API.post(`/system/network-cards/${encodeURIComponent(interfaceName)}/coalescing`, request);
+            
+            if (response.success) {
+                Monolith.UI.toast('Coalescing settings applied successfully', 'success');
+                await this.refreshCard(interfaceName);
+            } else {
+                Monolith.UI.toast(response.error || 'Failed to apply coalescing settings', 'error');
+            }
+        } catch (error) {
+            console.error('Error applying coalescing settings:', error);
+            Monolith.UI.toast('Failed to apply coalescing settings', 'error');
+        } finally {
+            applyButton.prop('disabled', false).html('<i class="bi bi-check-circle"></i> Apply Coalescing Settings');
+        }
+    },
+
+    resetCoalescingForm: function(interfaceName) {
+        const inputs = $(`.coalescing-input[id^="coalescing-${interfaceName}-"]`);
+        inputs.each((_, input) => {
+            const $input = $(input);
+            if ($input.prop('disabled') || $input.prop('readOnly')) {
+                return; // Don't reset locked parameters
+            }
+            if ($input.attr('type') === 'checkbox') {
+                $input.prop('checked', false);
+            } else {
+                $input.val('');
+            }
+        });
+    },
+
+    applyPause: async function(interfaceName) {
+        const autoneg = $(`#pause-${interfaceName}-autoneg`);
+        const rx = $(`#pause-${interfaceName}-rx`);
+        const tx = $(`#pause-${interfaceName}-tx`);
+
+        const request = {
+            Interface: interfaceName,
+            Autoneg: autoneg.prop('disabled') || autoneg.prop('readOnly') ? null : autoneg.is(':checked'),
+            Rx: rx.prop('disabled') || rx.prop('readOnly') ? null : rx.is(':checked'),
+            Tx: tx.prop('disabled') || tx.prop('readOnly') ? null : tx.is(':checked')
+        };
+
+        const applyButton = $(`.network-card-item[data-interface="${interfaceName}"]`)
+            .find('button[onclick*="applyPause"]');
+        
+        try {
+            applyButton.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Applying...');
+            
+            const response = await Monolith.API.post(`/system/network-cards/${encodeURIComponent(interfaceName)}/pause`, request);
+            
+            if (response.success) {
+                Monolith.UI.toast('Pause frame settings applied successfully', 'success');
+                await this.refreshCard(interfaceName);
+            } else {
+                Monolith.UI.toast(response.error || 'Failed to apply pause frame settings', 'error');
+            }
+        } catch (error) {
+            console.error('Error applying pause frame settings:', error);
+            Monolith.UI.toast('Failed to apply pause frame settings', 'error');
+        } finally {
+            applyButton.prop('disabled', false).html('<i class="bi bi-check-circle"></i> Apply Pause Settings');
+        }
+    },
+
+    resetPauseForm: function(interfaceName) {
+        const inputs = $(`.pause-input[id^="pause-${interfaceName}-"]`);
+        inputs.each((_, input) => {
+            const $input = $(input);
+            if (!$input.prop('disabled') && !$input.prop('readOnly')) {
+                $input.prop('checked', false);
+            }
+        });
+    },
+
     resetOffloadsForm: function(interfaceName) {
         const card = this.cards.find(c => (c.Interface || c.interface) === interfaceName);
         if (!card) return;
@@ -626,6 +799,9 @@ var NetworkCards = {
         const toggles = $(`.offload-toggle[id^="offload-${interfaceName}-"]`);
         toggles.each((_, toggle) => {
             const $toggle = $(toggle);
+            if ($toggle.prop('disabled') || $toggle.prop('readOnly')) {
+                return; // Don't reset locked parameters
+            }
             const key = $toggle.data('offload-key');
             
             // Map key to property name
@@ -676,30 +852,39 @@ var NetworkCards = {
         const buffers = card.Buffers || card.buffers || {};
         const interfaceName = card.Interface || card.interface;
 
+        const locked = buffers.Locked || buffers.locked || {};
         const bufferTypes = [
             { 
                 key: 'rx-mini', 
                 label: 'RX Mini', 
                 current: buffers.RxMini || buffers.rxMini, 
-                max: buffers.RxMiniMax || buffers.rxMiniMax 
+                min: buffers.RxMiniMin || buffers.rxMiniMin,
+                max: buffers.RxMiniMax || buffers.rxMiniMax,
+                locked: locked['rxmini'] || false
             },
             { 
                 key: 'rx', 
                 label: 'RX', 
                 current: buffers.Rx || buffers.rx, 
-                max: buffers.RxMax || buffers.rxMax 
+                min: buffers.RxMin || buffers.rxMin,
+                max: buffers.RxMax || buffers.rxMax,
+                locked: locked['rx'] || false
             },
             { 
                 key: 'rx-jumbo', 
                 label: 'RX Jumbo', 
                 current: buffers.RxJumbo || buffers.rxJumbo, 
-                max: buffers.RxJumboMax || buffers.rxJumboMax 
+                min: buffers.RxJumboMin || buffers.rxJumboMin,
+                max: buffers.RxJumboMax || buffers.rxJumboMax,
+                locked: locked['rxjumbo'] || false
             },
             { 
                 key: 'tx', 
                 label: 'TX', 
                 current: buffers.Tx || buffers.tx, 
-                max: buffers.TxMax || buffers.txMax 
+                min: buffers.TxMin || buffers.txMin,
+                max: buffers.TxMax || buffers.txMax,
+                locked: locked['tx'] || false
             }
         ];
 
@@ -722,27 +907,36 @@ var NetworkCards = {
 
         const bufferInputs = availableBuffers.map(buffer => {
             const currentValue = buffer.current !== null && buffer.current !== undefined ? buffer.current : '';
+            const minValue = buffer.min !== null && buffer.min !== undefined ? buffer.min : '';
             const maxValue = buffer.max !== null && buffer.max !== undefined ? buffer.max : '';
-            const maxText = maxValue ? ` (Max: ${maxValue})` : '';
+            const isLocked = buffer.locked || false;
+            const rangeText = (minValue || maxValue) 
+                ? ` (${minValue ? `Min: ${minValue}` : ''}${minValue && maxValue ? ', ' : ''}${maxValue ? `Max: ${maxValue}` : ''})`
+                : '';
+            const lockedClass = isLocked ? 'opacity-50' : '';
+            const lockedAttr = isLocked ? 'disabled readonly' : '';
             
             return `
                 <div class="col-md-6 mb-3">
                     <label class="form-label small">
-                        ${buffer.label}${maxText}
+                        ${buffer.label}${rangeText}
+                        ${isLocked ? '<span class="badge bg-secondary ms-1">Locked</span>' : ''}
                     </label>
-                    <div class="input-group input-group-sm">
+                    <div class="input-group input-group-sm ${lockedClass}">
                         <input type="number" 
                                class="form-control buffer-input" 
                                id="buffer-${interfaceName}-${buffer.key}"
                                data-buffer-key="${buffer.key}"
+                               data-buffer-min="${minValue || ''}"
                                data-buffer-max="${maxValue || ''}"
                                value="${currentValue}"
-                               min="0"
+                               ${minValue ? `min="${minValue}"` : 'min="0"'}
                                ${maxValue ? `max="${maxValue}"` : ''}
+                               ${lockedAttr}
                                placeholder="Current: ${currentValue || 'N/A'}">
                         <span class="input-group-text">entries</span>
                     </div>
-                    <small class="text-muted">Current: ${currentValue || 'N/A'}${maxText}</small>
+                    <small class="text-muted">Current: ${currentValue || 'N/A'}${rangeText}</small>
                 </div>
             `;
         }).join('');
@@ -774,6 +968,197 @@ var NetworkCards = {
         `;
     },
 
+    renderCoalescingSection: function(card) {
+        const coalescing = card.Coalescing || card.coalescing || {};
+        const locked = coalescing.Locked || coalescing.locked || {};
+        const interfaceName = card.Interface || card.interface;
+
+        if (!coalescing || Object.keys(coalescing).length === 0 || Object.keys(coalescing).every(k => k === 'Locked' || k === 'locked')) {
+            return '';
+        }
+
+        const coalescingParams = [
+            { key: 'adaptiverx', label: 'Adaptive RX', value: coalescing.AdaptiveRx || coalescing.adaptiveRx, type: 'bool', locked: locked['adaptiverx'] },
+            { key: 'adaptivetx', label: 'Adaptive TX', value: coalescing.AdaptiveTx || coalescing.adaptiveTx, type: 'bool', locked: locked['adaptivetx'] },
+            { key: 'rxusecs', label: 'RX Usecs', value: coalescing.RxUsecs || coalescing.rxUsecs, type: 'int', locked: locked['rxusecs'] },
+            { key: 'txusecs', label: 'TX Usecs', value: coalescing.TxUsecs || coalescing.txUsecs, type: 'int', locked: locked['txusecs'] },
+            { key: 'rxframes', label: 'RX Frames', value: coalescing.RxFrames || coalescing.rxFrames, type: 'int', locked: locked['rxframes'] },
+            { key: 'txframes', label: 'TX Frames', value: coalescing.TxFrames || coalescing.txFrames, type: 'int', locked: locked['txframes'] },
+            { key: 'rxusecsirq', label: 'RX Usecs IRQ', value: coalescing.RxUsecsIrq || coalescing.rxUsecsIrq, type: 'int', locked: locked['rxusecsirq'] },
+            { key: 'rxframesirq', label: 'RX Frames IRQ', value: coalescing.RxFramesIrq || coalescing.rxFramesIrq, type: 'int', locked: locked['rxframesirq'] },
+            { key: 'txusecsirq', label: 'TX Usecs IRQ', value: coalescing.TxUsecsIrq || coalescing.txUsecsIrq, type: 'int', locked: locked['txusecsirq'] },
+            { key: 'txframesirq', label: 'TX Frames IRQ', value: coalescing.TxFramesIrq || coalescing.txFramesIrq, type: 'int', locked: locked['txframesirq'] },
+            { key: 'statsblockusecs', label: 'Stats Block Usecs', value: coalescing.StatsBlockUsecs || coalescing.statsBlockUsecs, type: 'int', locked: locked['statsblockusecs'] },
+            { key: 'pktratelow', label: 'Pkt Rate Low', value: coalescing.PktRateLow || coalescing.pktRateLow, type: 'int', locked: locked['pktratelow'] },
+            { key: 'rxusecslow', label: 'RX Usecs Low', value: coalescing.RxUsecsLow || coalescing.rxUsecsLow, type: 'int', locked: locked['rxusecslow'] },
+            { key: 'rxframeslow', label: 'RX Frames Low', value: coalescing.RxFramesLow || coalescing.rxFramesLow, type: 'int', locked: locked['rxframeslow'] },
+            { key: 'txusecslow', label: 'TX Usecs Low', value: coalescing.TxUsecsLow || coalescing.txUsecsLow, type: 'int', locked: locked['txusecslow'] },
+            { key: 'txframeslow', label: 'TX Frames Low', value: coalescing.TxFramesLow || coalescing.txFramesLow, type: 'int', locked: locked['txframeslow'] },
+            { key: 'pktratehigh', label: 'Pkt Rate High', value: coalescing.PktRateHigh || coalescing.pktRateHigh, type: 'int', locked: locked['pktratehigh'] },
+            { key: 'rxusecshigh', label: 'RX Usecs High', value: coalescing.RxUsecsHigh || coalescing.rxUsecsHigh, type: 'int', locked: locked['rxusecshigh'] },
+            { key: 'rxframeshigh', label: 'RX Frames High', value: coalescing.RxFramesHigh || coalescing.rxFramesHigh, type: 'int', locked: locked['rxframeshigh'] },
+            { key: 'txusecshigh', label: 'TX Usecs High', value: coalescing.TxUsecsHigh || coalescing.txUsecsHigh, type: 'int', locked: locked['txusecshigh'] },
+            { key: 'txframeshigh', label: 'TX Frames High', value: coalescing.TxFramesHigh || coalescing.txFramesHigh, type: 'int', locked: locked['txframeshigh'] },
+            { key: 'sampleinterval', label: 'Sample Interval', value: coalescing.SampleInterval || coalescing.sampleInterval, type: 'int', locked: locked['sampleinterval'] }
+        ].filter(p => p.value !== null && p.value !== undefined);
+
+        if (coalescingParams.length === 0) {
+            return '';
+        }
+
+        const paramInputs = coalescingParams.map(param => {
+            const isLocked = param.locked || false;
+            const lockedClass = isLocked ? 'opacity-50' : '';
+            const lockedAttr = isLocked ? 'disabled readonly' : '';
+            const displayValue = param.type === 'bool' 
+                ? (param.value ? 'on' : 'off')
+                : (param.value !== null && param.value !== undefined ? param.value : 'N/A');
+
+            if (param.type === 'bool') {
+                return `
+                    <div class="col-md-6 mb-3">
+                        <div class="form-check ${lockedClass}">
+                            <input class="form-check-input coalescing-input" 
+                                   type="checkbox" 
+                                   id="coalescing-${interfaceName}-${param.key}"
+                                   data-coalescing-key="${param.key}"
+                                   ${param.value ? 'checked' : ''}
+                                   ${lockedAttr}>
+                            <label class="form-check-label" for="coalescing-${interfaceName}-${param.key}">
+                                ${param.label}
+                                ${isLocked ? '<span class="badge bg-secondary ms-1">Locked</span>' : ''}
+                            </label>
+                        </div>
+                        <small class="text-muted">Current: ${displayValue}</small>
+                    </div>
+                `;
+            } else {
+                return `
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label small">
+                            ${param.label}
+                            ${isLocked ? '<span class="badge bg-secondary ms-1">Locked</span>' : ''}
+                        </label>
+                        <div class="input-group input-group-sm ${lockedClass}">
+                            <input type="number" 
+                                   class="form-control coalescing-input" 
+                                   id="coalescing-${interfaceName}-${param.key}"
+                                   data-coalescing-key="${param.key}"
+                                   value="${param.value || ''}"
+                                   min="0"
+                                   ${lockedAttr}
+                                   placeholder="Current: ${displayValue}">
+                        </div>
+                        <small class="text-muted">Current: ${displayValue}</small>
+                    </div>
+                `;
+            }
+        }).join('');
+
+        return `
+            <div class="mt-3 border-top pt-3">
+                <h6 class="text-muted mb-3">Coalescing Parameters</h6>
+                <p class="text-muted small mb-3">
+                    Coalescing parameters control interrupt moderation to reduce CPU overhead. Adaptive modes automatically adjust based on traffic.
+                </p>
+                <div class="row g-3">
+                    ${paramInputs}
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-sm btn-primary" onclick="NetworkCards.applyCoalescing('${interfaceName}')">
+                        <i class="bi bi-check-circle"></i> Apply Coalescing Settings
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="NetworkCards.resetCoalescingForm('${interfaceName}')">
+                        <i class="bi bi-arrow-counterclockwise"></i> Reset
+                    </button>
+                </div>
+            </div>
+        `;
+    },
+
+    renderPauseSection: function(card) {
+        const pause = card.Pause || card.pause || {};
+        const locked = pause.Locked || pause.locked || {};
+        const interfaceName = card.Interface || card.interface;
+
+        // Check if pause parameters exist (at least one should have a value)
+        const hasPauseParams = (pause.Autoneg !== null && pause.Autoneg !== undefined) ||
+                              (pause.Rx !== null && pause.Rx !== undefined) ||
+                              (pause.Tx !== null && pause.Tx !== undefined);
+        
+        if (!pause || !hasPauseParams) {
+            return '';
+        }
+
+        const autonegLocked = locked['autoneg'] || false;
+        const rxLocked = locked['rx'] || false;
+        const txLocked = locked['tx'] || false;
+
+        return `
+            <div class="mt-3 border-top pt-3">
+                <h6 class="text-muted mb-3">Pause Frame Parameters</h6>
+                <p class="text-muted small mb-3">
+                    Pause frames (flow control) allow the interface to signal the peer to temporarily stop sending data.
+                </p>
+                <div class="row g-3">
+                    <div class="col-md-4 mb-3">
+                        <div class="form-check ${autonegLocked ? 'opacity-50' : ''}">
+                            <input class="form-check-input pause-input" 
+                                   type="checkbox" 
+                                   id="pause-${interfaceName}-autoneg"
+                                   data-pause-key="autoneg"
+                                   ${pause.Autoneg ? 'checked' : ''}
+                                   ${autonegLocked ? 'disabled readonly' : ''}>
+                            <label class="form-check-label" for="pause-${interfaceName}-autoneg">
+                                Auto-negotiation
+                                ${autonegLocked ? '<span class="badge bg-secondary ms-1">Locked</span>' : ''}
+                            </label>
+                        </div>
+                        <small class="text-muted">Current: ${pause.Autoneg ? 'on' : 'off'}</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="form-check ${rxLocked ? 'opacity-50' : ''}">
+                            <input class="form-check-input pause-input" 
+                                   type="checkbox" 
+                                   id="pause-${interfaceName}-rx"
+                                   data-pause-key="rx"
+                                   ${pause.Rx ? 'checked' : ''}
+                                   ${rxLocked ? 'disabled readonly' : ''}>
+                            <label class="form-check-label" for="pause-${interfaceName}-rx">
+                                RX Pause
+                                ${rxLocked ? '<span class="badge bg-secondary ms-1">Locked</span>' : ''}
+                            </label>
+                        </div>
+                        <small class="text-muted">Current: ${pause.Rx ? 'on' : 'off'}</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="form-check ${txLocked ? 'opacity-50' : ''}">
+                            <input class="form-check-input pause-input" 
+                                   type="checkbox" 
+                                   id="pause-${interfaceName}-tx"
+                                   data-pause-key="tx"
+                                   ${pause.Tx ? 'checked' : ''}
+                                   ${txLocked ? 'disabled readonly' : ''}>
+                            <label class="form-check-label" for="pause-${interfaceName}-tx">
+                                TX Pause
+                                ${txLocked ? '<span class="badge bg-secondary ms-1">Locked</span>' : ''}
+                            </label>
+                        </div>
+                        <small class="text-muted">Current: ${pause.Tx ? 'on' : 'off'}</small>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-sm btn-primary" onclick="NetworkCards.applyPause('${interfaceName}')">
+                        <i class="bi bi-check-circle"></i> Apply Pause Settings
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="NetworkCards.resetPauseForm('${interfaceName}')">
+                        <i class="bi bi-arrow-counterclockwise"></i> Reset
+                    </button>
+                </div>
+            </div>
+        `;
+    },
+
     applyBuffers: async function(interfaceName) {
         // Collect all buffer inputs for this interface
         const inputs = $(`.buffer-input[id^="buffer-${interfaceName}-"]`);
@@ -781,6 +1166,9 @@ var NetworkCards = {
 
         inputs.each((_, input) => {
             const $input = $(input);
+            if ($input.prop('disabled') || $input.prop('readOnly')) {
+                return; // Skip locked parameters
+            }
             const key = $input.data('buffer-key');
             const value = $input.val()?.trim();
             
@@ -799,20 +1187,40 @@ var NetworkCards = {
             return;
         }
 
-        // Validate against maximums
+        // Validate against min/max values
         let hasError = false;
         inputs.each((_, input) => {
             const $input = $(input);
+            if ($input.prop('disabled') || $input.prop('readOnly')) {
+                return; // Skip validation for locked parameters
+            }
             const key = $input.data('buffer-key');
+            const minValue = $input.data('buffer-min');
             const maxValue = $input.data('buffer-max');
             const value = $input.val()?.trim();
             
-            if (value && maxValue) {
+            if (value) {
                 const intValue = parseInt(value, 10);
-                const intMax = parseInt(maxValue, 10);
-                if (!isNaN(intValue) && !isNaN(intMax) && intValue > intMax) {
-                    Monolith.UI.toast(`${key} value (${intValue}) exceeds maximum (${intMax})`, 'error');
+                if (isNaN(intValue) || intValue < 0) {
+                    Monolith.UI.toast(`${key} value must be a positive number`, 'error');
                     hasError = true;
+                    return;
+                }
+                
+                if (minValue) {
+                    const intMin = parseInt(minValue, 10);
+                    if (!isNaN(intMin) && intValue < intMin) {
+                        Monolith.UI.toast(`${key} value (${intValue}) is below minimum (${intMin})`, 'error');
+                        hasError = true;
+                    }
+                }
+                
+                if (maxValue) {
+                    const intMax = parseInt(maxValue, 10);
+                    if (!isNaN(intMax) && intValue > intMax) {
+                        Monolith.UI.toast(`${key} value (${intValue}) exceeds maximum (${intMax})`, 'error');
+                        hasError = true;
+                    }
                 }
             }
         });
@@ -865,6 +1273,9 @@ var NetworkCards = {
         const inputs = $(`.buffer-input[id^="buffer-${interfaceName}-"]`);
         inputs.each((_, input) => {
             const $input = $(input);
+            if ($input.prop('disabled') || $input.prop('readOnly')) {
+                return; // Don't reset locked parameters
+            }
             const key = $input.data('buffer-key');
             
             // Map key to property name

@@ -9,18 +9,6 @@ var AdvancedSettings = {
         this.render();
         this.bindEvents();
         this.loadTuneables();
-        this.loadNetworkCardsScript();
-    },
-
-    loadNetworkCardsScript: async function() {
-        // Load network-cards.js script if not already loaded
-        if (typeof NetworkCards === 'undefined') {
-            try {
-                await Monolith.ModuleLoader.loadScript('/js/pages/network-cards.js', 'network-cards');
-            } catch (error) {
-                console.warn('Failed to load network-cards script:', error);
-            }
-        }
     },
 
     render: function() {
@@ -51,11 +39,6 @@ var AdvancedSettings = {
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="advanced-tuneables-tab" data-bs-toggle="tab" data-bs-target="#advanced-tuneables" type="button" role="tab">
                             System Tuneables
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="advanced-network-cards-tab" data-bs-toggle="tab" data-bs-target="#advanced-network-cards" type="button" role="tab">
-                            Network Cards
                         </button>
                     </li>
                 </ul>
@@ -127,22 +110,6 @@ var AdvancedSettings = {
                             </div>
                         </div>
                     </div>
-
-                    <div class="tab-pane fade" id="advanced-network-cards" role="tabpanel">
-                        <div class="card mb-4">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">Network Interface Cards</h5>
-                                <div class="btn-group btn-group-sm">
-                                    <button class="btn btn-outline-secondary" id="network-cards-refresh">
-                                        <i class="bi bi-arrow-clockwise"></i> Refresh All
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="card-body" id="network-cards-container">
-                                <div class="text-center text-muted py-4">Loading network cards...</div>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         `);
@@ -169,22 +136,6 @@ var AdvancedSettings = {
 
         $(document).off('click', '#advanced-apply-changes');
         $(document).on('click', '#advanced-apply-changes', () => this.applyChanges());
-
-        // Network Cards tab events
-        $(document).off('click', '#network-cards-refresh');
-        $(document).on('click', '#network-cards-refresh', () => {
-            if (typeof NetworkCards !== 'undefined') {
-                NetworkCards.loadCards();
-            }
-        });
-
-        // Initialize Network Cards when tab is shown
-        $(document).off('shown.bs.tab', '#advanced-network-cards-tab');
-        $(document).on('shown.bs.tab', '#advanced-network-cards-tab', () => {
-            if (typeof NetworkCards !== 'undefined') {
-                NetworkCards.init();
-            }
-        });
 
         $(document).off('click', '#advanced-apply-all');
         $(document).on('click', '#advanced-apply-all', () => this.applyAll());

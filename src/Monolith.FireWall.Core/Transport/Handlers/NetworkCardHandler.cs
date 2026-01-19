@@ -14,6 +14,8 @@ public sealed class NetworkCardHandler : ICoreRequestHandler
         "network.cards.speed.set",
         "network.cards.offloads.set",
         "network.cards.buffers.set",
+        "network.cards.coalescing.set",
+        "network.cards.pause.set",
         "network.cards.revert"
     };
 
@@ -81,6 +83,28 @@ public sealed class NetworkCardHandler : ICoreRequestHandler
                 return bufferResult
                     ? new ApiResponse(true, new { @interface = bufferRequest.Interface }, null)
                     : new ApiResponse(false, null, "Failed to set buffer settings");
+
+            case "network.cards.coalescing.set":
+                if (!CoreRequestParsing.TryGetPayload(request, out NetworkCardCoalescingRequest coalescingRequest, out var coalescingError))
+                {
+                    return new ApiResponse(false, null, coalescingError);
+                }
+
+                var coalescingResult = await networkCardService.SetCoalescingAsync(coalescingRequest, cancellationToken);
+                return coalescingResult
+                    ? new ApiResponse(true, new { @interface = coalescingRequest.Interface }, null)
+                    : new ApiResponse(false, null, "Failed to set coalescing settings");
+
+            case "network.cards.pause.set":
+                if (!CoreRequestParsing.TryGetPayload(request, out NetworkCardPauseRequest pauseRequest, out var pauseError))
+                {
+                    return new ApiResponse(false, null, pauseError);
+                }
+
+                var pauseResult = await networkCardService.SetPauseAsync(pauseRequest, cancellationToken);
+                return pauseResult
+                    ? new ApiResponse(true, new { @interface = pauseRequest.Interface }, null)
+                    : new ApiResponse(false, null, "Failed to set pause frame settings");
 
             case "network.cards.revert":
                 if (!CoreRequestParsing.TryGetPayload(request, out NetworkCardRevertRequest revertRequest, out var revertError))

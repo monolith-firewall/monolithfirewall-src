@@ -17,8 +17,10 @@ Monolith.Pages.Dashboard = {
     trafficSeries: {
         rx: [],
         tx: [],
+        rxLoss: [],
+        txLoss: [],
         timestamps: [],
-        interfaces: {}, // Store per-interface series: { "eth0": { rx: [], tx: [], timestamps: [] } }
+        interfaces: {}, // Store per-interface series: { "eth0": { rx: [], tx: [], rxLoss: [], txLoss: [], timestamps: [] } }
         maxPoints: 30
     },
     trafficLast: null,
@@ -457,33 +459,44 @@ Monolith.Pages.Dashboard = {
     renderWidgetData: function(widgetId, data) {
         const container = $(this.widgetBodySelector(widgetId));
         
-        switch(widgetId) {
-            case 'system.info':
-                container.html(this.renderSystemInfo(data));
-                break;
-            case 'system.details':
-                container.html(this.renderSystemDetails(data));
-                break;
-            case 'system.network':
-                container.html(this.renderNetworkInfo(data));
-                break;
-            case 'system.traffic':
-                container.html(this.renderSystemTraffic(data));
-                break;
-            case 'system.activity':
-                container.html(this.renderActivity(data));
-                break;
-            case 'network.dhcp.status':
-                container.html(this.renderDhcpStatus(data));
-                break;
-            default:
-                console.warn(`Widget renderer not implemented for: ${widgetId}`);
-                container.html(`<div class="alert alert-info">
-                    <i class="fa-solid fa-info-circle me-2"></i>
-                    Widget data renderer not implemented for: <code>${widgetId}</code>
-                </div>`);
+        try {
+            switch(widgetId) {
+                case 'system.info':
+                    container.html(this.renderSystemInfo(data));
+                    break;
+                case 'system.details':
+                    container.html(this.renderSystemDetails(data));
+                    break;
+                case 'system.network':
+                    container.html(this.renderNetworkInfo(data));
+                    break;
+                case 'system.traffic':
+                    container.html(this.renderSystemTraffic(data));
+                    break;
+                case 'system.activity':
+                    container.html(this.renderActivity(data));
+                    break;
+                case 'network.dhcp.status':
+                    container.html(this.renderDhcpStatus(data));
+                    break;
+                default:
+                    console.warn(`Widget renderer not implemented for: ${widgetId}`);
+                    container.html(`<div class="alert alert-info">
+                        <i class="fa-solid fa-info-circle me-2"></i>
+                        Widget data renderer not implemented for: <code>${widgetId}</code>
+                    </div>`);
+            }
+        } catch (error) {
+            console.error(`Error rendering widget ${widgetId}:`, error);
+            container.html(`<div class="alert alert-danger m-3">
+                <i class="fa-solid fa-exclamation-triangle me-2"></i>
+                <strong>Widget Error</strong><br>
+                <small>This widget failed to load due to a script error.</small>
+                ${error.message ? `<br><small class="text-muted">${error.message}</small>` : ''}
+            </div>`);
         }
     },
+
 
     renderSystemInfo: function(data) {
         const cpuUsage = data.cpu ? data.cpu.usage : 0;
@@ -594,6 +607,9 @@ Monolith.Pages.Dashboard = {
                     <div class="text-muted small">
                         <div>IP: ${iface.ip}</div>
                         <div>RX: ${rx} | TX: ${tx}</div>
+                        ${iface.rxLossPercent !== undefined || iface.txLossPercent !== undefined ? 
+                            `<div>Loss: RX ${(iface.rxLossPercent || 0).toFixed(2)}% | TX ${(iface.txLossPercent || 0).toFixed(2)}%</div>` : 
+                            ''}
                     </div>
                 </div>
             `;
@@ -608,7 +624,9 @@ Monolith.Pages.Dashboard = {
         }
 
         const rates = this.calculateTrafficRates(data);
-        this.pushTrafficSeries(rates.totalRx, rates.totalTx, this.trafficSeries.maxPoints);
+        const totalRxLoss = data.totalRxLossPercent || 0;
+        const totalTxLoss = data.totalTxLossPercent || 0;
+        this.pushTrafficSeries(rates.totalRx, rates.totalTx, this.trafficSeries.maxPoints, totalRxLoss, totalTxLoss);
 
         const rxRate = this.formatRate(rates.totalRx);
         const txRate = this.formatRate(rates.totalTx);
@@ -623,18 +641,25 @@ Monolith.Pages.Dashboard = {
             const statusBadge = iface.status === 'up' ? 'success' : 'secondary';
             
             // Push interface traffic data
-            this.pushInterfaceTraffic(iface.name, rate.rx, rate.tx, this.trafficSeries.maxPoints);
+            const rxLoss = iface.rxLossPercent || 0;
+            const txLoss = iface.txLossPercent || 0;
+            this.pushInterfaceTraffic(iface.name, rate.rx, rate.tx, this.trafficSeries.maxPoints, rxLoss, txLoss);
             
             // Get interface series
-            const ifaceSeries = this.trafficSeries.interfaces[iface.name] || { rx: [], tx: [], timestamps: [] };
+            const ifaceSeries = this.trafficSeries.interfaces[iface.name] || { rx: [], tx: [], rxLoss: [], txLoss: [], timestamps: [] };
             
             // Build combined graph for this interface (RX and TX together)
             const ifaceChart = this.buildInterfaceTrafficSparkline(
                 ifaceSeries.rx, 
                 ifaceSeries.tx, 
                 ifaceSeries.timestamps, 
-                iface.name
+                iface.name,
+                ifaceSeries.rxLoss,
+                ifaceSeries.txLoss
             );
+            
+            const ifaceRxLossClass = rxLoss > 1 ? 'text-danger' : rxLoss > 0.1 ? 'text-warning' : 'text-muted';
+            const ifaceTxLossClass = txLoss > 1 ? 'text-danger' : txLoss > 0.1 ? 'text-warning' : 'text-muted';
             
             return `
                 <div class="interface-traffic-card mb-3 p-3 border rounded">
@@ -647,10 +672,12 @@ Monolith.Pages.Dashboard = {
                             <div class="text-primary">
                                 <small class="text-muted d-block">RX</small>
                                 <strong>${this.formatRate(rate.rx)}</strong>
+                                <small class="d-block ${ifaceRxLossClass}">Loss: ${rxLoss.toFixed(2)}%</small>
                             </div>
                             <div class="text-success">
                                 <small class="text-muted d-block">TX</small>
                                 <strong>${this.formatRate(rate.tx)}</strong>
+                                <small class="d-block ${ifaceTxLossClass}">Loss: ${txLoss.toFixed(2)}%</small>
                             </div>
                         </div>
                     </div>
@@ -659,16 +686,21 @@ Monolith.Pages.Dashboard = {
             `;
         }).join('');
 
+        const rxLossClass = totalRxLoss > 1 ? 'text-danger' : totalRxLoss > 0.1 ? 'text-warning' : 'text-muted';
+        const txLossClass = totalTxLoss > 1 ? 'text-danger' : totalTxLoss > 0.1 ? 'text-warning' : 'text-muted';
+        
         return `
             <div class="traffic-summary mb-3 p-3 bg-light rounded">
                 <div class="d-flex justify-content-between gap-3">
                     <div class="traffic-metric text-center flex-fill">
                         <div class="traffic-label text-muted small mb-1">Total RX</div>
                         <div class="traffic-value text-primary fw-bold fs-5">${rxRate}</div>
+                        <div class="traffic-loss ${rxLossClass} small mt-1">Loss: ${totalRxLoss.toFixed(2)}%</div>
                     </div>
                     <div class="traffic-metric text-center flex-fill">
                         <div class="traffic-label text-muted small mb-1">Total TX</div>
                         <div class="traffic-value text-success fw-bold fs-5">${txRate}</div>
+                        <div class="traffic-loss ${txLossClass} small mt-1">Loss: ${totalTxLoss.toFixed(2)}%</div>
                     </div>
                 </div>
             </div>
@@ -750,26 +782,34 @@ Monolith.Pages.Dashboard = {
         }
     },
 
-    pushTrafficSeries: function(rxValue, txValue, maxPoints) {
+    pushTrafficSeries: function(rxValue, txValue, maxPoints, rxLossValue, txLossValue) {
         const rxNumeric = Number(rxValue);
         const txNumeric = Number(txValue);
+        const rxLossNumeric = Number(rxLossValue) || 0;
+        const txLossNumeric = Number(txLossValue) || 0;
         
         this.trafficSeries.rx.push(Number.isFinite(rxNumeric) ? rxNumeric : 0);
         this.trafficSeries.tx.push(Number.isFinite(txNumeric) ? txNumeric : 0);
+        this.trafficSeries.rxLoss.push(Number.isFinite(rxLossNumeric) ? rxLossNumeric : 0);
+        this.trafficSeries.txLoss.push(Number.isFinite(txLossNumeric) ? txLossNumeric : 0);
         this.trafficSeries.timestamps.push(new Date());
         
         if (this.trafficSeries.rx.length > maxPoints) {
             this.trafficSeries.rx.shift();
             this.trafficSeries.tx.shift();
+            this.trafficSeries.rxLoss.shift();
+            this.trafficSeries.txLoss.shift();
             this.trafficSeries.timestamps.shift();
         }
     },
 
-    pushInterfaceTraffic: function(interfaceName, rxValue, txValue, maxPoints) {
+    pushInterfaceTraffic: function(interfaceName, rxValue, txValue, maxPoints, rxLossValue, txLossValue) {
         if (!this.trafficSeries.interfaces[interfaceName]) {
             this.trafficSeries.interfaces[interfaceName] = {
                 rx: [],
                 tx: [],
+                rxLoss: [],
+                txLoss: [],
                 timestamps: []
             };
         }
@@ -777,14 +817,20 @@ Monolith.Pages.Dashboard = {
         const iface = this.trafficSeries.interfaces[interfaceName];
         const rxNumeric = Number(rxValue);
         const txNumeric = Number(txValue);
+        const rxLossNumeric = Number(rxLossValue) || 0;
+        const txLossNumeric = Number(txLossValue) || 0;
         
         iface.rx.push(Number.isFinite(rxNumeric) ? rxNumeric : 0);
         iface.tx.push(Number.isFinite(txNumeric) ? txNumeric : 0);
+        iface.rxLoss.push(Number.isFinite(rxLossNumeric) ? rxLossNumeric : 0);
+        iface.txLoss.push(Number.isFinite(txLossNumeric) ? txLossNumeric : 0);
         iface.timestamps.push(new Date());
         
         if (iface.rx.length > maxPoints) {
             iface.rx.shift();
             iface.tx.shift();
+            iface.rxLoss.shift();
+            iface.txLoss.shift();
             iface.timestamps.shift();
         }
     },
@@ -828,14 +874,25 @@ Monolith.Pages.Dashboard = {
         const height = 60;
         const width = 100;
         const step = points.length > 1 ? width / (points.length - 1) : width;
+        const color = type === 'rx' ? '#0d6efd' : '#198754';
+        
+        // Build Y-axis scale (4 tick marks: 0, 25%, 50%, 75%, 100%)
+        const scaleSteps = 4;
+        const scaleValues = [];
+        for (let i = 0; i <= scaleSteps; i++) {
+            const value = (max * (scaleSteps - i) / scaleSteps);
+            scaleValues.push({
+                value: value,
+                y: (i * height / scaleSteps),
+                label: this.formatRate ? this.formatRate(value) : this.formatBytes(value)
+            });
+        }
 
         const pathData = points.map((value, index) => {
             const x = index * step;
             const y = height - (value / max) * height;
             return `${index === 0 ? 'M' : 'L'} ${x},${y}`;
         }).join(' ');
-
-        const color = type === 'rx' ? '#0d6efd' : '#198754';
         
         // Build timestamp labels (show first, middle, last)
         let timeLabels = '';
@@ -861,28 +918,41 @@ Monolith.Pages.Dashboard = {
         }
 
         return `
-            <div class="traffic-sparkline-wrapper">
-                <svg class="traffic-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: ${height}px;">
-                    <path d="${pathData}" stroke="${color}" stroke-width="2" fill="none" />
-                    <path d="M0,${height} ${pathData} L${width},${height}" fill="${color}" opacity="0.1" />
-                </svg>
-                ${timeLabels}
+            <div class="traffic-sparkline-wrapper d-flex align-items-start gap-2">
+                <div class="traffic-y-axis text-muted small" style="min-width: 70px; text-align: right; padding-top: 2px;">
+                    ${scaleValues.map(s => `<div style="height: ${height / scaleSteps}px; line-height: ${height / scaleSteps}px;">${s.label}</div>`).join('')}
+                </div>
+                <div class="flex-fill">
+                    <svg class="traffic-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: ${height}px;">
+                        <path d="${pathData}" stroke="${color}" stroke-width="1" fill="none" />
+                        <path d="M0,${height} ${pathData} L${width},${height}" fill="${color}" opacity="0.1" />
+                    </svg>
+                    ${timeLabels}
+                </div>
             </div>
         `;
     },
 
-    buildInterfaceTrafficSparkline: function(rxSeries, txSeries, timestamps, interfaceName) {
+    buildInterfaceTrafficSparkline: function(rxSeries, txSeries, timestamps, interfaceName, rxLossSeries, txLossSeries) {
         const rxPoints = Array.isArray(rxSeries) ? rxSeries : [];
         const txPoints = Array.isArray(txSeries) ? txSeries : [];
+        const rxLossPoints = Array.isArray(rxLossSeries) ? rxLossSeries : [];
+        const txLossPoints = Array.isArray(txLossSeries) ? txLossSeries : [];
         const times = Array.isArray(timestamps) ? timestamps : [];
         
         if (rxPoints.length === 0 && txPoints.length === 0) {
             return '<div class="text-muted small">No data yet</div>';
         }
 
-        const max = Math.max(
+        // Calculate max for traffic (bytes/sec) - use separate scale for loss (%)
+        const maxTraffic = Math.max(
             Math.max(...rxPoints, 0),
             Math.max(...txPoints, 0),
+            1
+        );
+        const maxLoss = Math.max(
+            Math.max(...rxLossPoints, 0),
+            Math.max(...txLossPoints, 0),
             1
         );
         const height = 50;
@@ -891,17 +961,48 @@ Monolith.Pages.Dashboard = {
             ? width / (Math.max(rxPoints.length, txPoints.length) - 1) 
             : width;
 
+        const currentRx = rxPoints.length > 0 ? rxPoints[rxPoints.length - 1] : 0;
+        const currentTx = txPoints.length > 0 ? txPoints[txPoints.length - 1] : 0;
+
         const rxPathData = rxPoints.map((value, index) => {
             const x = index * step;
-            const y = height - (value / max) * height;
+            const y = height - (value / maxTraffic) * height;
             return `${index === 0 ? 'M' : 'L'} ${x},${y}`;
         }).join(' ');
 
         const txPathData = txPoints.map((value, index) => {
             const x = index * step;
-            const y = height - (value / max) * height;
+            const y = height - (value / maxTraffic) * height;
             return `${index === 0 ? 'M' : 'L'} ${x},${y}`;
         }).join(' ');
+
+        // Build Y-axis scale (4 tick marks: 0, 25%, 50%, 75%, 100%)
+        const scaleSteps = 4;
+        const scaleValues = [];
+        for (let i = 0; i <= scaleSteps; i++) {
+            const value = (maxTraffic * (scaleSteps - i) / scaleSteps);
+            scaleValues.push({
+                value: value,
+                y: (i * height / scaleSteps),
+                label: this.formatRate ? this.formatRate(value) : this.formatBytes(value)
+            });
+        }
+
+        // Packet loss paths (scaled to fit in the same graph, shown as percentage of height)
+        const rxLossPathData = rxLossPoints.length > 0 ? rxLossPoints.map((value, index) => {
+            const x = index * step;
+            // Scale loss % to graph height (e.g., 10% loss = 10% of graph height from bottom)
+            const lossScale = Math.min(maxLoss, 10); // Cap at 10% for visibility
+            const y = height - (value / lossScale) * height;
+            return `${index === 0 ? 'M' : 'L'} ${x},${y}`;
+        }).join(' ') : '';
+
+        const txLossPathData = txLossPoints.length > 0 ? txLossPoints.map((value, index) => {
+            const x = index * step;
+            const lossScale = Math.min(maxLoss, 10);
+            const y = height - (value / lossScale) * height;
+            return `${index === 0 ? 'M' : 'L'} ${x},${y}`;
+        }).join(' ') : '';
 
         // Build timestamp labels
         let timeLabels = '';
@@ -927,22 +1028,37 @@ Monolith.Pages.Dashboard = {
         }
 
         return `
-            <div class="interface-sparkline-wrapper">
-                <svg class="interface-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: ${height}px;">
-                    ${rxPathData ? `
-                        <path d="M0,${height} ${rxPathData} L${width},${height}" fill="#0d6efd" opacity="0.15" />
-                        <path d="${rxPathData}" stroke="#0d6efd" stroke-width="2" fill="none" />
-                    ` : ''}
-                    ${txPathData ? `
-                        <path d="M0,${height} ${txPathData} L${width},${height}" fill="#198754" opacity="0.15" />
-                        <path d="${txPathData}" stroke="#198754" stroke-width="2" fill="none" />
-                    ` : ''}
-                </svg>
-                <div class="d-flex justify-content-center gap-3 mt-1">
-                    <small class="text-primary"><i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> RX</small>
-                    <small class="text-success"><i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> TX</small>
+            <div class="interface-sparkline-wrapper d-flex align-items-start gap-2">
+                <div class="interface-y-axis text-muted small" style="min-width: 70px; text-align: right; padding-top: 2px;">
+                    ${scaleValues.map(s => `<div style="height: ${height / scaleSteps}px; line-height: ${height / scaleSteps}px;">${s.label}</div>`).join('')}
                 </div>
-                ${timeLabels}
+                <div class="flex-fill">
+                    <svg class="interface-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: ${height}px;">
+                        ${rxPathData ? `
+                            <path d="M0,${height} ${rxPathData} L${width},${height}" fill="#0d6efd" opacity="0.15" />
+                            <path d="${rxPathData}" stroke="#0d6efd" stroke-width="1" fill="none" />
+                        ` : ''}
+                        ${txPathData ? `
+                            <path d="M0,${height} ${txPathData} L${width},${height}" fill="#198754" opacity="0.15" />
+                            <path d="${txPathData}" stroke="#198754" stroke-width="1" fill="none" />
+                        ` : ''}
+                        ${rxLossPathData ? `
+                            <path d="${rxLossPathData}" stroke="#dc3545" stroke-width="0.8" fill="none" stroke-dasharray="3,2" opacity="0.8" />
+                        ` : ''}
+                        ${txLossPathData ? `
+                            <path d="${txLossPathData}" stroke="#fd7e14" stroke-width="0.8" fill="none" stroke-dasharray="3,2" opacity="0.8" />
+                        ` : ''}
+                    </svg>
+                    <div class="d-flex justify-content-center gap-3 mt-1">
+                        <small class="text-primary"><i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> RX</small>
+                        <small class="text-success"><i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> TX</small>
+                        ${rxLossPoints.length > 0 || txLossPoints.length > 0 ? `
+                            <small class="text-danger"><i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> RX Loss</small>
+                            <small class="text-warning"><i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> TX Loss</small>
+                        ` : ''}
+                    </div>
+                    ${timeLabels}
+                </div>
             </div>
         `;
     },
@@ -1002,7 +1118,9 @@ Monolith.Pages.Dashboard = {
             data.interfaces.forEach(iface => {
                 interfaceMap[iface.name] = {
                     rxBytes: Number(iface.rxBytes) || 0,
-                    txBytes: Number(iface.txBytes) || 0
+                    txBytes: Number(iface.txBytes) || 0,
+                    rxLossPercent: Number(iface.rxLossPercent) || 0,
+                    txLossPercent: Number(iface.txLossPercent) || 0
                 };
             });
         }
@@ -1037,6 +1155,8 @@ Monolith.Pages.Dashboard = {
             timestamp: now,
             totalRxBytes: totalRxBytes,
             totalTxBytes: totalTxBytes,
+            totalRxLossPercent: Number(data.totalRxLossPercent) || 0,
+            totalTxLossPercent: Number(data.totalTxLossPercent) || 0,
             interfaces: interfaceMap
         };
 

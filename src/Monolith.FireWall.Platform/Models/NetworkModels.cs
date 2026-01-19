@@ -74,6 +74,41 @@ public sealed class PciDeviceInfo
     public string? Interface { get; set; }                    // Associated network interface (e.g., "eth0")
 }
 
+public sealed class NetworkCardCoalescing
+{
+    public bool? AdaptiveRx { get; set; }                      // adaptive-rx
+    public bool? AdaptiveTx { get; set; }                      // adaptive-tx
+    public int? RxUsecs { get; set; }                          // rx-usecs
+    public int? TxUsecs { get; set; }                         // tx-usecs
+    public int? RxFrames { get; set; }                         // rx-frames
+    public int? TxFrames { get; set; }                        // tx-frames
+    public int? RxUsecsIrq { get; set; }                      // rx-usecs-irq
+    public int? RxFramesIrq { get; set; }                     // rx-frames-irq
+    public int? TxUsecsIrq { get; set; }                      // tx-usecs-irq
+    public int? TxFramesIrq { get; set; }                     // tx-frames-irq
+    public int? StatsBlockUsecs { get; set; }                 // stats-block-usecs
+    public int? PktRateLow { get; set; }                      // pkt-rate-low
+    public int? RxUsecsLow { get; set; }                      // rx-usecs-low
+    public int? RxFramesLow { get; set; }                     // rx-frames-low
+    public int? TxUsecsLow { get; set; }                     // tx-usecs-low
+    public int? TxFramesLow { get; set; }                     // tx-frames-low
+    public int? PktRateHigh { get; set; }                     // pkt-rate-high
+    public int? RxUsecsHigh { get; set; }                     // rx-usecs-high
+    public int? RxFramesHigh { get; set; }                    // rx-frames-high
+    public int? TxUsecsHigh { get; set; }                    // tx-usecs-high
+    public int? TxFramesHigh { get; set; }                    // tx-frames-high
+    public int? SampleInterval { get; set; }                  // sample-interval
+    public Dictionary<string, bool> Locked { get; set; } = new(); // Which parameters are locked
+}
+
+public sealed class NetworkCardPause
+{
+    public bool? Autoneg { get; set; }                        // autoneg
+    public bool? Rx { get; set; }                             // rx
+    public bool? Tx { get; set; }                             // tx
+    public Dictionary<string, bool> Locked { get; set; } = new(); // Which parameters are locked
+}
+
 public sealed class NetworkCardOffloads
 {
     // TCP Segmentation Offload
@@ -115,6 +150,7 @@ public sealed class NetworkCardOffloads
     public bool? TxNocacheCopy { get; set; }                   // tx-nocache-copy
     public bool? RxUdpTunnelPortOffload { get; set; }         // rx-udp_tunnel-port-offload
     public bool? TxUdpTunnelPortOffload { get; set; }          // tx-udp_tunnel-port-offload
+    public Dictionary<string, bool> Locked { get; set; } = new(); // Which offloads are locked
 }
 
 public sealed class NetworkCardBuffers
@@ -123,10 +159,15 @@ public sealed class NetworkCardBuffers
     public int? Rx { get; set; }                               // RX
     public int? RxJumbo { get; set; }                          // RX Jumbo
     public int? Tx { get; set; }                               // TX
+    public int? RxMiniMin { get; set; }                         // RX Mini Min
     public int? RxMiniMax { get; set; }                        // RX Mini Max
+    public int? RxMin { get; set; }                            // RX Min
     public int? RxMax { get; set; }                            // RX Max
+    public int? RxJumboMin { get; set; }                       // RX Jumbo Min
     public int? RxJumboMax { get; set; }                       // RX Jumbo Max
+    public int? TxMin { get; set; }                            // TX Min
     public int? TxMax { get; set; }                            // TX Max
+    public Dictionary<string, bool> Locked { get; set; } = new(); // Which buffers are locked
 }
 
 public sealed class NetworkCardFeatures
@@ -174,6 +215,10 @@ public sealed class NetworkCardInfo
     public NetworkCardOffloads Offloads { get; set; } = new();
     public NetworkCardBuffers Buffers { get; set; } = new();
     public NetworkCardFeatures Features { get; set; } = new();
+    public NetworkCardCoalescing Coalescing { get; set; } = new();
+    public NetworkCardPause Pause { get; set; } = new();
+    public List<string> SupportedSpeeds { get; set; } = new(); // Extracted from SupportedLinkModes
+    public List<string> AdvertisedSpeeds { get; set; } = new(); // Extracted from AdvertisedLinkModes
     public Dictionary<string, string> OtherSettings { get; set; } = new();
 }
 
@@ -195,4 +240,18 @@ public sealed class NetworkCardBufferRequest
 {
     public string Interface { get; set; } = string.Empty;
     public Dictionary<string, int> Buffers { get; set; } = new();    // Key: buffer type, Value: size
+}
+
+public sealed class NetworkCardCoalescingRequest
+{
+    public string Interface { get; set; } = string.Empty;
+    public Dictionary<string, object> Coalescing { get; set; } = new(); // Key: parameter name, Value: bool or int
+}
+
+public sealed class NetworkCardPauseRequest
+{
+    public string Interface { get; set; } = string.Empty;
+    public bool? Autoneg { get; set; }
+    public bool? Rx { get; set; }
+    public bool? Tx { get; set; }
 }

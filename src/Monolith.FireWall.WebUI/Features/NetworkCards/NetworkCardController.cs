@@ -116,6 +116,48 @@ public class NetworkCardController : ControllerBase
         }
     }
 
+    [HttpPost("{interface}/coalescing")]
+    public async Task<ActionResult> SetCoalescing(string @interface, [FromBody] NetworkCardCoalescingRequest request)
+    {
+        try
+        {
+            request.Interface = @interface;
+            var coreRequest = new
+            {
+                action = "network.cards.coalescing.set",
+                payload = request
+            };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error setting coalescing for {Interface}", @interface);
+            return StatusCode(500, new { success = false, data = (object?)null, error = ex.Message });
+        }
+    }
+
+    [HttpPost("{interface}/pause")]
+    public async Task<ActionResult> SetPause(string @interface, [FromBody] NetworkCardPauseRequest request)
+    {
+        try
+        {
+            request.Interface = @interface;
+            var coreRequest = new
+            {
+                action = "network.cards.pause.set",
+                payload = request
+            };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error setting pause frames for {Interface}", @interface);
+            return StatusCode(500, new { success = false, data = (object?)null, error = ex.Message });
+        }
+    }
+
     [HttpPost("{interface}/revert")]
     public async Task<ActionResult> Revert(string @interface)
     {
@@ -156,4 +198,18 @@ public sealed class NetworkCardBufferRequest
 {
     public string Interface { get; set; } = string.Empty;
     public Dictionary<string, int> Buffers { get; set; } = new();
+}
+
+public sealed class NetworkCardCoalescingRequest
+{
+    public string Interface { get; set; } = string.Empty;
+    public Dictionary<string, object> Coalescing { get; set; } = new();
+}
+
+public sealed class NetworkCardPauseRequest
+{
+    public string Interface { get; set; } = string.Empty;
+    public bool? Autoneg { get; set; }
+    public bool? Rx { get; set; }
+    public bool? Tx { get; set; }
 }

@@ -91,7 +91,7 @@ public class DashboardController : ControllerBase
                         },
                         new {
                             id = "system.traffic",
-                            title = "Managed Traffic",
+                            title = "Traffic graphs",
                             package = "system",
                             module = "dashboard",
                             description = "Throughput for Monolith-managed interfaces",
@@ -172,7 +172,7 @@ public class DashboardController : ControllerBase
                 },
                 new {
                     id = "system.traffic",
-                    title = "Managed Traffic",
+                    title = "Traffic graphs",
                     package = "system",
                     module = "dashboard",
                     description = "Throughput for Monolith-managed interfaces",
@@ -242,7 +242,7 @@ public class DashboardController : ControllerBase
                 },
                 new {
                     id = "system.traffic",
-                    title = "Managed Traffic",
+                    title = "Traffic graphs",
                     package = "system",
                     module = "dashboard",
                     description = "Throughput for Monolith-managed interfaces",
@@ -533,13 +533,17 @@ public class DashboardController : ControllerBase
         var payload = interfaces.Select(iface =>
         {
             var stats = ReadInterfaceStats(iface.Name);
+            var rxLossPercent = stats.RxPackets > 0 ? (stats.RxDropped * 100.0 / stats.RxPackets) : 0.0;
+            var txLossPercent = stats.TxPackets > 0 ? (stats.TxDropped * 100.0 / stats.TxPackets) : 0.0;
             return new
             {
                 name = iface.Name,
                 status = iface.Status,
                 ip = iface.IpAddress ?? "-",
                 rxBytes = stats.RxBytes,
-                txBytes = stats.TxBytes
+                txBytes = stats.TxBytes,
+                rxLossPercent = Math.Round(rxLossPercent, 2),
+                txLossPercent = Math.Round(txLossPercent, 2)
             };
         }).ToList();
 
@@ -551,6 +555,10 @@ public class DashboardController : ControllerBase
         var interfaces = await GetManagedInterfacesAsync();
         long totalRx = 0;
         long totalTx = 0;
+        long totalRxPackets = 0;
+        long totalTxPackets = 0;
+        long totalRxDropped = 0;
+        long totalTxDropped = 0;
         var rows = new List<object>();
 
         foreach (var iface in interfaces)
@@ -558,20 +566,43 @@ public class DashboardController : ControllerBase
             var stats = ReadInterfaceStats(iface.Name);
             totalRx += stats.RxBytes;
             totalTx += stats.TxBytes;
+            totalRxPackets += stats.RxPackets;
+            totalTxPackets += stats.TxPackets;
+            totalRxDropped += stats.RxDropped;
+            totalTxDropped += stats.TxDropped;
+            
+            var rxLossPercent = stats.RxPackets > 0 ? (stats.RxDropped * 100.0 / stats.RxPackets) : 0.0;
+            var txLossPercent = stats.TxPackets > 0 ? (stats.TxDropped * 100.0 / stats.TxPackets) : 0.0;
+            
             rows.Add(new
             {
                 name = iface.Name,
                 status = iface.Status,
                 rxBytes = stats.RxBytes,
-                txBytes = stats.TxBytes
+                txBytes = stats.TxBytes,
+                rxPackets = stats.RxPackets,
+                txPackets = stats.TxPackets,
+                rxDropped = stats.RxDropped,
+                txDropped = stats.TxDropped,
+                rxLossPercent = Math.Round(rxLossPercent, 2),
+                txLossPercent = Math.Round(txLossPercent, 2)
             });
         }
+
+        var totalRxLossPercent = totalRxPackets > 0 ? (totalRxDropped * 100.0 / totalRxPackets) : 0.0;
+        var totalTxLossPercent = totalTxPackets > 0 ? (totalTxDropped * 100.0 / totalTxPackets) : 0.0;
 
         return new
         {
             interfaces = rows,
             totalRxBytes = totalRx,
             totalTxBytes = totalTx,
+            totalRxPackets = totalRxPackets,
+            totalTxPackets = totalTxPackets,
+            totalRxDropped = totalRxDropped,
+            totalTxDropped = totalTxDropped,
+            totalRxLossPercent = Math.Round(totalRxLossPercent, 2),
+            totalTxLossPercent = Math.Round(totalTxLossPercent, 2),
             sampledAt = DateTime.UtcNow.ToString("O")
         };
     }
@@ -1076,7 +1107,11 @@ public class DashboardController : ControllerBase
         var basePath = $"/sys/class/net/{name}/statistics";
         var rx = ReadLongFromFile(Path.Combine(basePath, "rx_bytes"));
         var tx = ReadLongFromFile(Path.Combine(basePath, "tx_bytes"));
-        return new InterfaceStats(rx, tx);
+        var rxPackets = ReadLongFromFile(Path.Combine(basePath, "rx_packets"));
+        var txPackets = ReadLongFromFile(Path.Combine(basePath, "tx_packets"));
+        var rxDropped = ReadLongFromFile(Path.Combine(basePath, "rx_dropped"));
+        var txDropped = ReadLongFromFile(Path.Combine(basePath, "tx_dropped"));
+        return new InterfaceStats(rx, tx, rxPackets, txPackets, rxDropped, txDropped);
     }
 
     private static long ReadLongFromFile(string path)
@@ -1098,6 +1133,6 @@ public class DashboardController : ControllerBase
     }
 
     private sealed record InterfaceSnapshot(string Name, string Status, string? IpAddress);
-    private sealed record InterfaceStats(long RxBytes, long TxBytes);
+    private sealed record InterfaceStats(long RxBytes, long TxBytes, long RxPackets, long TxPackets, long RxDropped, long TxDropped);
     private sealed record SystemSettingsSnapshot(string? Hostname, string? Domain, string? Timezone, List<string> DnsServers);
 }

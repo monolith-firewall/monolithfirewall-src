@@ -153,6 +153,80 @@ echo ""
 echo "→ Restarting Core service to load new packages..."
 systemctl restart monolith-firewall-core.service || true
 
+# Ensure network interfaces are up (in case they didn't get IPs during install)
+echo ""
+echo "→ Ensuring network interfaces are configured..."
+if command -v ifreload &> /dev/null; then
+    # Check if any interface has an IP
+    HAS_IP=$(ip -4 addr show | grep -c "inet " || echo "0")
+    if [ "$HAS_IP" -eq "0" ]; then
+        echo "  No interfaces have IP addresses, configuring..."
+        # Get primary interface
+        PRIMARY_IFACE=$(ip -o link show | grep -v lo | awk -F': ' '{print $2}' | head -1)
+        if [ -n "$PRIMARY_IFACE" ]; then
+            # Ensure interfaces.d is sourced
+            mkdir -p /etc/network/interfaces.d
+            if [ ! -f /etc/network/interfaces ]; then
+                cat > /etc/network/interfaces <<EOF
+auto lo
+iface lo inet loopback
+source /etc/network/interfaces.d/*
+EOF
+            else
+                if ! grep -q "^source /etc/network/interfaces.d/\\*" /etc/network/interfaces; then
+                    echo "source /etc/network/interfaces.d/*" >> /etc/network/interfaces
+                fi
+            fi
+
+            if [ ! -f "/etc/network/interfaces.d/monolith" ]; then
+                cat > /etc/network/interfaces.d/monolith <<EOF
+# Network configuration - managed by Monolith
+auto $PRIMARY_IFACE
+iface $PRIMARY_IFACE inet dhcp
+EOF
+                echo "  Created network config for $PRIMARY_IFACE"
+            else
+                echo "  Using existing network config for $PRIMARY_IFACE"
+            fi
+
+            # Bring up interfaces
+            ip link set dev "$PRIMARY_IFACE" up 2>/dev/null || true
+            ifreload -a || {
+                echo "  ifreload failed, trying ifup..."
+                ifup "$PRIMARY_IFACE" || true
+            }
+            sleep 3
+            if ! ip -4 addr show "$PRIMARY_IFACE" 2>/dev/null | grep -q "inet "; then
+                if command -v dhclient &> /dev/null; then
+                    echo "  Attempting DHCP via dhclient..."
+                    dhclient -v -1 "$PRIMARY_IFACE" || true
+                    sleep 2
+                fi
+            fi
+        fi
+    fi
+    # Show interface status
+    echo "Network interface status:"
+    ip -4 addr show | grep -E "^[0-9]+:|inet " || echo "  No IPv4 addresses configured"
+else
+    echo "  WARNING: ifreload not found - attempting ifup..."
+    PRIMARY_IFACE=$(ip -o link show | grep -v lo | awk -F': ' '{print $2}' | head -1)
+    if command -v ifup &> /dev/null && [ -n "$PRIMARY_IFACE" ]; then
+        ip link set dev "$PRIMARY_IFACE" up 2>/dev/null || true
+        ifup "$PRIMARY_IFACE" || true
+        sleep 3
+        if ! ip -4 addr show "$PRIMARY_IFACE" 2>/dev/null | grep -q "inet "; then
+            if command -v dhclient &> /dev/null; then
+                echo "  Attempting DHCP via dhclient..."
+                dhclient -v -1 "$PRIMARY_IFACE" || true
+                sleep 2
+            fi
+        fi
+    else
+        echo "  Install ifupdown2: apt-get install -y ifupdown2"
+    fi
+fi
+
 echo ""
 echo "First boot package installation complete!"
 echo ""
