@@ -23,12 +23,15 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
+          # Ubuntu 24.04 uses libicu74, Debian uses libicu76
+          # Install libicu-dev for building, and the runtime library will be resolved by apt
           sudo apt-get install -y \
             debhelper \
             devscripts \
             build-essential \
             wget \
-            libicu76 \
+            libicu-dev \
+            libicu74 \
             libc6 \
             libgcc-s1 \
             libstdc++6 \
@@ -47,6 +50,8 @@ jobs:
       - name: Build Debian package
         run: |
           chmod +x build-scripts/build-deb.sh
+          # Patch build-deb.sh to work on Ubuntu (replace libicu76 with libicu74)
+          sed -i 's/libicu76/libicu74/g' build-scripts/build-deb.sh || true
           ./build-scripts/build-deb.sh
       
       - name: Build all packages
