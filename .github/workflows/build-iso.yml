@@ -95,12 +95,25 @@ jobs:
           tag_name: ${{ steps.commit.outputs.short_sha }}
           name: Release ${{ steps.commit.outputs.short_sha }}
           body: |
-            Automated build from commit ${{ steps.commit.outputs.full_sha }}
+            ## Monolith FireWall ISO Build
             
-            **Commit:** ${{ steps.commit.outputs.full_sha }}
-            **Branch:** ${{ github.ref_name }}
-            **Workflow:** ${{ github.workflow }}
-            **Run ID:** ${{ github.run_id }}
+            **Commit Message:**
+            ```
+            ${{ github.event.head_commit.message }}
+            ```
+            
+            **Build Information:**
+            - **Commit:** ${{ steps.commit.outputs.full_sha }}
+            - **Short SHA:** ${{ steps.commit.outputs.short_sha }}
+            - **Branch:** ${{ github.ref_name }}
+            - **Workflow:** ${{ github.workflow }}
+            - **Run ID:** ${{ github.run_id }}
+            - **Build Date:** ${{ github.event.head_commit.timestamp }}
+            
+            **ISO File:**
+            - **Name:** ${{ steps.find-iso.outputs.iso_name }}
+            
+            This is an automated build from the main branch.
           files: ${{ steps.find-iso.outputs.iso_path }}
           draft: false
           prerelease: false
