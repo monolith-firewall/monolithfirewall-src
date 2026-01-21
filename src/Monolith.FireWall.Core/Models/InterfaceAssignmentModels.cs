@@ -223,6 +223,14 @@ public sealed class InterfaceAssignmentsSnapshot
     public string ManagedFile { get; set; } = string.Empty;
 }
 
+public sealed class InterfaceStanza
+{
+    public string Interface { get; set; } = string.Empty;
+    public string Method { get; set; } = string.Empty;
+    public string FilePath { get; set; } = string.Empty;
+    public Dictionary<string, string> Options { get; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
 [SQLiteTable("gateways")]
 public sealed class GatewayEntity
 {

@@ -65,7 +65,7 @@ public sealed class InterfaceConfigManager
                 }
                 
                 // Parse stanzas from this file
-                var stanzas = ParseStanzas(filePath);
+                var stanzas = ParseStanzasInternal(filePath);
                 unmanaged.AddRange(stanzas);
             }
             
@@ -454,7 +454,7 @@ public sealed class InterfaceConfigManager
         {
             try
             {
-                stanzas.AddRange(ParseStanzas(file));
+                stanzas.AddRange(ParseStanzasInternal(file));
             }
             catch (Exception ex)
             {
@@ -782,7 +782,12 @@ public sealed class InterfaceConfigManager
         }
     }
 
-    private static List<InterfaceStanza> ParseStanzas(string filePath)
+    public List<InterfaceStanza> ParseStanzas(string filePath)
+    {
+        return ParseStanzasInternal(filePath);
+    }
+
+    private static List<InterfaceStanza> ParseStanzasInternal(string filePath)
     {
         var stanzas = new List<InterfaceStanza>();
         InterfaceStanza? current = null;
@@ -1367,13 +1372,5 @@ public sealed class InterfaceConfigManager
         var name = Path.GetFileNameWithoutExtension(path);
         var ext = Path.GetExtension(path);
         return Path.Combine(dir, $"{name}-{DateTime.UtcNow:yyyyMMddHHmmss}{ext}");
-    }
-
-    public sealed class InterfaceStanza
-    {
-        public string Interface { get; set; } = string.Empty;
-        public string Method { get; set; } = string.Empty;
-        public string FilePath { get; set; } = string.Empty;
-        public Dictionary<string, string> Options { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }
