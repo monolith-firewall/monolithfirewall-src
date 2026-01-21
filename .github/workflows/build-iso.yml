@@ -8,6 +8,8 @@ on:
 jobs:
   build-iso:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases and upload assets
     
     steps:
       - name: Checkout repository
