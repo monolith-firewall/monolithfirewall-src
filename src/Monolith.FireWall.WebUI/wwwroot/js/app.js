@@ -464,7 +464,7 @@ function renderPackagesMenu(packages, menus) {
                 const children = menu.Children || menu.children || [];
                 
                 if (children && children.length > 0) {
-                    // Module with submenu - render children with module badge
+                    // Module with submenu - render children without module badge (cleaner display)
                     children.forEach(child => {
                         const childLabel = child.Label || child.label;
                         const childId = child.Id || child.id;
@@ -473,17 +473,15 @@ function renderPackagesMenu(packages, menus) {
                         const pageName = childId.split('-').pop();
                         const route = `/p/${pkgId}/${menu.moduleId || menuId.split('-').pop()}/${pageName}`;
                         
-                        // Create descriptive label with module badge
-                        const displayLabel = `<span class="badge bg-primary me-2" style="font-size: 0.7rem; font-weight: 600;">${moduleDisplayName}</span>${childLabel}`;
-                        
+                        // Show just the child label without module badge
                         html += `
                             <li><a class="dropdown-item" href="#${route}" data-route="${route}">
-                                ${displayLabel}
+                                ${childLabel}
                             </a></li>
                         `;
                     });
                 } else {
-                    // Direct module link (no submenu) - still show badge
+                    // Direct module link (no submenu)
                     const moduleIdForRoute = menu.moduleId || menuId.split('-').pop();
                     // Check if menuId contains a page name (has multiple parts separated by '-')
                     // e.g., "diagnostics-ping" -> route should be /p/pkg/diagnostics/ping
@@ -497,14 +495,14 @@ function renderPackagesMenu(packages, menus) {
                         // Standard route without page name
                         route = `/p/${pkgId}/${moduleIdForRoute}`;
                     }
-                    const displayLabel = `<span class="badge bg-primary me-2" style="font-size: 0.7rem; font-weight: 600;">${moduleDisplayName}</span>${menuLabel}`;
+                    // Show just the menu label without module badge for cleaner display
                     
                     html += `
                         <li><a class="dropdown-item" href="#${route}" data-route="${route}">
                             <svg class="dropdown-icon" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
                                 <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/>
                             </svg>
-                            ${displayLabel}
+                            ${menuLabel}
                         </a></li>
                     `;
                 }

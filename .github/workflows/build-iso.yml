@@ -1,0 +1,101 @@
+name: Build ISO and Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for commit SHA
+      
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            debhelper \
+            devscripts \
+            build-essential \
+            wget \
+            libicu76 \
+            libc6 \
+            libgcc-s1 \
+            libstdc++6 \
+            zlib1g \
+            p7zip-full \
+            xorriso \
+            syslinux-utils \
+            apt-utils \
+            git
+      
+      - name: Set up dependencies
+        run: |
+          chmod +x setup-dependencies.sh
+          ./setup-dependencies.sh
+      
+      - name: Build Debian package
+        run: |
+          chmod +x build-scripts/build-deb.sh
+          ./build-scripts/build-deb.sh
+      
+      - name: Build all packages
+        run: |
+          chmod +x build-scripts/build-all-packages.sh
+          ./build-scripts/build-all-packages.sh
+      
+      - name: Build ISO
+        run: |
+          chmod +x build-scripts/build-iso.sh
+          # Get short commit SHA for version
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          ./build-scripts/build-iso.sh "$COMMIT_SHA"
+      
+      - name: Find ISO file
+        id: find-iso
+        run: |
+          ISO_FILE=$(find build-output -name "monolith-firewall-*.iso" -type f | head -1)
+          if [ -z "$ISO_FILE" ]; then
+            echo "ERROR: ISO file not found"
+            exit 1
+          fi
+          echo "iso_path=$ISO_FILE" >> $GITHUB_OUTPUT
+          echo "iso_name=$(basename "$ISO_FILE")" >> $GITHUB_OUTPUT
+          echo "Found ISO: $ISO_FILE"
+          ls -lh "$ISO_FILE"
+      
+      - name: Get commit SHA
+        id: commit
+        run: |
+          FULL_SHA=$(git rev-parse HEAD)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "full_sha=$FULL_SHA" >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+      
+      - name: Create Release and Upload ISO
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.commit.outputs.short_sha }}
+          name: Release ${{ steps.commit.outputs.short_sha }}
+          body: |
+            Automated build from commit ${{ steps.commit.outputs.full_sha }}
+            
+            **Commit:** ${{ steps.commit.outputs.full_sha }}
+            **Branch:** ${{ github.ref_name }}
+            **Workflow:** ${{ github.workflow }}
+            **Run ID:** ${{ github.run_id }}
+          files: ${{ steps.find-iso.outputs.iso_path }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

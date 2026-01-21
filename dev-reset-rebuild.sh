@@ -37,12 +37,54 @@ if [ "$EUID" -ne 0 ]; then
     print_error "This script must be run as root (use sudo)"
 fi
 
-print_step "Step 1: Stopping all MonolithFireWall services"
+print_step "Step 1: Stopping WebUI service (Core needed for package uninstall)"
 systemctl stop monolith-firewall-webui 2>/dev/null || print_warning "WebUI service not running"
-systemctl stop monolith-firewall-core 2>/dev/null || print_warning "Core service not running"
-print_success "Services stopped"
 
-print_step "Step 2: Removing existing Debian package"
+# Ensure Core service is running for package uninstall
+if ! systemctl is-active --quiet monolith-firewall-core; then
+    echo "  Starting Core service for package uninstall..."
+    systemctl start monolith-firewall-core 2>/dev/null || print_warning "Failed to start Core service"
+    sleep 2
+fi
+
+print_step "Step 2: Uninstalling all installed .mfwpkg packages"
+if command -v monolith-pkgmgr &> /dev/null; then
+    # Wait for Core service to be ready
+    SOCKET_PATH="/var/lib/monolith-firewall/run/monolith-core.sock"
+    if [ -S "$SOCKET_PATH" ]; then
+        # List and uninstall all installed packages
+        INSTALLED_PACKAGES=$(monolith-pkgmgr package list 2>/dev/null | grep -E "^[a-z-]+" | awk '{print $1}' || true)
+        if [ -n "$INSTALLED_PACKAGES" ]; then
+            UNINSTALLED_COUNT=0
+            for pkg_id in $INSTALLED_PACKAGES; do
+                echo "  Uninstalling $pkg_id..."
+                if monolith-pkgmgr package uninstall "$pkg_id" 2>/dev/null; then
+                    UNINSTALLED_COUNT=$((UNINSTALLED_COUNT + 1))
+                    print_success "Uninstalled $pkg_id"
+                else
+                    print_warning "Failed to uninstall $pkg_id (may not be installed)"
+                fi
+            done
+            if [ $UNINSTALLED_COUNT -gt 0 ]; then
+                print_success "Uninstalled $UNINSTALLED_COUNT package(s)"
+            else
+                print_warning "No packages were uninstalled"
+            fi
+        else
+            print_warning "No installed packages found"
+        fi
+    else
+        print_warning "Core service socket not available, skipping package uninstall (will clean directories manually)"
+    fi
+else
+    print_warning "monolith-pkgmgr not found, skipping package uninstall (will clean directories manually)"
+fi
+
+print_step "Step 3: Stopping Core service"
+systemctl stop monolith-firewall-core 2>/dev/null || print_warning "Core service not running"
+print_success "All services stopped"
+
+print_step "Step 3: Removing existing Debian package"
 if dpkg -l | grep -q monolith-firewall; then
     apt-get remove --purge -y monolith-firewall 2>/dev/null || true
     print_success "Debian package removed"
@@ -50,7 +92,7 @@ else
     print_warning "No existing Debian package found"
 fi
 
-print_step "Step 3: Cleaning installation directories"
+print_step "Step 4: Cleaning installation directories"
 rm -rf /opt/monolith-firewall 2>/dev/null || true
 rm -rf /etc/monolith-firewall 2>/dev/null || true
 rm -rf /var/log/monolith-firewall 2>/dev/null || true
@@ -69,13 +111,13 @@ rm -f /var/lib/monolith-firewall/.setup-progress.json 2>/dev/null || true
 rm -f /var/lib/monolith-firewall/codelogic/.codelogic 2>/dev/null || true
 print_success "Installation directories cleaned"
 
-print_step "Step 4: Removing systemd service files"
+print_step "Step 5: Removing systemd service files"
 rm -f /usr/lib/systemd/system/monolith-firewall-core.service 2>/dev/null || true
 rm -f /usr/lib/systemd/system/monolith-firewall-webui.service 2>/dev/null || true
 systemctl daemon-reload 2>/dev/null || true
 print_success "Systemd service files removed"
 
-print_step "Step 5: Cleaning databases"
+print_step "Step 6: Cleaning databases"
 # Clean temporary databases
 rm -f /tmp/monolith*.db 2>/dev/null || true
 rm -f /tmp/monolith*.db-* 2>/dev/null || true
@@ -96,11 +138,11 @@ rm -f /var/lib/monolith-firewall/codelogic/CL.cl.sqlite/data/database.db-wal 2>/
 rm -rf /var/lib/monolith-firewall/codelogic/CL.cl.sqlite/data/* 2>/dev/null || true
 print_success "Databases cleaned"
 
-print_step "Step 6: Removing named pipes"
+print_step "Step 7: Removing named pipes"
 rm -f /tmp/CoreFxPipe_monolith-core* 2>/dev/null || true
 print_success "Named pipes removed"
 
-print_step "Step 7: Removing monolith-firewall user and group"
+print_step "Step 8: Removing monolith-firewall user and group"
 if id "monolith-firewall" &>/dev/null; then
     userdel monolith-firewall 2>/dev/null || true
     groupdel monolith-firewall 2>/dev/null || true
@@ -109,7 +151,7 @@ else
     print_warning "User/group not found"
 fi
 
-print_step "Step 8: Cleaning build artifacts"
+print_step "Step 9: Cleaning build artifacts"
 cd "$PROJECT_ROOT"
 # Fix permissions on obj directories first (common issue)
 find . -type d -name "obj" -exec chmod -R u+w {} \; 2>/dev/null || true
@@ -138,7 +180,7 @@ if [ -d "$PROJECT_ROOT/tmp/monolithfirewall-packages" ]; then
 fi
 print_success "Build artifacts cleaned"
 
-print_step "Step 9: Building solution"
+print_step "Step 10: Building solution"
 cd "$PROJECT_ROOT"
 # Clean and fix permissions
 dotnet clean 2>/dev/null || true
@@ -166,7 +208,7 @@ if [ -d "$PROJECT_ROOT/tmp/monolithfirewall-packages" ]; then
     print_success "Package projects built"
 fi
 
-print_step "Step 10: Building all .mfwpkg packages"
+print_step "Step 11: Building all .mfwpkg packages"
 cd "$PROJECT_ROOT"
 if [ -f "build-scripts/build-all-packages.sh" ]; then
     chmod +x build-scripts/build-all-packages.sh
@@ -176,7 +218,7 @@ else
     print_warning "build-all-packages.sh not found, skipping package build"
 fi
 
-print_step "Step 11: Building Debian package"
+print_step "Step 12: Building Debian package"
 cd "$PROJECT_ROOT"
 if [ -f "build-scripts/build-deb.sh" ]; then
     chmod +x build-scripts/build-deb.sh
@@ -193,7 +235,7 @@ else
     print_error "build-deb.sh not found"
 fi
 
-print_step "Step 12: Installing Debian package"
+print_step "Step 13: Installing Debian package"
 if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
     dpkg -i "$DEB_FILE" || apt-get install -f -y || print_error "Failed to install Debian package"
     print_success "Debian package installed"
@@ -201,7 +243,7 @@ else
     print_error "Debian package file not found: $DEB_FILE"
 fi
 
-print_step "Step 12a: Writing core configuration (packages directory)"
+print_step "Step 13a: Writing core configuration (packages directory)"
 mkdir -p /var/lib/monolith-firewall/codelogic
 mkdir -p /var/lib/monolith-firewall/data
 mkdir -p /var/lib/monolith-firewall/packages
@@ -233,7 +275,7 @@ chown -R monolith-firewall:monolith-firewall /var/lib/monolith-firewall/run 2>/d
 rm -f /tmp/core-config.json
 print_success "core-config.json written with packages path /var/lib/monolith-firewall/packages"
 
-print_step "Step 13: Starting Core service (required for package installation)"
+print_step "Step 14: Starting Core service (required for package installation)"
 systemctl start monolith-firewall-core || print_error "Failed to start Core service"
 
 # Wait for Core service to be ready (Unix socket exists)
@@ -254,7 +296,7 @@ else
     print_success "Core service is ready"
 fi
 
-print_step "Step 14: Installing .mfwpkg packages"
+print_step "Step 15: Installing .mfwpkg packages"
 PACKAGES_DIR="$PROJECT_ROOT/build-output/packages"
 PACKAGES_STAGING_DIR="/var/lib/monolith-firewall/packages"
 if [ -d "$PACKAGES_DIR" ]; then
@@ -321,12 +363,12 @@ else
     print_warning "Packages directory not found: $PACKAGES_DIR"
 fi
 
-print_step "Step 15: Starting WebUI service"
+print_step "Step 16: Starting WebUI service"
 systemctl start monolith-firewall-webui || print_warning "Failed to start WebUI service"
 sleep 2
 print_success "Services started"
 
-print_step "Step 16: Verifying installation"
+print_step "Step 17: Verifying installation"
 if systemctl is-active --quiet monolith-firewall-core; then
     print_success "Core service is running"
 else

@@ -35,6 +35,10 @@ public sealed class InterfaceAssignmentManager
 
     public async Task<InterfaceAssignmentsSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
     {
+        // First, check if there are interfaces in the monolith file that aren't in the database
+        // This handles the case where the database was removed but the config file still exists
+        await AutoImportFromMonolithFileAsync(cancellationToken);
+        
         var assignments = await _store.GetAssignmentsAsync();
         var interfaces = await _inventory.ListInterfacesAsync();
         var addresses = await _inventory.ListAddressesAsync(null, cancellationToken);
@@ -782,7 +786,7 @@ public sealed class InterfaceAssignmentManager
     }
 
     private InterfaceAssignmentView BuildUnmanagedView(
-        InterfaceConfigManager.InterfaceStanza stanza,
+        InterfaceStanza stanza,
         Monolith.FireWall.Platform.Models.InterfaceInfo iface,
         IReadOnlyDictionary<string, List<Monolith.FireWall.Platform.Models.AddressInfo>> addressMap)
     {
@@ -1056,6 +1060,186 @@ public sealed class InterfaceAssignmentManager
 
         return (null, null, null);
     }
+
+    /// <summary>
+    /// Auto-import interfaces from /etc/network/interfaces.d/monolith if they exist in the file
+    /// but are missing from the database (e.g., after database removal and reinstall).
+    /// </summary>
+    private async Task AutoImportFromMonolithFileAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var monolithFile = "/etc/network/interfaces.d/monolith";
+            if (!File.Exists(monolithFile))
+            {
+                return;
+            }
+
+            // Parse stanzas from the monolith file
+            // Note: ParseStanzas skips comments, so it will parse the actual interface definitions
+            var stanzas = _configManager.ParseStanzas(monolithFile);
+            if (stanzas.Count == 0)
+            {
+                return;
+            }
+
+            // Filter out stanzas that are outside the managed block (if any)
+            // The monolith file should only contain managed interfaces, but we'll be safe
+
+            // Get existing assignments from database
+            var existingAssignments = await _store.GetAssignmentsAsync();
+            var existingIfaces = new HashSet<string>(existingAssignments.Select(a => a.InterfaceName), StringComparer.OrdinalIgnoreCase);
+
+            // Import missing interfaces
+            foreach (var stanza in stanzas)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Skip if already in database
+                if (existingIfaces.Contains(stanza.Interface))
+                {
+                    continue;
+                }
+
+                // Skip if not a physical interface (skip VLANs and bridges for now)
+                if (!IsPhysicalInterface(stanza.Interface))
+                {
+                    continue;
+                }
+
+                // Parse the stanza to create an assignment
+                var assignment = ParseStanzaToAssignment(stanza);
+                if (assignment != null)
+                {
+                    // Save to database
+                    await _store.UpsertAsync(assignment);
+                    await _loggingManager.LogSystemAsync(
+                        "Network",
+                        "info",
+                        "InterfaceAssignmentManager",
+                        $"Auto-imported interface {stanza.Interface} from monolith config file",
+                        null
+                    );
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await _loggingManager.LogSystemAsync(
+                "Network",
+                "error",
+                "InterfaceAssignmentManager",
+                $"Failed to auto-import interfaces from monolith file: {ex.Message}",
+                new Dictionary<string, object> { ["error"] = ex.Message }
+            );
+        }
+    }
+
+    /// <summary>
+    /// Parse an InterfaceStanza into an InterfaceAssignmentEntity.
+    /// </summary>
+    private static InterfaceAssignmentEntity? ParseStanzaToAssignment(InterfaceStanza stanza)
+    {
+        try
+        {
+            var assignment = new InterfaceAssignmentEntity
+            {
+                InterfaceName = stanza.Interface,
+                Type = InterfaceAssignmentType.Physical,
+                Name = stanza.Interface,
+                IpMode = InterfaceIpMode.None,
+                Ipv6Mode = InterfaceIpMode.None
+            };
+
+            // Parse IP configuration
+            if (stanza.Options.TryGetValue("address", out var address))
+            {
+                assignment.IpMode = InterfaceIpMode.Static;
+                var (ip, prefix, error) = ParseAddressAndPrefix(address, stanza.Options);
+                if (ip != null && prefix.HasValue)
+                {
+                    assignment.IpAddress = ip;
+                    assignment.PrefixLength = prefix.Value;
+                }
+            }
+            else if (stanza.Method.Equals("dhcp", StringComparison.OrdinalIgnoreCase))
+            {
+                assignment.IpMode = InterfaceIpMode.Dhcp;
+            }
+            else if (stanza.Method.Equals("manual", StringComparison.OrdinalIgnoreCase))
+            {
+                assignment.IpMode = InterfaceIpMode.None;
+            }
+
+            // Parse IPv6 configuration
+            if (stanza.Options.TryGetValue("address6", out var address6))
+            {
+                assignment.Ipv6Mode = InterfaceIpMode.Static;
+                var (ip6, prefix6, error6) = ParseAddressAndPrefix(address6, stanza.Options, isIpv6: true);
+                if (ip6 != null && prefix6.HasValue)
+                {
+                    assignment.Ipv6Address = ip6;
+                    assignment.Ipv6PrefixLength = prefix6.Value;
+                }
+            }
+            else if (stanza.Options.TryGetValue("dhcp6", out var dhcp6) && dhcp6.Equals("yes", StringComparison.OrdinalIgnoreCase))
+            {
+                assignment.Ipv6Mode = InterfaceIpMode.Dhcp;
+            }
+
+            // Parse gateway
+            if (stanza.Options.TryGetValue("gateway", out var gateway))
+            {
+                assignment.Gateway = gateway;
+            }
+
+            // Parse DNS servers - Note: DNS servers are stored in the config file, not in the entity
+            // They will be applied when the config is generated
+
+            return assignment;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static (string? Address, int? Prefix, string? Error) ParseAddressAndPrefix(string address, Dictionary<string, string> options, bool isIpv6 = false)
+    {
+        // Try to parse CIDR notation (e.g., "192.168.1.1/24")
+        if (address.Contains('/'))
+        {
+            var parts = address.Split('/');
+            if (parts.Length == 2 && int.TryParse(parts[1], out var prefix))
+            {
+                return (parts[0], prefix, null);
+            }
+        }
+
+        // Try to get prefix from netmask option
+        if (options.TryGetValue("netmask", out var netmask))
+        {
+            var prefix = NetmaskToPrefixLength(netmask);
+            if (prefix.HasValue)
+            {
+                return (address, prefix.Value, null);
+            }
+        }
+
+        // For IPv6, try prefixlen option (IPv6 uses prefixlen, not netmask)
+        if (isIpv6 && options.TryGetValue("prefixlen", out var prefixlen))
+        {
+            if (int.TryParse(prefixlen, out var prefix6))
+            {
+                return (address, prefix6, null);
+            }
+        }
+
+        // Default prefix if not specified
+        var defaultPrefix = isIpv6 ? 64 : 24;
+        return (address, defaultPrefix, null);
+    }
+
 
     private static (string? Address, int? Prefix, string? Error) ParseIpv6(InterfaceAssignmentRequest request)
     {

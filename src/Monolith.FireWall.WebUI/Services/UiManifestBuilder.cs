@@ -238,6 +238,7 @@ public sealed class UiManifestBuilder
                 var packageName = GetDictString(menu, "packageName") ?? GetDictString(menu, "PackageName");
                 var moduleId = GetDictString(menu, "moduleId") ?? GetDictString(menu, "ModuleId");
                 var label = GetDictString(menu, "label") ?? GetDictString(menu, "Label");
+                var menuId = GetDictString(menu, "id") ?? GetDictString(menu, "Id");
 
                 if (string.IsNullOrWhiteSpace(packageId) || string.IsNullOrWhiteSpace(moduleId))
                 {
@@ -249,7 +250,23 @@ public sealed class UiManifestBuilder
                     _packageNames[packageId] = packageName;
                 }
 
-                var routePath = $"/p/{packageId}/{moduleId}";
+                // Extract page name from menu ID (e.g., "diagnostics-ping" -> "ping")
+                // Menu ID format is typically "{moduleId}-{pageName}"
+                string? pageName = null;
+                if (!string.IsNullOrWhiteSpace(menuId) && menuId.Contains('-'))
+                {
+                    var parts = menuId.Split('-', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length > 1 && string.Equals(parts[0], moduleId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Menu ID is like "diagnostics-ping", extract "ping"
+                        pageName = string.Join("-", parts.Skip(1));
+                    }
+                }
+
+                // Build route path with page name if available
+                var routePath = string.IsNullOrWhiteSpace(pageName)
+                    ? $"/p/{packageId}/{moduleId}"
+                    : $"/p/{packageId}/{moduleId}/{pageName}";
                 var routeId = BuildRouteIdFromPath(routePath);
 
                 var existingRoute = manifest.Routes.FirstOrDefault(r =>
@@ -269,7 +286,7 @@ public sealed class UiManifestBuilder
                         {
                             ["packageId"] = packageId,
                             ["moduleId"] = moduleId,
-                            ["pageId"] = "config"
+                            ["pageId"] = pageName ?? "config"
                         }
                     };
 
@@ -279,9 +296,17 @@ public sealed class UiManifestBuilder
                 else if (!string.IsNullOrWhiteSpace(label))
                 {
                     existingRoute.Title = label;
+                    // Update pageId if we extracted it
+                    if (!string.IsNullOrWhiteSpace(pageName) && existingRoute.Meta != null)
+                    {
+                        existingRoute.Meta["pageId"] = pageName;
+                    }
                 }
 
-                EnsurePackageAssets(existingRoute);
+                if (existingRoute != null)
+                {
+                    EnsurePackageAssets(existingRoute);
+                }
             }
         }
         catch (Exception ex)
