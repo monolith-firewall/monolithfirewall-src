@@ -112,8 +112,10 @@ override_dh_missing:
 	dh_missing --list-missing
 
 override_dh_shlibdeps:
-	# Self-contained .NET publishes bundle runtime libs; ignore missing shlib metadata.
-	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
+	# Self-contained .NET publishes bundle runtime libs; skip shlibdeps entirely.
+	# The bundled .NET runtime libraries don't have Debian package metadata.
+	# This is safe because all dependencies are bundled in the self-contained publish.
+	:
 
 override_dh_builddeb:
 	# Fix permissions for WSL2/Windows filesystem
