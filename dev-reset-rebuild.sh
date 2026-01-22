@@ -153,12 +153,47 @@ fi
 
 print_step "Step 9: Cleaning build artifacts"
 cd "$PROJECT_ROOT"
-# Fix permissions on obj directories first (common issue)
+# Get the actual user who invoked sudo (SUDO_USER) or current user
+ACTUAL_USER="${SUDO_USER:-$USER}"
+if [ -z "$ACTUAL_USER" ] || [ "$ACTUAL_USER" = "root" ]; then
+    # If no SUDO_USER, try to get the user from whoami of the original session
+    ACTUAL_USER=$(who am i | awk '{print $1}' || echo "$USER")
+fi
+# If still root, try to find a non-root user with a home directory
+if [ "$ACTUAL_USER" = "root" ] || [ -z "$ACTUAL_USER" ]; then
+    # Try to find the first non-root user
+    for u in $(ls /home 2>/dev/null); do
+        if [ "$u" != "root" ]; then
+            ACTUAL_USER="$u"
+            break
+        fi
+    done
+fi
+echo "  Detected user: $ACTUAL_USER (running as: $(whoami))"
+
+# Fix permissions on obj/bin directories first (common issue when running with sudo)
 find . -type d -name "obj" -exec chmod -R u+w {} \; 2>/dev/null || true
 find . -type d -name "bin" -exec chmod -R u+w {} \; 2>/dev/null || true
+find . -type f -path "*/obj/*" -exec chmod u+w {} \; 2>/dev/null || true
+find . -type f -path "*/bin/*" -exec chmod u+w {} \; 2>/dev/null || true
+# Remove all obj and bin directories (including in tmp/CodeLogic3)
 find . -type d \( -name "bin" -o -name "obj" \) | while read dir; do
     rm -rf "$dir" 2>/dev/null || true
 done
+# Also clean any publish directories
+find . -type d -name "publish" -path "*/src/*" | while read dir; do
+    rm -rf "$dir" 2>/dev/null || true
+done
+
+# Fix ownership of project directory so dpkg-buildpackage can write
+# If we're running as root but there's a SUDO_USER, fix ownership to that user
+if [ "$(whoami)" = "root" ] && [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+    echo "  Fixing ownership of project directory for $SUDO_USER..."
+    chown -R "$SUDO_USER:$SUDO_USER" "$PROJECT_ROOT" 2>/dev/null || true
+elif [ -n "$ACTUAL_USER" ] && [ "$ACTUAL_USER" != "root" ]; then
+    echo "  Fixing ownership of project directory for $ACTUAL_USER..."
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$PROJECT_ROOT" 2>/dev/null || true
+fi
 rm -rf debian/monolith-firewall 2>/dev/null || true
 rm -f debian/*.deb 2>/dev/null || true
 rm -f debian/*.buildinfo 2>/dev/null || true
@@ -177,19 +212,34 @@ if [ -d "$PROJECT_ROOT/tmp/monolithfirewall-packages" ]; then
     find "$PROJECT_ROOT/tmp/monolithfirewall-packages" -name "*.mfwpkg" -type f | while read file; do
         rm -f "$file" 2>/dev/null || true
     done
+    # Clean bundled deb directories (will be regenerated during build)
+    find "$PROJECT_ROOT/tmp/monolithfirewall-packages" -type d -name "debs" | while read dir; do
+        rm -rf "$dir" 2>/dev/null || true
+    done
+    # Clean manifest.json backups created by update-manifest-debs.sh
+    find "$PROJECT_ROOT/tmp/monolithfirewall-packages" -name "manifest.json.bak" -type f | while read file; do
+        rm -f "$file" 2>/dev/null || true
+    done
 fi
+
+# Note: deb-cache in tmp/deb-cache is preserved to speed up rebuilds
+# To clear the cache, manually delete: rm -rf tmp/deb-cache
 print_success "Build artifacts cleaned"
 
-print_step "Step 10: Building solution"
+print_step "Step 10: Restoring packages (build will happen in Debian package step)"
 cd "$PROJECT_ROOT"
-# Clean and fix permissions
+# Clean and fix permissions (ensure we can write to obj directories)
 dotnet clean 2>/dev/null || true
-# Fix any permission issues with obj directories
+# Fix any permission issues with obj/bin directories (especially in tmp/CodeLogic3)
 find . -type d -name "obj" -exec chmod -R u+w {} \; 2>/dev/null || true
+find . -type d -name "bin" -exec chmod -R u+w {} \; 2>/dev/null || true
 find . -type f -path "*/obj/*" -exec chmod u+w {} \; 2>/dev/null || true
+find . -type f -path "*/bin/*" -exec chmod u+w {} \; 2>/dev/null || true
+# Remove any remaining obj/bin directories that might have permission issues
+find . -type d \( -name "bin" -o -name "obj" \) -exec rm -rf {} \; 2>/dev/null || true
+# Only restore packages - actual build will happen in debian/rules to avoid double compilation
 dotnet restore || print_error "Failed to restore packages"
-dotnet build -c Release || print_error "Failed to build solution"
-print_success "Solution built successfully"
+print_success "Packages restored (solution will be built during Debian package creation)"
 
 # Also build packages in tmp/monolithfirewall-packages if they exist
 if [ -d "$PROJECT_ROOT/tmp/monolithfirewall-packages" ]; then
@@ -220,6 +270,25 @@ fi
 
 print_step "Step 12: Building Debian package"
 cd "$PROJECT_ROOT"
+# Clean debian build directories to ensure fresh build
+echo "  Cleaning Debian build directories..."
+rm -rf debian/tmp debian/.debhelper debian/monolith-firewall 2>/dev/null || true
+# Ensure source is clean before building Debian package
+echo "  Ensuring source build artifacts are clean..."
+find src -type d \( -name "bin" -o -name "obj" \) -exec chmod -R u+w {} \; 2>/dev/null || true
+find src -type d \( -name "bin" -o -name "obj" \) -exec rm -rf {} \; 2>/dev/null || true
+find tmp -type d \( -name "bin" -o -name "obj" \) -exec chmod -R u+w {} \; 2>/dev/null || true
+find tmp -type d \( -name "bin" -o -name "obj" \) -exec rm -rf {} \; 2>/dev/null || true
+
+# Fix ownership so dpkg-buildpackage can write (if running as root, fix to SUDO_USER)
+if [ "$(whoami)" = "root" ] && [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+    echo "  Ensuring ownership for $SUDO_USER..."
+    chown -R "$SUDO_USER:$SUDO_USER" "$PROJECT_ROOT" 2>/dev/null || true
+elif [ -n "$ACTUAL_USER" ] && [ "$ACTUAL_USER" != "root" ]; then
+    echo "  Ensuring ownership for $ACTUAL_USER..."
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$PROJECT_ROOT" 2>/dev/null || true
+fi
+
 if [ -f "build-scripts/build-deb.sh" ]; then
     chmod +x build-scripts/build-deb.sh
     ./build-scripts/build-deb.sh || print_error "Failed to build Debian package"
@@ -230,15 +299,114 @@ if [ -f "build-scripts/build-deb.sh" ]; then
     if [ -z "$DEB_FILE" ]; then
         print_error "Debian package not found after build"
     fi
+    # Extract version from filename
+    DEB_VERSION=$(basename "$DEB_FILE" | sed -n 's/monolith-firewall_\(.*\)_amd64.deb/\1/p')
     print_success "Debian package built: $DEB_FILE"
+    echo "  Package version: $DEB_VERSION"
+    
+    # Verify the Debian package contains the new Core binary
+    echo "  Verifying Debian package contains updated Core binary..."
+    TMP_EXTRACT=$(mktemp -d)
+    dpkg-deb -x "$DEB_FILE" "$TMP_EXTRACT" 2>/dev/null || true
+    
+    # Check build info file for actual build timestamp
+    if [ -f "$TMP_EXTRACT/opt/monolith-firewall/.build-info" ]; then
+        BUILD_DATE=$(grep "Build Date:" "$TMP_EXTRACT/opt/monolith-firewall/.build-info" | cut -d: -f2- | xargs || echo "")
+        BUILD_TS=$(grep "Build Timestamp:" "$TMP_EXTRACT/opt/monolith-firewall/.build-info" | cut -d: -f2- | xargs || echo "")
+        if [ -n "$BUILD_DATE" ]; then
+            echo "    Package build date: $BUILD_DATE"
+        fi
+    fi
+    
+    # Check file timestamps (should be current now)
+    DEB_CORE_DATE=$(dpkg-deb -c "$DEB_FILE" 2>/dev/null | grep "Monolith.FireWall.Core.dll$" | awk '{print $4, $5}' | head -1 || echo "")
+    if [ -n "$DEB_CORE_DATE" ]; then
+        echo "    Core DLL in package dated: $DEB_CORE_DATE"
+    fi
+    
+    # Check if binary contains new bundledDebs code (check DLL, not executable wrapper)
+    if [ -f "$TMP_EXTRACT/opt/monolith-firewall/core/Monolith.FireWall.Core.dll" ]; then
+        if strings "$TMP_EXTRACT/opt/monolith-firewall/core/Monolith.FireWall.Core.dll" 2>/dev/null | grep -qi "bundledDeb\|InstallBundledDebs"; then
+            echo "    ✓ Core DLL contains bundledDebs support"
+        else
+            echo "    ⚠ Warning: Core DLL does not contain bundledDebs support (may be old version)"
+        fi
+    elif [ -f "$TMP_EXTRACT/opt/monolith-firewall/core/Monolith.FireWall.Core" ]; then
+        # Fallback: check executable (though code is usually in DLL)
+        if strings "$TMP_EXTRACT/opt/monolith-firewall/core/Monolith.FireWall.Core" 2>/dev/null | grep -qi "bundledDeb\|InstallBundledDebs"; then
+            echo "    ✓ Core binary contains bundledDebs support"
+        else
+            echo "    ⚠ Warning: Core binary does not contain bundledDebs support (may be old version)"
+        fi
+    fi
+    rm -rf "$TMP_EXTRACT" 2>/dev/null || true
 else
     print_error "build-deb.sh not found"
 fi
 
 print_step "Step 13: Installing Debian package"
 if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
+    # Stop services before installing
+    systemctl stop monolith-firewall-webui 2>/dev/null || true
+    systemctl stop monolith-firewall-core 2>/dev/null || true
+    sleep 1
+    
+    # Get timestamp of Core binary before install
+    OLD_CORE_TIME=""
+    if [ -f "/opt/monolith-firewall/core/Monolith.FireWall.Core" ]; then
+        OLD_CORE_TIME=$(stat -c "%Y" /opt/monolith-firewall/core/Monolith.FireWall.Core 2>/dev/null || echo "0")
+    fi
+    
     dpkg -i "$DEB_FILE" || apt-get install -f -y || print_error "Failed to install Debian package"
     print_success "Debian package installed"
+    
+    # Verify the new Core binary is installed and updated
+    if [ -f "/opt/monolith-firewall/core/Monolith.FireWall.Core" ]; then
+        NEW_CORE_TIME=$(stat -c "%Y" /opt/monolith-firewall/core/Monolith.FireWall.Core 2>/dev/null || echo "0")
+        CORE_DATE=$(stat -c "%y" /opt/monolith-firewall/core/Monolith.FireWall.Core 2>/dev/null | cut -d' ' -f1 || echo "")
+        CORE_DATETIME=$(stat -c "%y" /opt/monolith-firewall/core/Monolith.FireWall.Core 2>/dev/null || echo "")
+        echo "  Core binary installed: $CORE_DATETIME"
+        
+        # Check build info if available
+        if [ -f "/opt/monolith-firewall/.build-info" ]; then
+            BUILD_DATE=$(grep "Build Date:" /opt/monolith-firewall/.build-info | cut -d: -f2- | xargs || echo "")
+            if [ -n "$BUILD_DATE" ]; then
+                echo "  Package build date: $BUILD_DATE"
+            fi
+        fi
+        
+        if [ "$NEW_CORE_TIME" != "$OLD_CORE_TIME" ] && [ "$OLD_CORE_TIME" != "0" ]; then
+            print_success "Core binary was updated"
+            # Verify it has the new code (check DLL, not executable wrapper)
+            if [ -f "/opt/monolith-firewall/core/Monolith.FireWall.Core.dll" ]; then
+                if strings /opt/monolith-firewall/core/Monolith.FireWall.Core.dll 2>/dev/null | grep -qi "bundledDeb\|InstallBundledDebs"; then
+                    echo "  ✓ Core DLL contains bundledDebs support"
+                else
+                    print_warning "Core DLL does not contain bundledDebs support - rebuild may have failed"
+                fi
+            elif strings /opt/monolith-firewall/core/Monolith.FireWall.Core 2>/dev/null | grep -qi "bundledDeb\|InstallBundledDebs"; then
+                echo "  ✓ Core binary contains bundledDebs support"
+            else
+                print_warning "Core binary does not contain bundledDebs support - rebuild may have failed"
+            fi
+        elif [ "$OLD_CORE_TIME" = "0" ]; then
+            echo "  (First installation)"
+            # Verify it has the new code (check DLL, not executable wrapper)
+            if [ -f "/opt/monolith-firewall/core/Monolith.FireWall.Core.dll" ]; then
+                if strings /opt/monolith-firewall/core/Monolith.FireWall.Core.dll 2>/dev/null | grep -qi "bundledDeb\|InstallBundledDebs"; then
+                    echo "  ✓ Core DLL contains bundledDebs support"
+                else
+                    print_warning "Core DLL does not contain bundledDebs support - rebuild may have failed"
+                fi
+            elif strings /opt/monolith-firewall/core/Monolith.FireWall.Core 2>/dev/null | grep -qi "bundledDeb\|InstallBundledDebs"; then
+                echo "  ✓ Core binary contains bundledDebs support"
+            else
+                print_warning "Core binary does not contain bundledDebs support - rebuild may have failed"
+            fi
+        else
+            print_warning "Core binary timestamp unchanged - may be using old version"
+        fi
+    fi
 else
     print_error "Debian package file not found: $DEB_FILE"
 fi
@@ -276,30 +444,93 @@ rm -f /tmp/core-config.json
 print_success "core-config.json written with packages path /var/lib/monolith-firewall/packages"
 
 print_step "Step 14: Starting Core service (required for package installation)"
+# Ensure Core service is stopped first
+systemctl stop monolith-firewall-core 2>/dev/null || true
+sleep 2
+
+# Start Core service
 systemctl start monolith-firewall-core || print_error "Failed to start Core service"
 
-# Wait for Core service to be ready (Unix socket exists)
-echo "  Waiting for Core service to be ready..."
+# Give the service time to initialize (Core needs to load packages, initialize database, etc.)
+echo "  Waiting for Core service to initialize..."
+sleep 5
+
+# Wait for Core service to be ready (Unix socket exists and service is active)
 SOCKET_PATH="/var/lib/monolith-firewall/run/monolith-core.sock"
-MAX_WAIT=30
+MAX_WAIT=90
 WAIT_COUNT=0
 while [ ! -S "$SOCKET_PATH" ] && [ $WAIT_COUNT -lt $MAX_WAIT ]; do
     sleep 1
     WAIT_COUNT=$((WAIT_COUNT + 1))
-    echo -n "."
+    if [ $((WAIT_COUNT % 5)) -eq 0 ]; then
+        echo -n "."
+    fi
+    # Check if service failed
+    if ! systemctl is-active --quiet monolith-firewall-core; then
+        echo ""
+        echo "  Service status:"
+        systemctl status monolith-firewall-core --no-pager -l | head -10
+        print_error "Core service failed to start. Check logs: journalctl -u monolith-firewall-core -n 50"
+        exit 1
+    fi
 done
 echo ""
 
 if [ ! -S "$SOCKET_PATH" ]; then
-    print_warning "Core service socket not ready after ${MAX_WAIT}s, continuing anyway..."
+    print_warning "Core service socket not ready after ${MAX_WAIT}s"
+    echo "  Checking service status..."
+    systemctl status monolith-firewall-core --no-pager -l | head -15
+    # Check if service is actually running but socket just isn't ready
+    if systemctl is-active --quiet monolith-firewall-core; then
+        echo "  Service is active, waiting a bit more..."
+        sleep 10
+        if [ -S "$SOCKET_PATH" ]; then
+            print_success "Core service socket is now ready"
+        else
+            print_warning "Socket still not ready, but service is running. Continuing..."
+        fi
+    else
+        print_error "Service is not active. Check logs: journalctl -u monolith-firewall-core -n 50"
+        exit 1
+    fi
 else
     print_success "Core service is ready"
+    # Test that Core can respond (with longer timeout for package loading)
+    if command -v monolith-pkgmgr &> /dev/null; then
+        echo "  Testing Core service communication..."
+        if timeout 10 monolith-pkgmgr package list &>/dev/null; then
+            print_success "Core service is responding"
+        else
+            print_warning "Core service may not be fully ready yet (but socket exists)"
+        fi
+    fi
 fi
 
 print_step "Step 15: Installing .mfwpkg packages"
 PACKAGES_DIR="$PROJECT_ROOT/build-output/packages"
 PACKAGES_STAGING_DIR="/var/lib/monolith-firewall/packages"
 if [ -d "$PACKAGES_DIR" ]; then
+    # Wait for any existing dpkg/apt processes to complete
+    echo "  Checking for dpkg locks..."
+    MAX_LOCK_WAIT=60
+    LOCK_WAIT_COUNT=0
+    while [ $LOCK_WAIT_COUNT -lt $MAX_LOCK_WAIT ]; do
+        if pgrep -f "(dpkg|apt-get|apt)" >/dev/null 2>&1 || lsof /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock 2>/dev/null | grep -q .; then
+            if [ $((LOCK_WAIT_COUNT % 5)) -eq 0 ]; then
+                echo "    Waiting for dpkg/apt processes to complete..."
+            fi
+            sleep 1
+            LOCK_WAIT_COUNT=$((LOCK_WAIT_COUNT + 1))
+        else
+            break
+        fi
+    done
+    if [ $LOCK_WAIT_COUNT -ge $MAX_LOCK_WAIT ]; then
+        print_warning "dpkg lock wait timeout, proceeding anyway..."
+    else
+        echo "  ✓ No dpkg locks detected"
+    fi
+    
     INSTALLED_COUNT=0
     FAILED_COUNT=0
     mkdir -p "$PACKAGES_STAGING_DIR"
@@ -321,11 +552,51 @@ if [ -d "$PACKAGES_DIR" ]; then
             if [ -f "$pkg_file" ]; then
                 pkg_name=$(basename "$pkg_file")
                 echo "  Installing $pkg_name..."
+                echo "    (This may take a while if package includes bundled deb packages...)"
                 
-                # Try installing with overwrite flag
-                INSTALL_OUTPUT=$(monolith-pkgmgr package install "$pkg_file" --overwrite 2>&1)
-                INSTALL_EXIT=$?
-                echo "$INSTALL_OUTPUT" | tee /tmp/pkgmgr-install.log
+                # Try installing with overwrite flag, with timeout (10 minutes for deb installation)
+                # Use timeout command if available, otherwise just run normally
+                # Also show progress by running in background and checking periodically
+                if command -v timeout &> /dev/null; then
+                    # Run with timeout and show progress
+                    (
+                        timeout 600 monolith-pkgmgr package install "$pkg_file" --overwrite > "/tmp/pkgmgr-install-${pkg_name}.log" 2>&1
+                        echo $? > "/tmp/pkgmgr-install-${pkg_name}.exit"
+                    ) &
+                    INSTALL_PID=$!
+                    
+                    # Show progress dots while waiting
+                    PROGRESS_COUNT=0
+                    while kill -0 $INSTALL_PID 2>/dev/null; do
+                        sleep 2
+                        PROGRESS_COUNT=$((PROGRESS_COUNT + 1))
+                        if [ $((PROGRESS_COUNT % 10)) -eq 0 ]; then
+                            echo -n "."
+                        fi
+                        # Check for timeout (10 minutes = 300 seconds, check every 2 seconds = 150 iterations)
+                        if [ $PROGRESS_COUNT -gt 300 ]; then
+                            kill $INSTALL_PID 2>/dev/null || true
+                            break
+                        fi
+                    done
+                    echo ""
+                    wait $INSTALL_PID 2>/dev/null || true
+                    
+                    INSTALL_EXIT=$(cat "/tmp/pkgmgr-install-${pkg_name}.exit" 2>/dev/null || echo "1")
+                    INSTALL_OUTPUT=$(cat "/tmp/pkgmgr-install-${pkg_name}.log" 2>/dev/null || echo "Installation failed")
+                    rm -f "/tmp/pkgmgr-install-${pkg_name}.exit"
+                    
+                    if [ $INSTALL_EXIT -eq 124 ] || [ $PROGRESS_COUNT -gt 300 ]; then
+                        print_warning "$pkg_name installation timed out after 10 minutes"
+                        FAILED_COUNT=$((FAILED_COUNT + 1))
+                        continue
+                    fi
+                else
+                    INSTALL_OUTPUT=$(monolith-pkgmgr package install "$pkg_file" --overwrite 2>&1)
+                    INSTALL_EXIT=$?
+                fi
+                
+                echo "$INSTALL_OUTPUT" | tee /tmp/pkgmgr-install-${pkg_name}.log
                 
                 if [ $INSTALL_EXIT -eq 0 ]; then
                     INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
@@ -340,7 +611,10 @@ if [ -d "$PACKAGES_DIR" ]; then
                         print_error "Core service not running - cannot install $pkg_name"
                     else
                         FAILED_COUNT=$((FAILED_COUNT + 1))
-                        print_warning "Failed to install $pkg_name (check logs)"
+                        print_warning "Failed to install $pkg_name (exit code: $INSTALL_EXIT)"
+                        echo "    Check log: /tmp/pkgmgr-install-${pkg_name}.log"
+                        echo "    Last few lines:"
+                        echo "$INSTALL_OUTPUT" | tail -5 | sed 's/^/      /'
                     fi
                 fi
             fi

@@ -40,6 +40,15 @@ public sealed class PlatformCommandRunner
             }
         };
 
+        // Set environment variables if provided
+        if (command.EnvironmentVariables != null)
+        {
+            foreach (var envVar in command.EnvironmentVariables)
+            {
+                process.StartInfo.EnvironmentVariables[envVar.Key] = envVar.Value;
+            }
+        }
+
         try
         {
             process.Start();

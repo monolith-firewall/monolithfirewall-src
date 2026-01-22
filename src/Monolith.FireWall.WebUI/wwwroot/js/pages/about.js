@@ -6,8 +6,40 @@ window.Monolith = Monolith;
 
 Monolith.Pages = Monolith.Pages || {};
 Monolith.Pages.About = {
-    init: function() {
+    init: async function() {
+        await this.loadPackageFeatures();
         this.render();
+    },
+
+    loadPackageFeatures: async function() {
+        try {
+            const packages = await Monolith.Packages.getInstalledPackages();
+            const featuresList = document.getElementById('package-features-list');
+            
+            if (!featuresList) return;
+            
+            if (packages && packages.length > 0) {
+                // Build feature list from package descriptions
+                const features = packages
+                    .filter(pkg => pkg.description || pkg.Description)
+                    .map(pkg => {
+                        const desc = pkg.description || pkg.Description || '';
+                        // Extract key features from description or use package name
+                        return `<li>${pkg.name || pkg.Name || pkg.id || pkg.Id}: ${desc.substring(0, 100)}${desc.length > 100 ? '...' : ''}</li>`;
+                    })
+                    .join('');
+                
+                featuresList.innerHTML = features || '<li>No additional package features available</li>';
+            } else {
+                featuresList.innerHTML = '<li>No packages installed</li>';
+            }
+        } catch (err) {
+            console.error('Failed to load package features:', err);
+            const featuresList = document.getElementById('package-features-list');
+            if (featuresList) {
+                featuresList.innerHTML = '<li>Unable to load package features</li>';
+            }
+        }
     },
 
     render: function() {
@@ -55,8 +87,7 @@ Monolith.Pages.About = {
                                             <li>Advanced firewall rule management</li>
                                             <li>Network interface and routing configuration</li>
                                             <li>Real-time monitoring and diagnostics</li>
-                                            <li>Package-based VPN support (IPsec, OpenVPN, WireGuard)</li>
-                                            <li>DHCP and DNS server management</li>
+                                            <li id="package-features-list">Loading package features...</li>
                                         </ul>
                                     </div>
                                 </div>

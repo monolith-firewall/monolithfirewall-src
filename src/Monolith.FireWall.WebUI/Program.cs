@@ -68,6 +68,7 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 builder.Services.AddSingleton<CoreApiClient>();
 builder.Services.AddSingleton<PackageViewRouter>();
 builder.Services.AddSingleton<PackageViewsRegistry>();
+builder.Services.AddSingleton<PackageDiscoveryService>();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<PackageUpdatesClient>();
 builder.Services.AddSingleton<RazorPartialRenderer>();

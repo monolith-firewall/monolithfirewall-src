@@ -414,8 +414,14 @@ var Nat = {
     attachEventHandlers: function() {
         $(document).off('click', '#btnAddRule');
         $(document).on('click', '#btnAddRule', () => {
-            // Pre-select type based on active tab
-            this.showRuleModal(null, this.activeTab);
+            // Call type-specific modal based on active tab
+            if (this.activeTab === 'port_forward') {
+                this.showPortForwardModal(null);
+            } else if (this.activeTab === 'one_to_one') {
+                this.showOneToOneModal(null);
+            } else if (this.activeTab === 'outbound') {
+                this.showOutboundModal(null);
+            }
         });
 
         $(document).off('click', '[data-action="edit-nat"]');
@@ -440,7 +446,7 @@ var Nat = {
             this.discardChanges();
         });
 
-        // Tab change handler
+        // Tab change handler - track active tab
         $(document).off('shown.bs.tab', '#natTabs button[data-bs-toggle="tab"]');
         $(document).on('shown.bs.tab', '#natTabs button[data-bs-toggle="tab"]', (e) => {
             const tabButton = $(e.target);
@@ -452,9 +458,8 @@ var Nat = {
         });
     },
 
-    showRuleModal: function(rule, defaultType) {
+    showPortForwardModal: function(rule) {
         const isEdit = rule !== null;
-        const ruleType = rule ? rule.type : (defaultType || 'port_forward');
         const aliasOptions = this.aliases.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
         
         const interfaceOptions = this.interfaces.map(i => 
@@ -466,42 +471,31 @@ var Nat = {
             ...this.schedules.map(s => `<option value="${s.id}" ${rule && rule.scheduleId === s.id ? 'selected' : ''}>${s.name}</option>`)
         ].join('');
 
-        // Determine which fields to show based on type
-        const showPorts = ruleType === 'port_forward' || ruleType === 'outbound';
-        const showRedirectPort = ruleType === 'port_forward';
-        const isOneToOne = ruleType === 'one_to_one';
-        const isOutbound = ruleType === 'outbound';
-
         const modalHtml = `
-            <div class="modal fade" id="natRuleModal" tabindex="-1" aria-labelledby="natRuleModalLabel" aria-hidden="true">
+            <div class="modal fade" id="portForwardModal" tabindex="-1" aria-labelledby="portForwardModalLabel" aria-hidden="true">
                 <div class="modal-dialog modal-xl">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title" id="natRuleModalLabel">${isEdit ? 'Edit' : 'Add'} ${this.getTypeLabel(ruleType)} NAT Rule</h5>
+                            <h5 class="modal-title" id="portForwardModalLabel">${isEdit ? 'Edit' : 'Add'} Port Forwarding Rule</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
-                            <form id="natRuleForm">
+                            <form id="portForwardForm">
+                                <div class="alert alert-warning" id="pfIpv6Warning" style="display: none;">
+                                    <strong>Note:</strong> IPv6 does not support port forwarding. Use firewall rules instead.
+                                </div>
                                 <div class="row">
-                                    <div class="col-md-4 mb-3">
-                                        <label for="natType" class="form-label">Type <span class="text-danger">*</span></label>
-                                        <select class="form-select" id="natType" required>
-                                            <option value="port_forward" ${ruleType === 'port_forward' ? 'selected' : ''}>Port Forward</option>
-                                            <option value="one_to_one" ${ruleType === 'one_to_one' ? 'selected' : ''}>1:1 NAT</option>
-                                            <option value="outbound" ${ruleType === 'outbound' ? 'selected' : ''}>Outbound</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-4 mb-3">
-                                        <label for="natInterface" class="form-label">Interface <span class="text-danger">*</span></label>
-                                        <select class="form-select" id="natInterface" required>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="pfInterface" class="form-label">Interface <span class="text-danger">*</span></label>
+                                        <select class="form-select" id="pfInterface" required>
                                             <option value="" disabled ${!rule ? 'selected' : ''}>Select Interface...</option>
                                             ${interfaceOptions}
                                         </select>
                                     </div>
-                                    <div class="col-md-4 mb-3">
-                                        <label for="natAddressFamily" class="form-label">Address Family</label>
-                                        <select class="form-select" id="natAddressFamily">
-                                            <option value="ipv4" ${rule && rule.addressFamily === 'ipv4' ? 'selected' : ''}>IPv4</option>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="pfAddressFamily" class="form-label">Address Family</label>
+                                        <select class="form-select" id="pfAddressFamily">
+                                            <option value="ipv4" ${rule && rule.addressFamily === 'ipv4' ? 'selected' : 'selected'}>IPv4</option>
                                             <option value="ipv6" ${rule && rule.addressFamily === 'ipv6' ? 'selected' : ''}>IPv6</option>
                                             <option value="dual" ${rule && rule.addressFamily === 'dual' ? 'selected' : ''}>IPv4 + IPv6</option>
                                         </select>
@@ -509,160 +503,439 @@ var Nat = {
                                 </div>
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label for="natProtocol" class="form-label">Protocol</label>
-                                        <select class="form-select" id="natProtocol">
-                                            <option value="tcp" ${rule && rule.protocol === 'tcp' ? 'selected' : ''}>TCP</option>
+                                        <label for="pfProtocol" class="form-label">Protocol <span class="text-danger">*</span></label>
+                                        <select class="form-select" id="pfProtocol" required>
+                                            <option value="tcp" ${rule && rule.protocol === 'tcp' ? 'selected' : 'selected'}>TCP</option>
                                             <option value="udp" ${rule && rule.protocol === 'udp' ? 'selected' : ''}>UDP</option>
                                             <option value="tcp/udp" ${rule && rule.protocol === 'tcp/udp' ? 'selected' : ''}>TCP/UDP</option>
                                             <option value="icmp" ${rule && rule.protocol === 'icmp' ? 'selected' : ''}>ICMP</option>
-                                            <option value="any" ${rule && rule.protocol === 'any' ? 'selected' : ''}>Any</option>
                                         </select>
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="natReflectionMode" class="form-label">Reflection</label>
-                                        <select class="form-select" id="natReflectionMode">
-                                            <option value="default" ${rule && rule.reflectionMode === 'default' ? 'selected' : ''}>Default</option>
+                                        <label for="pfReflectionMode" class="form-label">Reflection Mode</label>
+                                        <select class="form-select" id="pfReflectionMode">
+                                            <option value="default" ${rule && rule.reflectionMode === 'default' ? 'selected' : 'selected'}>Default</option>
                                             <option value="proxy" ${rule && rule.reflectionMode === 'proxy' ? 'selected' : ''}>Proxy</option>
                                             <option value="nat" ${rule && rule.reflectionMode === 'nat' ? 'selected' : ''}>NAT</option>
                                             <option value="disabled" ${rule && rule.reflectionMode === 'disabled' ? 'selected' : ''}>Disabled</option>
                                         </select>
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="natSchedule" class="form-label">Schedule</label>
-                                        <select class="form-select" id="natSchedule">
+                                        <label for="pfSchedule" class="form-label">Schedule</label>
+                                        <select class="form-select" id="pfSchedule">
                                             ${scheduleOptions}
                                         </select>
                                     </div>
                                 </div>
-                                <div class="alert alert-info d-none" id="natIpv6Note">
-                                    NAT is not applicable for pure IPv6. Only Outbound rules with IPv4 or dual-stack are supported.
-                                </div>
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label for="natSourceType" class="form-label">Source Type</label>
-                                        <select class="form-select" id="natSourceType">
-                                            <option value="any" ${rule && rule.sourceType === 'any' ? 'selected' : ''}>Any</option>
-                                            <option value="single" ${rule && rule.sourceType === 'single' ? 'selected' : ''}>Single</option>
+                                        <label for="pfSourceType" class="form-label">Source Type</label>
+                                        <select class="form-select" id="pfSourceType">
+                                            <option value="any" ${rule && rule.sourceType === 'any' ? 'selected' : 'selected'}>Any</option>
+                                            <option value="single" ${rule && rule.sourceType === 'single' ? 'selected' : ''}>Single IP</option>
                                             <option value="network" ${rule && rule.sourceType === 'network' ? 'selected' : ''}>Network</option>
                                             <option value="alias" ${rule && rule.sourceType === 'alias' ? 'selected' : ''}>Alias</option>
                                         </select>
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="natSourceValue" class="form-label">Source Value</label>
-                                        <input type="text" class="form-control" id="natSourceValue"
+                                        <label for="pfSourceValue" class="form-label">Source IP/Network</label>
+                                        <input type="text" class="form-control" id="pfSourceValue"
                                                value="${rule ? (rule.sourceValue || '') : ''}"
-                                               list="natAliasList"
+                                               list="pfAliasList"
                                                placeholder="IP, network, or alias">
                                     </div>
-                                    <div class="col-md-4 mb-3 nat-field-port" style="${showPorts ? '' : 'display: none;'}">
-                                        <label for="natSourcePort" class="form-label">Source Port</label>
-                                        <input type="text" class="form-control" id="natSourcePort"
+                                    <div class="col-md-4 mb-3">
+                                        <label for="pfSourcePort" class="form-label">Source Port</label>
+                                        <input type="text" class="form-control" id="pfSourcePort"
                                                value="${rule ? (rule.sourcePort || '') : ''}"
-                                               placeholder="e.g., 80">
+                                               placeholder="Optional source port">
                                     </div>
                                 </div>
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
-                                        <label for="natDestinationType" class="form-label">Destination Type</label>
-                                        <select class="form-select" id="natDestinationType">
+                                        <label for="pfDestinationType" class="form-label">Destination Type</label>
+                                        <select class="form-select" id="pfDestinationType">
                                             <option value="any" ${rule && rule.destinationType === 'any' ? 'selected' : ''}>Any</option>
-                                            <option value="single" ${rule && rule.destinationType === 'single' ? 'selected' : ''}>Single</option>
+                                            <option value="single" ${rule && rule.destinationType === 'single' ? 'selected' : 'selected'}>Single IP</option>
                                             <option value="network" ${rule && rule.destinationType === 'network' ? 'selected' : ''}>Network</option>
                                             <option value="alias" ${rule && rule.destinationType === 'alias' ? 'selected' : ''}>Alias</option>
                                         </select>
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label for="natDestinationValue" class="form-label">Destination Value</label>
-                                        <input type="text" class="form-control" id="natDestinationValue"
+                                        <label for="pfDestinationValue" class="form-label">Destination IP <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="pfDestinationValue" required
                                                value="${rule ? (rule.destinationValue || '') : ''}"
-                                               list="natAliasList"
-                                               placeholder="IP, network, or alias">
+                                               list="pfAliasList"
+                                               placeholder="External IP address">
                                     </div>
-                                    <div class="col-md-4 mb-3 nat-field-port" style="${showPorts ? '' : 'display: none;'}">
-                                        <label for="natDestinationPort" class="form-label">Destination Port</label>
-                                        <input type="text" class="form-control" id="natDestinationPort"
+                                    <div class="col-md-4 mb-3">
+                                        <label for="pfDestinationPort" class="form-label">Destination Port <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="pfDestinationPort" required
                                                value="${rule ? (rule.destinationPort || '') : ''}"
-                                               placeholder="e.g., 443">
+                                               placeholder="e.g., 80, 443">
                                     </div>
                                 </div>
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
-                                        <label for="natRedirectTargetIp" class="form-label">${isOutbound ? 'NAT Target IP (SNAT)' : 'Redirect Target IP (DNAT)'} <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" id="natRedirectTargetIp" required
+                                        <label for="pfRedirectTargetIp" class="form-label">Redirect Target IP (Internal) <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="pfRedirectTargetIp" required
                                                value="${rule ? (rule.redirectTargetIp || '') : ''}"
-                                               placeholder="${isOutbound ? 'SNAT Target IP' : 'Target IP'}">
+                                               placeholder="Internal IP address">
                                     </div>
-                                    <div class="col-md-6 mb-3 nat-field-redirect-port" style="${showRedirectPort ? '' : 'display: none;'}">
-                                        <label for="natRedirectTargetPort" class="form-label">Redirect Target Port</label>
-                                        <input type="text" class="form-control" id="natRedirectTargetPort"
+                                    <div class="col-md-6 mb-3">
+                                        <label for="pfRedirectTargetPort" class="form-label">Redirect Target Port <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="pfRedirectTargetPort" required
                                                value="${rule ? (rule.redirectTargetPort || '') : ''}"
-                                               placeholder="Target port">
+                                               placeholder="Internal port (or same as destination)">
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <label for="natDescription" class="form-label">Description</label>
-                                    <input type="text" class="form-control" id="natDescription"
+                                    <label for="pfDescription" class="form-label">Description</label>
+                                    <input type="text" class="form-control" id="pfDescription"
                                            value="${rule ? (rule.description || '') : ''}"
                                            placeholder="Optional description">
                                 </div>
                                 <div class="mb-3 form-check">
-                                    <input type="checkbox" class="form-check-input" id="natEnabled"
+                                    <input type="checkbox" class="form-check-input" id="pfEnabled"
                                            ${rule && rule.enabled !== false ? 'checked' : ''}>
-                                    <label class="form-check-label" for="natEnabled">
+                                    <label class="form-check-label" for="pfEnabled">
                                         Enabled
                                     </label>
                                 </div>
-                                <datalist id="natAliasList">
+                                <datalist id="pfAliasList">
                                     ${aliasOptions}
                                 </datalist>
                             </form>
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                            <button type="button" class="btn btn-primary" data-action="save-nat-submit">${isEdit ? 'Update' : 'Create'}</button>
+                            <button type="button" class="btn btn-primary" data-action="save-port-forward">${isEdit ? 'Update' : 'Create'}</button>
                         </div>
                     </div>
                 </div>
             </div>
         `;
 
-        $('#natRuleModal').remove();
+        $('#portForwardModal').remove();
         $('body').append(modalHtml);
-        const modal = new bootstrap.Modal(document.getElementById('natRuleModal'));
+        const modal = new bootstrap.Modal(document.getElementById('portForwardModal'));
         modal.show();
 
-        // Initialize field visibility based on type
-        this.toggleNatFieldsByType(ruleType);
-        
-        // Show/hide IPv6 note based on address family
-        const updateIpv6Note = () => {
-            const addressFamily = $('#natAddressFamily').val();
-            const type = $('#natType').val();
-            const ipv6Note = $('#natIpv6Note');
-            if (addressFamily === 'ipv6' && (type === 'port_forward' || type === 'one_to_one')) {
-                ipv6Note.removeClass('d-none');
+        // Show IPv6 warning if IPv6 selected
+        const updateIpv6Warning = () => {
+            const addressFamily = $('#pfAddressFamily').val();
+            if (addressFamily === 'ipv6' || addressFamily === 'dual') {
+                $('#pfIpv6Warning').show();
             } else {
-                ipv6Note.addClass('d-none');
+                $('#pfIpv6Warning').hide();
             }
         };
-        
-        updateIpv6Note();
-        
-        // Update fields when type changes
-        $('#natType').on('change', () => {
-            const newType = $('#natType').val();
-            this.toggleNatFieldsByType(newType);
-            updateIpv6Note();
-        });
-        
-        $('#natAddressFamily').on('change', updateIpv6Note);
+        updateIpv6Warning();
+        $('#pfAddressFamily').on('change', updateIpv6Warning);
 
-        $(document).off('click', '[data-action="save-nat-submit"]');
-        $(document).on('click', '[data-action="save-nat-submit"]', () => {
-            this.saveRule(rule ? rule.id : null);
+        $(document).off('click', '[data-action="save-port-forward"]');
+        $(document).on('click', '[data-action="save-port-forward"]', () => {
+            this.savePortForwardRule(rule ? rule.id : null);
         });
 
-        $('#natRuleModal').on('hidden.bs.modal', function() {
+        $('#portForwardModal').on('hidden.bs.modal', function() {
+            $(this).remove();
+        });
+    },
+
+    showOneToOneModal: function(rule) {
+        const isEdit = rule !== null;
+        const aliasOptions = this.aliases.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
+        
+        const interfaceOptions = this.interfaces.map(i => 
+            `<option value="${i.interface}" ${rule && rule.interface === i.interface ? 'selected' : ''}>${i.name} (${i.interface})</option>`
+        ).join('');
+
+        const modalHtml = `
+            <div class="modal fade" id="oneToOneModal" tabindex="-1" aria-labelledby="oneToOneModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="oneToOneModalLabel">${isEdit ? 'Edit' : 'Add'} 1:1 NAT Rule</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="oneToOneForm">
+                                <div class="alert alert-warning" id="otoIpv6Warning" style="display: none;">
+                                    <strong>Note:</strong> IPv6 does not support 1:1 NAT. Use firewall rules instead.
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="otoInterface" class="form-label">Interface <span class="text-danger">*</span></label>
+                                        <select class="form-select" id="otoInterface" required>
+                                            <option value="" disabled ${!rule ? 'selected' : ''}>Select Interface...</option>
+                                            ${interfaceOptions}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="otoAddressFamily" class="form-label">Address Family</label>
+                                        <select class="form-select" id="otoAddressFamily">
+                                            <option value="ipv4" ${rule && rule.addressFamily === 'ipv4' ? 'selected' : 'selected'}>IPv4</option>
+                                            <option value="ipv6" ${rule && rule.addressFamily === 'ipv6' ? 'selected' : ''}>IPv6</option>
+                                            <option value="dual" ${rule && rule.addressFamily === 'dual' ? 'selected' : ''}>IPv4 + IPv6</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="otoSourceValue" class="form-label">Source IP (External) <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="otoSourceValue" required
+                                               value="${rule ? (rule.sourceValue || '') : ''}"
+                                               placeholder="External IP address">
+                                        <small class="form-text text-muted">The external IP address that will be mapped</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="otoDestinationValue" class="form-label">Destination IP (Internal) <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="otoDestinationValue" required
+                                               value="${rule ? (rule.destinationValue || '') : ''}"
+                                               placeholder="Internal IP address">
+                                        <small class="form-text text-muted">The internal IP address to map to</small>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="otoRedirectTargetIp" class="form-label">Redirect Target IP <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="otoRedirectTargetIp" required
+                                               value="${rule ? (rule.redirectTargetIp || '') : ''}"
+                                               placeholder="Target IP address">
+                                        <small class="form-text text-muted">The IP address where traffic will be redirected</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="otoReflectionMode" class="form-label">Reflection Mode</label>
+                                        <select class="form-select" id="otoReflectionMode">
+                                            <option value="default" ${rule && rule.reflectionMode === 'default' ? 'selected' : 'selected'}>Default</option>
+                                            <option value="proxy" ${rule && rule.reflectionMode === 'proxy' ? 'selected' : ''}>Proxy</option>
+                                            <option value="nat" ${rule && rule.reflectionMode === 'nat' ? 'selected' : ''}>NAT</option>
+                                            <option value="disabled" ${rule && rule.reflectionMode === 'disabled' ? 'selected' : ''}>Disabled</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="otoDescription" class="form-label">Description</label>
+                                    <input type="text" class="form-control" id="otoDescription"
+                                           value="${rule ? (rule.description || '') : ''}"
+                                           placeholder="Optional description">
+                                </div>
+                                <div class="mb-3 form-check">
+                                    <input type="checkbox" class="form-check-input" id="otoEnabled"
+                                           ${rule && rule.enabled !== false ? 'checked' : ''}>
+                                    <label class="form-check-label" for="otoEnabled">
+                                        Enabled
+                                    </label>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" data-action="save-one-to-one">${isEdit ? 'Update' : 'Create'}</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        $('#oneToOneModal').remove();
+        $('body').append(modalHtml);
+        const modal = new bootstrap.Modal(document.getElementById('oneToOneModal'));
+        modal.show();
+
+        // Show IPv6 warning if IPv6 selected
+        const updateIpv6Warning = () => {
+            const addressFamily = $('#otoAddressFamily').val();
+            if (addressFamily === 'ipv6' || addressFamily === 'dual') {
+                $('#otoIpv6Warning').show();
+            } else {
+                $('#otoIpv6Warning').hide();
+            }
+        };
+        updateIpv6Warning();
+        $('#otoAddressFamily').on('change', updateIpv6Warning);
+
+        $(document).off('click', '[data-action="save-one-to-one"]');
+        $(document).on('click', '[data-action="save-one-to-one"]', () => {
+            this.saveOneToOneRule(rule ? rule.id : null);
+        });
+
+        $('#oneToOneModal').on('hidden.bs.modal', function() {
+            $(this).remove();
+        });
+    },
+
+    showOutboundModal: function(rule) {
+        const isEdit = rule !== null;
+        const aliasOptions = this.aliases.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
+        
+        const interfaceOptions = this.interfaces.map(i => 
+            `<option value="${i.interface}" ${rule && rule.interface === i.interface ? 'selected' : ''}>${i.name} (${i.interface})</option>`
+        ).join('');
+
+        const scheduleOptions = [
+            '<option value="">None (Always Active)</option>',
+            ...this.schedules.map(s => `<option value="${s.id}" ${rule && rule.scheduleId === s.id ? 'selected' : ''}>${s.name}</option>`)
+        ].join('');
+
+        const modalHtml = `
+            <div class="modal fade" id="outboundModal" tabindex="-1" aria-labelledby="outboundModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-xl">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="outboundModalLabel">${isEdit ? 'Edit' : 'Add'} Outbound NAT Rule</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="outboundForm">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="obInterface" class="form-label">Interface <span class="text-danger">*</span></label>
+                                        <select class="form-select" id="obInterface" required>
+                                            <option value="" disabled ${!rule ? 'selected' : ''}>Select Interface...</option>
+                                            ${interfaceOptions}
+                                        </select>
+                                        <small class="form-text text-muted">Source interface for outbound traffic</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="obAddressFamily" class="form-label">Address Family</label>
+                                        <select class="form-select" id="obAddressFamily">
+                                            <option value="ipv4" ${rule && rule.addressFamily === 'ipv4' ? 'selected' : 'selected'}>IPv4</option>
+                                            <option value="ipv6" ${rule && rule.addressFamily === 'ipv6' ? 'selected' : ''}>IPv6</option>
+                                            <option value="dual" ${rule && rule.addressFamily === 'dual' ? 'selected' : ''}>IPv4 + IPv6</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label for="obProtocol" class="form-label">Protocol</label>
+                                        <select class="form-select" id="obProtocol">
+                                            <option value="tcp" ${rule && rule.protocol === 'tcp' ? 'selected' : ''}>TCP</option>
+                                            <option value="udp" ${rule && rule.protocol === 'udp' ? 'selected' : ''}>UDP</option>
+                                            <option value="tcp/udp" ${rule && rule.protocol === 'tcp/udp' ? 'selected' : ''}>TCP/UDP</option>
+                                            <option value="icmp" ${rule && rule.protocol === 'icmp' ? 'selected' : ''}>ICMP</option>
+                                            <option value="any" ${rule && rule.protocol === 'any' ? 'selected' : 'selected'}>Any</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="obReflectionMode" class="form-label">Reflection Mode</label>
+                                        <select class="form-select" id="obReflectionMode">
+                                            <option value="default" ${rule && rule.reflectionMode === 'default' ? 'selected' : 'selected'}>Default</option>
+                                            <option value="proxy" ${rule && rule.reflectionMode === 'proxy' ? 'selected' : ''}>Proxy</option>
+                                            <option value="nat" ${rule && rule.reflectionMode === 'nat' ? 'selected' : ''}>NAT</option>
+                                            <option value="disabled" ${rule && rule.reflectionMode === 'disabled' ? 'selected' : ''}>Disabled</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="obSchedule" class="form-label">Schedule</label>
+                                        <select class="form-select" id="obSchedule">
+                                            ${scheduleOptions}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label for="obSourceType" class="form-label">Source Type</label>
+                                        <select class="form-select" id="obSourceType">
+                                            <option value="any" ${rule && rule.sourceType === 'any' ? 'selected' : 'selected'}>Any</option>
+                                            <option value="single" ${rule && rule.sourceType === 'single' ? 'selected' : ''}>Single IP</option>
+                                            <option value="network" ${rule && rule.sourceType === 'network' ? 'selected' : ''}>Network</option>
+                                            <option value="alias" ${rule && rule.sourceType === 'alias' ? 'selected' : ''}>Alias</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="obSourceValue" class="form-label">Source IP/Network</label>
+                                        <input type="text" class="form-control" id="obSourceValue"
+                                               value="${rule ? (rule.sourceValue || '') : ''}"
+                                               list="obAliasList"
+                                               placeholder="IP, network, or alias">
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="obSourcePort" class="form-label">Source Port</label>
+                                        <input type="text" class="form-control" id="obSourcePort"
+                                               value="${rule ? (rule.sourcePort || '') : ''}"
+                                               placeholder="Optional source port">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label for="obDestinationType" class="form-label">Destination Type</label>
+                                        <select class="form-select" id="obDestinationType">
+                                            <option value="any" ${rule && rule.destinationType === 'any' ? 'selected' : 'selected'}>Any</option>
+                                            <option value="single" ${rule && rule.destinationType === 'single' ? 'selected' : ''}>Single IP</option>
+                                            <option value="network" ${rule && rule.destinationType === 'network' ? 'selected' : ''}>Network</option>
+                                            <option value="alias" ${rule && rule.destinationType === 'alias' ? 'selected' : ''}>Alias</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="obDestinationValue" class="form-label">Destination IP/Network</label>
+                                        <input type="text" class="form-control" id="obDestinationValue"
+                                               value="${rule ? (rule.destinationValue || '') : ''}"
+                                               list="obAliasList"
+                                               placeholder="IP, network, or alias">
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="obDestinationPort" class="form-label">Destination Port</label>
+                                        <input type="text" class="form-control" id="obDestinationPort"
+                                               value="${rule ? (rule.destinationPort || '') : ''}"
+                                               placeholder="Optional destination port">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="obRedirectTargetIp" class="form-label">NAT Target IP (SNAT) <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="obRedirectTargetIp" required
+                                               value="${rule ? (rule.redirectTargetIp || '') : ''}"
+                                               placeholder="Interface IP or specific IP address">
+                                        <small class="form-text text-muted">The IP address to use as the source (SNAT target)</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="obRedirectTargetPort" class="form-label">NAT Target Port</label>
+                                        <input type="text" class="form-control" id="obRedirectTargetPort"
+                                               value="${rule ? (rule.redirectTargetPort || '') : ''}"
+                                               placeholder="Optional port translation">
+                                        <small class="form-text text-muted">Optional: Translate source port</small>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="obDescription" class="form-label">Description</label>
+                                    <input type="text" class="form-control" id="obDescription"
+                                           value="${rule ? (rule.description || '') : ''}"
+                                           placeholder="Optional description">
+                                </div>
+                                <div class="mb-3 form-check">
+                                    <input type="checkbox" class="form-check-input" id="obEnabled"
+                                           ${rule && rule.enabled !== false ? 'checked' : ''}>
+                                    <label class="form-check-label" for="obEnabled">
+                                        Enabled
+                                    </label>
+                                </div>
+                                <datalist id="obAliasList">
+                                    ${aliasOptions}
+                                </datalist>
+                            </form>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" data-action="save-outbound">${isEdit ? 'Update' : 'Create'}</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        $('#outboundModal').remove();
+        $('body').append(modalHtml);
+        const modal = new bootstrap.Modal(document.getElementById('outboundModal'));
+        modal.show();
+
+        $(document).off('click', '[data-action="save-outbound"]');
+        $(document).on('click', '[data-action="save-outbound"]', () => {
+            this.saveOutboundRule(rule ? rule.id : null);
+        });
+
+        $('#outboundModal').on('hidden.bs.modal', function() {
             $(this).remove();
         });
     },
@@ -672,7 +945,16 @@ var Nat = {
             const response = await Monolith.API.get(`/firewall/nat/${id}`);
             if (response.Success || response.success) {
                 const rule = this.normalizeRule(response.Data || response.data);
-                this.showRuleModal(rule, rule.type);
+                // Call type-specific modal based on rule type
+                if (rule.type === 'port_forward') {
+                    this.showPortForwardModal(rule);
+                } else if (rule.type === 'one_to_one') {
+                    this.showOneToOneModal(rule);
+                } else if (rule.type === 'outbound') {
+                    this.showOutboundModal(rule);
+                } else {
+                    this.showMessage('Unknown NAT rule type', 'danger');
+                }
             } else {
                 this.showMessage('Failed to load NAT rule', 'danger');
             }
@@ -682,38 +964,38 @@ var Nat = {
         }
     },
 
-    saveRule: async function(id) {
-        const form = document.getElementById('natRuleForm');
+    savePortForwardRule: async function(id) {
+        const form = document.getElementById('portForwardForm');
         if (!form || !form.checkValidity()) {
             if (form) form.reportValidity();
             return;
         }
 
-        const scheduleId = $('#natSchedule').val();
-        const rule = {
-            type: $('#natType').val(),
-            interface: $('#natInterface').val(),
-            addressFamily: $('#natAddressFamily').val(),
-            protocol: $('#natProtocol').val(),
-            sourceType: $('#natSourceType').val(),
-            sourceValue: $('#natSourceValue').val().trim() || null,
-            sourcePort: $('#natSourcePort').val().trim() || null,
-            destinationType: $('#natDestinationType').val(),
-            destinationValue: $('#natDestinationValue').val().trim() || null,
-            destinationPort: $('#natDestinationPort').val().trim() || null,
-            redirectTargetIp: $('#natRedirectTargetIp').val().trim(),
-            redirectTargetPort: $('#natRedirectTargetPort').val().trim() || null,
-            reflectionMode: $('#natReflectionMode').val(),
-            description: $('#natDescription').val().trim(),
-            enabled: $('#natEnabled').is(':checked'),
-            scheduleId: scheduleId ? parseInt(scheduleId) : null
-        };
-
-        // Guard IPv6 NAT cases
-        if (rule.addressFamily === 'ipv6' && (rule.type === 'port_forward' || rule.type === 'one_to_one')) {
-            Monolith.UI.toast('IPv6 does not support port forward / 1:1 NAT. Use firewall rules instead.', 'warning');
+        const addressFamily = $('#pfAddressFamily').val();
+        if (addressFamily === 'ipv6' || addressFamily === 'dual') {
+            Monolith.UI.toast('IPv6 does not support port forwarding. Use firewall rules instead.', 'warning');
             return;
         }
+
+        const scheduleId = $('#pfSchedule').val();
+        const rule = {
+            type: 'port_forward', // Hard-coded
+            interface: $('#pfInterface').val(),
+            addressFamily: addressFamily,
+            protocol: $('#pfProtocol').val(),
+            sourceType: $('#pfSourceType').val(),
+            sourceValue: $('#pfSourceValue').val().trim() || null,
+            sourcePort: $('#pfSourcePort').val().trim() || null,
+            destinationType: $('#pfDestinationType').val(),
+            destinationValue: $('#pfDestinationValue').val().trim(),
+            destinationPort: $('#pfDestinationPort').val().trim(),
+            redirectTargetIp: $('#pfRedirectTargetIp').val().trim(),
+            redirectTargetPort: $('#pfRedirectTargetPort').val().trim(),
+            reflectionMode: $('#pfReflectionMode').val(),
+            description: $('#pfDescription').val().trim(),
+            enabled: $('#pfEnabled').is(':checked'),
+            scheduleId: scheduleId ? parseInt(scheduleId) : null
+        };
 
         try {
             let response;
@@ -724,16 +1006,119 @@ var Nat = {
             }
 
             if (response.Success || response.success) {
-                bootstrap.Modal.getInstance(document.getElementById('natRuleModal')).hide();
-                this.showMessage(id ? 'NAT rule updated successfully' : 'NAT rule created successfully', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('portForwardModal')).hide();
+                this.showMessage(id ? 'Port forwarding rule updated successfully' : 'Port forwarding rule created successfully', 'success');
                 this.loadRules();
                 this.markPendingChanges();
             } else {
-                this.showMessage(response.error || response.Error || 'Failed to save NAT rule', 'danger');
+                this.showMessage(response.error || response.Error || 'Failed to save port forwarding rule', 'danger');
             }
         } catch (error) {
-            console.error('Error saving NAT rule:', error);
-            this.showMessage('Failed to save NAT rule', 'danger');
+            console.error('Error saving port forwarding rule:', error);
+            this.showMessage('Failed to save port forwarding rule', 'danger');
+        }
+    },
+
+    saveOneToOneRule: async function(id) {
+        const form = document.getElementById('oneToOneForm');
+        if (!form || !form.checkValidity()) {
+            if (form) form.reportValidity();
+            return;
+        }
+
+        const addressFamily = $('#otoAddressFamily').val();
+        if (addressFamily === 'ipv6' || addressFamily === 'dual') {
+            Monolith.UI.toast('IPv6 does not support 1:1 NAT. Use firewall rules instead.', 'warning');
+            return;
+        }
+
+        const rule = {
+            type: 'one_to_one', // Hard-coded
+            interface: $('#otoInterface').val(),
+            addressFamily: addressFamily,
+            protocol: 'any', // Default for 1:1 NAT
+            sourceType: 'single', // Always single IP for 1:1
+            sourceValue: $('#otoSourceValue').val().trim(),
+            sourcePort: null, // No ports for 1:1
+            destinationType: 'single', // Always single IP for 1:1
+            destinationValue: $('#otoDestinationValue').val().trim(),
+            destinationPort: null, // No ports for 1:1
+            redirectTargetIp: $('#otoRedirectTargetIp').val().trim(),
+            redirectTargetPort: null, // No ports for 1:1
+            reflectionMode: $('#otoReflectionMode').val(),
+            description: $('#otoDescription').val().trim(),
+            enabled: $('#otoEnabled').is(':checked'),
+            scheduleId: null // Schedules not typically used for 1:1 NAT
+        };
+
+        try {
+            let response;
+            if (id) {
+                response = await Monolith.API.put(`/firewall/nat/${id}`, rule);
+            } else {
+                response = await Monolith.API.post('/firewall/nat', rule);
+            }
+
+            if (response.Success || response.success) {
+                bootstrap.Modal.getInstance(document.getElementById('oneToOneModal')).hide();
+                this.showMessage(id ? '1:1 NAT rule updated successfully' : '1:1 NAT rule created successfully', 'success');
+                this.loadRules();
+                this.markPendingChanges();
+            } else {
+                this.showMessage(response.error || response.Error || 'Failed to save 1:1 NAT rule', 'danger');
+            }
+        } catch (error) {
+            console.error('Error saving 1:1 NAT rule:', error);
+            this.showMessage('Failed to save 1:1 NAT rule', 'danger');
+        }
+    },
+
+    saveOutboundRule: async function(id) {
+        const form = document.getElementById('outboundForm');
+        if (!form || !form.checkValidity()) {
+            if (form) form.reportValidity();
+            return;
+        }
+
+        const scheduleId = $('#obSchedule').val();
+        const rule = {
+            type: 'outbound', // Hard-coded
+            interface: $('#obInterface').val(),
+            addressFamily: $('#obAddressFamily').val(),
+            protocol: $('#obProtocol').val(),
+            sourceType: $('#obSourceType').val(),
+            sourceValue: $('#obSourceValue').val().trim() || null,
+            sourcePort: $('#obSourcePort').val().trim() || null,
+            destinationType: $('#obDestinationType').val(),
+            destinationValue: $('#obDestinationValue').val().trim() || null,
+            destinationPort: $('#obDestinationPort').val().trim() || null,
+            redirectTargetIp: $('#obRedirectTargetIp').val().trim(),
+            redirectTargetPort: $('#obRedirectTargetPort').val().trim() || null,
+            reflectionMode: $('#obReflectionMode').val(),
+            description: $('#obDescription').val().trim(),
+            enabled: $('#obEnabled').is(':checked'),
+            scheduleId: scheduleId ? parseInt(scheduleId) : null
+        };
+
+        try {
+            let response;
+            if (id) {
+                response = await Monolith.API.put(`/firewall/nat/${id}`, rule);
+            } else {
+                response = await Monolith.API.post('/firewall/nat', rule);
+            }
+
+            if (response.Success || response.success) {
+                bootstrap.Modal.getInstance(document.getElementById('outboundModal')).hide();
+                this.showMessage(id ? 'Outbound NAT rule updated successfully' : 'Outbound NAT rule created successfully', 'success');
+                this.loadRules();
+                this.markPendingChanges();
+            } else {
+                this.showMessage(response.error || response.Error || 'Failed to save outbound NAT rule', 'danger');
+            }
+        } catch (error) {
+            console.error('Error saving outbound NAT rule:', error);
+            this.showMessage('Failed to save outbound NAT rule', 'danger');
         }
     },
 
@@ -809,38 +1194,6 @@ var Nat = {
         }
     },
 
-    toggleNatFieldsByType: function(type) {
-        // Show/hide fields based on NAT type
-        const showPorts = type === 'port_forward' || type === 'outbound';
-        const showRedirectPort = type === 'port_forward';
-        const isOneToOne = type === 'one_to_one';
-        const isOutbound = type === 'outbound';
-
-        // Toggle port fields
-        $('.nat-field-port').toggle(showPorts);
-        
-        // Toggle redirect target port (only for port forward)
-        $('.nat-field-redirect-port').toggle(showRedirectPort);
-
-        // Update redirect target label
-        const redirectLabel = $('#natRedirectTargetIp').closest('.mb-3').find('label');
-        if (redirectLabel.length) {
-            if (isOutbound) {
-                redirectLabel.html('NAT Target IP (SNAT) <span class="text-danger">*</span>');
-                $('#natRedirectTargetIp').attr('placeholder', 'SNAT Target IP');
-            } else {
-                redirectLabel.html('Redirect Target IP (DNAT) <span class="text-danger">*</span>');
-                $('#natRedirectTargetIp').attr('placeholder', 'Target IP');
-            }
-        }
-
-        // Update modal title
-        const modalTitle = $('#natRuleModalLabel');
-        if (modalTitle.length) {
-            const isEdit = modalTitle.text().includes('Edit');
-            modalTitle.text(`${isEdit ? 'Edit' : 'Add'} ${this.getTypeLabel(type)} NAT Rule`);
-        }
-    }
 };
 
 // Register with Monolith.Pages.Firewall

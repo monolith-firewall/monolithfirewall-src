@@ -38,19 +38,17 @@
         });
 
         function loadNetworkInterfaces() {
-            // Check if network package is installed
-            Monolith.API.get('/api/setup/packages')
-                .then(response => {
-                    const data = response.data || response.Data || response;
-                    const packages = data.packages || data.Packages || [];
-                    const hasNetworkPackage = packages.some(p => (p.packageId || p.PackageId) === 'monolith-network');
-                    
-                    if (!hasNetworkPackage) {
+            // Check if any package provides network interface management
+            // Look for a package that provides the 'interfaces' module
+            Monolith.Packages.findPackageByModule('interfaces')
+                .then(packageId => {
+                    if (!packageId) {
+                        // No package provides interface management
                         $('#network-package-warning').show();
                         $('#network-setup-container').html(`
                             <div class="alert alert-info">
                                 <i class="bi bi-info-circle me-2"></i>
-                                The network package will be available after installation. You can configure interfaces later in the Network settings.
+                                Network interface management will be available after installing a package that provides this functionality. You can configure interfaces later in the Network settings.
                             </div>
                         `);
                         return;
@@ -81,11 +79,11 @@
                         });
                 })
                 .catch(err => {
-                    console.error('Failed to check packages:', err);
+                    console.error('Failed to check for network interface management:', err);
                     $('#network-setup-container').html(`
                         <div class="alert alert-warning">
                             <i class="bi bi-exclamation-triangle me-2"></i>
-                            Unable to verify network package. You can configure interfaces later in Network settings.
+                            Unable to verify network interface management availability. You can configure interfaces later in Network settings.
                         </div>
                     `);
                 });

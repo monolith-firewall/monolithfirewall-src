@@ -1,3 +1,4 @@
+using System;
 using System.IO.Compression;
 using System.Text.Json;
 using Monolith.FireWall.Common.Interfaces;
@@ -110,6 +111,25 @@ public sealed class PackageInstaller
 
             Directory.CreateDirectory(targetDir);
             CopyDirectory(stagingDir, targetDir);
+
+            // Install bundled deb packages BEFORE setting package state
+            var debInstallResult = await InstallBundledDebsAsync(targetDir, manifest, cancellationToken);
+            if (!debInstallResult.Success)
+            {
+                // Clean up on failure
+                try
+                {
+                    if (Directory.Exists(targetDir))
+                    {
+                        Directory.Delete(targetDir, recursive: true);
+                    }
+                }
+                catch
+                {
+                    // Best effort cleanup
+                }
+                return debInstallResult;
+            }
 
             await _stateStore.SetPackageInstalledAsync(manifest.Id, manifest.Version, "local", log: false);
             await _loggingManager.LogMonolithAsync(
@@ -360,8 +380,16 @@ public sealed class PackageInstaller
             var json = await File.ReadAllTextAsync(manifestPath, cancellationToken);
             return JsonSerializer.Deserialize<PackageManifest>(json, new JsonSerializerOptions
             {
-                PropertyNameCaseInsensitive = true
+                PropertyNameCaseInsensitive = true,
+                AllowTrailingCommas = true,
+                ReadCommentHandling = JsonCommentHandling.Skip
             });
+        }
+        catch (JsonException ex)
+        {
+            // Log the error for debugging
+            System.Diagnostics.Debug.WriteLine($"Failed to parse manifest.json: {ex.Message}");
+            return null;
         }
         catch
         {
@@ -504,6 +532,222 @@ public sealed class PackageInstaller
         {
             _logger.LogError(ex, $"Failed to sync database tables for package {packageInfo.Definition.Id}: {ex.Message}");
             // Don't fail the installation if table sync fails - it can be done later
+        }
+    }
+
+    /// <summary>
+    /// Installs bundled .deb packages from the package's debs/ directory.
+    /// </summary>
+    private async Task WaitForDpkgLockAsync(CancellationToken cancellationToken)
+    {
+        const int maxWaitSeconds = 300; // 5 minutes max wait
+        const int checkIntervalMs = 1000; // Check every second
+        var lockPath = "/var/lib/dpkg/lock-frontend";
+        var lockFile = "/var/lib/dpkg/lock";
+        var startTime = DateTime.UtcNow;
+
+        while ((DateTime.UtcNow - startTime).TotalSeconds < maxWaitSeconds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Check if lock files exist and are locked
+            var hasLock = false;
+            
+            // Check for lock-frontend
+            if (File.Exists(lockPath))
+            {
+                try
+                {
+                    // Try to check if a process is holding the lock using lsof (more reliable than fuser)
+                    var checkCmd = new PlatformCommand
+                    {
+                        FileName = "lsof",
+                        Arguments = $"{lockPath} 2>/dev/null || true",
+                        TimeoutMs = 5000,
+                        UseSudo = false
+                    };
+                    var lsofResult = await _commandRunner.RunAsync(checkCmd, cancellationToken);
+                    if (lsofResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(lsofResult.StdOut))
+                    {
+                        hasLock = true;
+                    }
+                }
+                catch
+                {
+                    // lsof might not be available, check if file is locked by trying to open it exclusively
+                    try
+                    {
+                        using var fs = File.Open(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                        fs.Close();
+                    }
+                    catch (IOException)
+                    {
+                        hasLock = true;
+                    }
+                }
+            }
+
+            // Check for main lock file
+            if (!hasLock && File.Exists(lockFile))
+            {
+                try
+                {
+                    using var fs = File.Open(lockFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (IOException)
+                {
+                    hasLock = true;
+                }
+            }
+
+            // Check for running dpkg/apt processes
+            if (!hasLock)
+            {
+                var psCmd = new PlatformCommand
+                {
+                    FileName = "pgrep",
+                    Arguments = "-f '(dpkg|apt-get|apt)'",
+                    TimeoutMs = 5000,
+                    UseSudo = false
+                };
+                var psResult = await _commandRunner.RunAsync(psCmd, cancellationToken);
+                if (psResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(psResult.StdOut))
+                {
+                    hasLock = true;
+                }
+            }
+
+            if (!hasLock)
+            {
+                // No locks found, we can proceed
+                return;
+            }
+
+            // Wait a bit and check again
+            _logger.LogInformation("Waiting for dpkg lock to be released...");
+            await Task.Delay(checkIntervalMs, cancellationToken);
+        }
+
+        // If we get here, we've waited too long
+        _logger.LogWarning("Timeout waiting for dpkg lock after 5 minutes. Proceeding anyway...");
+    }
+
+    private async Task<PackageInstallResult> InstallBundledDebsAsync(
+        string packageDir,
+        PackageManifest manifest,
+        CancellationToken cancellationToken)
+    {
+        if (manifest.BundledDebs == null || manifest.BundledDebs.Length == 0)
+        {
+            _logger.LogInformation($"No bundled deb packages to install for {manifest.Id}");
+            return PackageInstallResult.Ok(manifest, false, false);
+        }
+
+        var debsDir = Path.Combine(packageDir, "debs");
+        if (!Directory.Exists(debsDir))
+        {
+            _logger.LogWarning($"Bundled debs directory not found at {debsDir}, skipping deb installation");
+            return PackageInstallResult.Ok(manifest, false, false);
+        }
+
+        var debFiles = new List<string>();
+        foreach (var bundledDeb in manifest.BundledDebs)
+        {
+            var debPath = Path.Combine(debsDir, bundledDeb.FileName);
+            if (!File.Exists(debPath))
+            {
+                return PackageInstallResult.Fail($"Bundled deb file not found: {bundledDeb.FileName} (expected at {debPath})");
+            }
+            debFiles.Add(debPath);
+        }
+
+        if (debFiles.Count == 0)
+        {
+            _logger.LogInformation($"No deb files found in {debsDir}");
+            return PackageInstallResult.Ok(manifest, false, false);
+        }
+
+        try
+        {
+            // Wait for any existing dpkg processes to complete before installing
+            await WaitForDpkgLockAsync(cancellationToken);
+            
+            _logger.LogInformation($"Installing {debFiles.Count} bundled deb package(s) for {manifest.Id}...");
+
+            // Install deb packages using dpkg
+            // Quote each path to handle spaces
+            var debList = string.Join(" ", debFiles.Select(f => $"\"{f}\""));
+            
+            // Set environment variables for non-interactive installation
+            var envVars = new Dictionary<string, string>
+            {
+                ["DEBIAN_FRONTEND"] = "noninteractive",
+                ["APT_LISTBUGS_FRONTEND"] = "none",
+                ["APT_LISTCHANGES_FRONTEND"] = "none"
+            };
+            
+            var cmd = new PlatformCommand
+            {
+                FileName = "dpkg",
+                Arguments = $"--force-confdef --force-confold -i {debList}",
+                TimeoutMs = 300_000, // 5 minutes
+                UseSudo = true,
+                EnvironmentVariables = envVars
+            };
+
+            var result = await _commandRunner.RunAsync(cmd, cancellationToken);
+
+            if (result.ExitCode != 0)
+            {
+                // Try to fix broken dependencies
+                _logger.LogInformation("Attempting to fix broken dependencies with apt-get install -f...");
+                var fixEnvVars = new Dictionary<string, string>
+                {
+                    ["DEBIAN_FRONTEND"] = "noninteractive",
+                    ["APT_LISTBUGS_FRONTEND"] = "none",
+                    ["APT_LISTCHANGES_FRONTEND"] = "none"
+                };
+                
+                var fixCmd = new PlatformCommand
+                {
+                    FileName = "apt-get",
+                    Arguments = "install -f -y",
+                    TimeoutMs = 300_000,
+                    UseSudo = true,
+                    EnvironmentVariables = fixEnvVars
+                };
+                
+                var fixResult = await _commandRunner.RunAsync(fixCmd, cancellationToken);
+                if (fixResult.ExitCode != 0)
+                {
+                    var errorMsg = result.StdErr ?? fixResult.StdErr ?? "Unknown error";
+                    return PackageInstallResult.Fail(
+                        $"Failed to install bundled deb packages. dpkg exit: {result.ExitCode}, " +
+                        $"apt-get fix exit: {fixResult.ExitCode}. Error: {errorMsg}");
+                }
+            }
+
+            _logger.LogInformation($"Successfully installed {debFiles.Count} bundled deb package(s)");
+            await _loggingManager.LogMonolithAsync(
+                "Package",
+                "info",
+                "PackageInstaller",
+                $"Installed {debFiles.Count} bundled deb packages for {manifest.Id}",
+                null,
+                null,
+                new Dictionary<string, object>
+                {
+                    ["packageId"] = manifest.Id,
+                    ["debCount"] = debFiles.Count,
+                    ["debPackages"] = string.Join(", ", manifest.BundledDebs.Select(b => b.PackageName))
+                });
+
+            return PackageInstallResult.Ok(manifest, false, false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Failed to install bundled deb packages for {manifest.Id}");
+            return PackageInstallResult.Fail($"Failed to install bundled deb packages: {ex.Message}");
         }
     }
 }

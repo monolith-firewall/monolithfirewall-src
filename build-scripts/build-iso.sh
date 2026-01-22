@@ -484,7 +484,9 @@ DEB_DEPENDS=$(dpkg-deb -f "$DEB_FILE" Depends | sed 's/,/\n/g' | sed 's/|/\n/g' 
 
 # Required packages from debian/control + SSH + .NET Runtime
 # Note: .NET 10.0 runtime should be downloaded separately and included, or installed from Microsoft repo
-REQUIRED_PACKAGES="openssh-server openssh-client nftables iproute2 systemd sqlite3 sudo procps iputils-ping bridge-utils vlan ifupdown2 isc-dhcp-client tcpdump mtr traceroute iptables socat ethtool pciutils dbus-user-session"
+# Note: DHCP/DNS packages (isc-dhcp-server, bind9, etc.) are now bundled in monolith-network.mfwpkg
+#       and will be installed automatically when the package is installed. No need to include them here.
+REQUIRED_PACKAGES="openssh-server openssh-client nftables iproute2 systemd sqlite3 sudo procps iputils-ping bridge-utils vlan ifupdown2 tcpdump mtr traceroute iptables socat ethtool pciutils dbus-user-session"
 
 # Combine all required packages
 ALL_PACKAGES="$REQUIRED_PACKAGES"

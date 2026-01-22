@@ -7,7 +7,8 @@ Monolith.Pages.Groups = {
     allPermissions: [],
     currentGroup: null,
 
-    init: function() {
+    init: async function() {
+        await this.loadPermissionCategories();
         this.loadGroups();
         this.loadAllPermissions();
         this.setupEventHandlers();
@@ -216,10 +217,9 @@ Monolith.Pages.Groups = {
     },
 
     renderPermissionsList: function(selectedPerms) {
-        // Group permissions by category
-        const categories = {
+        // Use cached categories (loaded in init)
+        const categories = this.permissionCategories || {
             'System': ['system.*', 'system.users.*', 'system.settings.*'],
-            'Network': ['network.*', 'network.dhcp.*', 'network.dns.*', 'network.firewall.*'],
             'Packages': ['packages.*', 'packages.install', 'packages.uninstall']
         };
 

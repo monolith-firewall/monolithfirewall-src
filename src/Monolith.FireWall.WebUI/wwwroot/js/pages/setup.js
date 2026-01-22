@@ -433,42 +433,16 @@ const SetupWizard = {
     },
 
     savePackageConfiguration: async function(packageId, pageId, data) {
-        // Save package-specific configuration via module API endpoints
+        // Save package-specific configuration via generic module API endpoints
         try {
             let response;
             
-            if (packageId === 'monolith-network' && pageId === 'dhcp') {
-                // Save DHCP configuration
-                if (data.enabled && data.interface) {
-                    // Update interface DHCP configuration
-                    response = await Monolith.API.post(`/api/packages/${packageId}/modules/${pageId}/update-interface`, {
-                        interface: data.interface,
-                        enabled: data.enabled,
-                        poolStart: data.poolStart,
-                        poolEnd: data.poolEnd,
-                        gateway: data.gateway,
-                        dns1: data.dnsServers && data.dnsServers.length > 0 ? data.dnsServers[0] : '',
-                        dns2: data.dnsServers && data.dnsServers.length > 1 ? data.dnsServers[1] : '',
-                        dns3: data.dnsServers && data.dnsServers.length > 2 ? data.dnsServers[2] : '',
-                        dns4: data.dnsServers && data.dnsServers.length > 3 ? data.dnsServers[3] : '',
-                        leaseTime: data.leaseTime || 7200
-                    });
-                } else {
-                    // Disable DHCP
-                    response = await Monolith.API.post(`/api/packages/${packageId}/modules/${pageId}/update-settings`, {
-                        enabled: false
-                    });
-                }
-            } else if (packageId === 'monolith-network' && pageId === 'dns') {
-                // Save DNS configuration
-                response = await Monolith.API.post(`/api/packages/${packageId}/modules/${pageId}/update-settings`, {
-                    enabled: data.enabled || false,
-                    forwarders: data.forwarders || [],
-                    localDomain: data.localDomain || null,
-                    dnssecEnabled: data.dnssecEnabled !== undefined ? data.dnssecEnabled : true
-                });
-            } else {
-                // Generic package setup endpoint
+            // Use generic package module API endpoint
+            // The package/module will handle the specific configuration format
+            response = await Monolith.API.post(`/api/packages/${packageId}/modules/${pageId}/update-settings`, data);
+            
+            // If the generic endpoint doesn't work, try the setup-specific endpoint as fallback
+            if (!response || response.error || (response.success === false)) {
                 response = await Monolith.API.post(`/api/setup/package/${packageId}/${pageId}`, data);
             }
             

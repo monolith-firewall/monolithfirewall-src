@@ -1,3 +1,59 @@
+monolith-firewall (1.0.0-20260122-154141) unstable; urgency=medium
+
+  * Automated build with timestamp versioning
+  * Build timestamp: 2026-01-22 14:41:41 UTC
+
+ -- Monolith FireWall Team <dev@monolithfirewall.org>  Thu, 22 Jan 2026 15:41:41 +0100
+
+monolith-firewall (1.0.0-20260122-152005) unstable; urgency=medium
+
+  * Automated build with timestamp versioning
+  * Build timestamp: 2026-01-22 14:20:05 UTC
+
+ -- Monolith FireWall Team <dev@monolithfirewall.org>  Thu, 22 Jan 2026 15:20:05 +0100
+
+monolith-firewall (1.0.0-20260122-150716) unstable; urgency=medium
+
+  * Automated build with timestamp versioning
+  * Build timestamp: 2026-01-22 14:07:16 UTC
+
+ -- Monolith FireWall Team <dev@monolithfirewall.org>  Thu, 22 Jan 2026 15:07:16 +0100
+
+monolith-firewall (1.0.0-20260122-145219) unstable; urgency=medium
+
+  * Automated build with timestamp versioning
+  * Build timestamp: 2026-01-22 13:52:19 UTC
+
+ -- Monolith FireWall Team <dev@monolithfirewall.org>  Thu, 22 Jan 2026 14:52:19 +0100
+
+monolith-firewall (1.0.0-20260122-134257) unstable; urgency=medium
+
+  * Automated build with timestamp versioning
+  * Build timestamp: 2026-01-22 12:42:57 UTC
+
+ -- Monolith FireWall Team <dev@monolithfirewall.org>  Thu, 22 Jan 2026 13:42:57 +0100
+
+monolith-firewall (1.0.0-20260122-133012) unstable; urgency=medium
+
+  * Automated build with timestamp versioning
+  * Build timestamp: 2026-01-22 12:30:12 UTC
+
+ -- Monolith FireWall Team <dev@monolithfirewall.org>  Thu, 22 Jan 2026 13:30:12 +0100
+
+monolith-firewall (1.0.0-20260122-131117) unstable; urgency=medium
+
+  * Automated build with timestamp versioning
+  * Build timestamp: 2026-01-22 12:11:17 UTC
+
+ -- Monolith FireWall Team <dev@monolithfirewall.org>  Thu, 22 Jan 2026 13:11:17 +0100
+
+monolith-firewall (1.0.0-20260122-131105) unstable; urgency=medium
+
+  * Automated build with timestamp versioning
+  * Build timestamp: 2026-01-22 12:11:05 UTC
+
+ -- Monolith FireWall Team <dev@monolithfirewall.org>  Thu, 22 Jan 2026 13:11:05 +0100
+
 monolith-firewall (1.0.0-12) unstable; urgency=medium
 
   * Fix missing JsonDocument disposal in PermissionSyncService
