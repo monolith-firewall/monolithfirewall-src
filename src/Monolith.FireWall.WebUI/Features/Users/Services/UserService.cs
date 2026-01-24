@@ -34,10 +34,13 @@ public class UserService
 
             // Check for admin user
             var admin = await _repository.GetByUsernameAsync("admin");
+            UserEntity adminUser;
+            bool userCreated = false;
+            
             if (admin == null)
             {
                 _logger.LogInformation("Creating default admin user...");
-                var adminUser = new UserEntity
+                adminUser = new UserEntity
                 {
                     Username = "admin",
                     Email = "admin@monolith.local",
@@ -49,39 +52,99 @@ public class UserService
                 };
                 adminUser.SetRoles(new[] { "admin" });
 
-                await _repository.CreateAsync(adminUser);
-                _logger.LogInformation("Default admin user created (username: admin, password: admin)");
-                
-                // Create default admin group
-                var groupRepo = new Repositories.UserGroupRepository(sqlite);
-                await sqlite.TableSyncService!.SyncTableAsync<Models.UserGroupEntity>();
-                await sqlite.TableSyncService!.SyncTableAsync<Models.UserGroupMemberEntity>();
-                
-                var adminGroup = await groupRepo.GetByNameAsync("Administrators");
-                if (adminGroup == null)
+                var userId = await _repository.CreateAsync(adminUser);
+                if (userId > 0)
                 {
-                    adminGroup = new Models.UserGroupEntity
-                    {
-                        Name = "Administrators",
-                        Description = "Full system administrators with all permissions",
-                        Enabled = true,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-                    adminGroup.SetPermissions(new[] { "*" }); // All permissions
-                    var groupId = await groupRepo.CreateAsync(adminGroup);
-                    
-                    // Add admin user to Administrators group
-                    if (groupId > 0)
-                    {
-                        await groupRepo.AddUserToGroupAsync(adminUser.Id, groupId);
-                        _logger.LogInformation("Created Administrators group and added admin user");
-                    }
+                    adminUser.Id = userId;
+                    userCreated = true;
+                    _logger.LogInformation("Default admin user created (username: admin, password: admin, id: {UserId})", userId);
+                }
+                else
+                {
+                    _logger.LogError("Failed to create admin user - CreateAsync returned invalid ID");
+                    throw new Exception("Failed to create admin user");
                 }
             }
             else
             {
-                _logger.LogInformation("Admin user already exists");
+                adminUser = admin;
+                _logger.LogInformation("Admin user already exists (id: {UserId})", adminUser.Id);
+                
+                // Ensure admin user has roles set
+                var currentRoles = adminUser.GetRoles();
+                if (currentRoles.Length == 0)
+                {
+                    adminUser.SetRoles(new[] { "admin" });
+                    await _repository.UpdateAsync(adminUser);
+                    _logger.LogInformation("Added 'admin' role to existing admin user");
+                }
+            }
+            
+            // Ensure Administrators group exists and admin user is in it
+            var groupRepo = new Repositories.UserGroupRepository(sqlite);
+            await sqlite.TableSyncService!.SyncTableAsync<Models.UserGroupEntity>();
+            await sqlite.TableSyncService!.SyncTableAsync<Models.UserGroupMemberEntity>();
+            
+            // Check for "Administrators" group (preferred) or "Admin" group (legacy)
+            var adminGroup = await groupRepo.GetByNameAsync("Administrators");
+            if (adminGroup == null)
+            {
+                // Try legacy "Admin" name
+                adminGroup = await groupRepo.GetByNameAsync("Admin");
+            }
+            
+            if (adminGroup == null)
+            {
+                // Create Administrators group
+                adminGroup = new Models.UserGroupEntity
+                {
+                    Name = "Administrators",
+                    Description = "Full system administrators with all permissions",
+                    Enabled = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                adminGroup.SetPermissions(new[] { "*" }); // All permissions
+                var groupId = await groupRepo.CreateAsync(adminGroup);
+                
+                if (groupId > 0)
+                {
+                    adminGroup.Id = groupId;
+                    var added = await groupRepo.AddUserToGroupAsync(adminUser.Id, groupId);
+                    if (added)
+                    {
+                        _logger.LogInformation("Created Administrators group (id: {GroupId}) and added admin user (id: {UserId})", groupId, adminUser.Id);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to add admin user (id: {UserId}) to Administrators group (id: {GroupId})", adminUser.Id, groupId);
+                    }
+                }
+                else
+                {
+                    _logger.LogError("Failed to create Administrators group - CreateAsync returned invalid ID");
+                }
+            }
+            else
+            {
+                // Group exists, ensure admin user is in it
+                var userGroupIds = await groupRepo.GetUserGroupIdsAsync(adminUser.Id);
+                if (!userGroupIds.Contains(adminGroup.Id))
+                {
+                    var added = await groupRepo.AddUserToGroupAsync(adminUser.Id, adminGroup.Id);
+                    if (added)
+                    {
+                        _logger.LogInformation("Added admin user (id: {UserId}) to Administrators group (id: {GroupId})", adminUser.Id, adminGroup.Id);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to add admin user (id: {UserId}) to Administrators group (id: {GroupId})", adminUser.Id, adminGroup.Id);
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("Admin user (id: {UserId}) is already in Administrators group (id: {GroupId})", adminUser.Id, adminGroup.Id);
+                }
             }
 
             _initialized = true;

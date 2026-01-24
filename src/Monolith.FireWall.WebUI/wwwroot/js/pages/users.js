@@ -30,7 +30,7 @@ Monolith.Pages.Users = {
     loadUsers: async function() {
         try {
             Monolith.UI.showLoading('#users-table-container');
-            const response = await Monolith.API.get('/users');
+            const response = await Monolith.API.get('/api/users');
             if (response.success && response.data) {
                 this.users = response.data;
                 this.renderTable();
@@ -106,7 +106,7 @@ Monolith.Pages.Users = {
 
     showEditModal: async function(id) {
         try {
-            const response = await Monolith.API.get(`/users/${id}`);
+            const response = await Monolith.API.get(`/api/users/${id}`);
             if (response.success && response.data) {
                 this.currentUser = response.data;
                 this.showUserModal();
@@ -193,7 +193,7 @@ Monolith.Pages.Users = {
 
     loadGroupsForModal: async function() {
         try {
-            const response = await Monolith.API.get('/usergroups');
+            const response = await Monolith.API.get('/api/usergroups');
             if (response.success && response.data) {
                 return response.data;
             }
@@ -219,7 +219,7 @@ Monolith.Pages.Users = {
 
             if (!id) {
                 // Create new user
-                const response = await Monolith.API.post('/users', {
+                const response = await Monolith.API.post('/api/users', {
                     username: username,
                     email: email,
                     password: password,
@@ -229,7 +229,7 @@ Monolith.Pages.Users = {
                 if (response.success) {
                     // Add to groups
                     for (const groupId of selectedGroups) {
-                        await Monolith.API.post(`/usergroups/${groupId}/users/${response.data.id}`, {});
+                        await Monolith.API.post(`/api/usergroups/${groupId}/users/${response.data.id}`, {});
                     }
                     
                     bootstrap.Modal.getInstance(document.getElementById('userModal')).hide();
@@ -249,7 +249,7 @@ Monolith.Pages.Users = {
                     updateData.password = password;
                 }
 
-                const response = await Monolith.API.put(`/users/${id}`, updateData);
+                const response = await Monolith.API.put(`/api/users/${id}`, updateData);
 
                 if (response.success) {
                     // Update group memberships
@@ -259,14 +259,14 @@ Monolith.Pages.Users = {
                     // Remove from groups
                     for (const groupId of currentGroupIds) {
                         if (!selectedGroups.includes(groupId)) {
-                            await Monolith.API.delete(`/usergroups/${groupId}/users/${id}`);
+                            await Monolith.API.delete(`/api/usergroups/${groupId}/users/${id}`);
                         }
                     }
                     
                     // Add to groups
                     for (const groupId of selectedGroups) {
                         if (!currentGroupIds.includes(groupId)) {
-                            await Monolith.API.post(`/usergroups/${groupId}/users/${id}`, {});
+                            await Monolith.API.post(`/api/usergroups/${groupId}/users/${id}`, {});
                         }
                     }
                     
@@ -289,7 +289,7 @@ Monolith.Pages.Users = {
         }
 
         try {
-            const response = await Monolith.API.delete(`/users/${id}`);
+            const response = await Monolith.API.delete(`/api/users/${id}`);
             if (response.success) {
                 Monolith.UI.toast('User deleted successfully', 'success');
                 this.loadUsers();

@@ -31,7 +31,8 @@ public static class PackageCommands
                 return;
             }
 
-            var client = new CoreApiClient();
+            // Use longer timeout for package installation (10 minutes) since it may include deb installation
+            var client = new CoreApiClient(timeoutMs: 600_000);
             if (!client.IsAvailable())
             {
                 Console.WriteLine("ERROR: Core service is not running");
@@ -121,12 +122,25 @@ public static class PackageCommands
 
                         foreach (var pkg in data.EnumerateArray())
                         {
-                            var id = pkg.TryGetProperty("Id", out var idEl) ? idEl.GetString() : "unknown";
-                            var name = pkg.TryGetProperty("Name", out var nameEl) ? nameEl.GetString() : id;
+                            // Handle Id as either string or number (database ID vs package ID)
+                            string id = "unknown";
+                            if (pkg.TryGetProperty("Id", out var idEl))
+                            {
+                                id = idEl.ValueKind == JsonValueKind.String 
+                                    ? idEl.GetString() ?? "unknown"
+                                    : idEl.GetInt32().ToString();
+                            }
+                            
+                            // PackageId is the actual package identifier
+                            var packageId = pkg.TryGetProperty("PackageId", out var pkgIdEl) 
+                                ? (pkgIdEl.ValueKind == JsonValueKind.String ? pkgIdEl.GetString() : pkgIdEl.ToString())
+                                : id;
+                            
+                            var name = pkg.TryGetProperty("Name", out var nameEl) ? nameEl.GetString() : packageId;
                             var version = pkg.TryGetProperty("Version", out var verEl) ? verEl.GetString() : "unknown";
                             var state = pkg.TryGetProperty("State", out var stateEl) ? stateEl.GetString() : "unknown";
 
-                            Console.WriteLine($"  {name} ({id})");
+                            Console.WriteLine($"  {name} ({packageId})");
                             Console.WriteLine($"    Version: {version}");
                             Console.WriteLine($"    State: {state}");
                             Console.WriteLine();

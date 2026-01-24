@@ -250,7 +250,8 @@
 #notifications-menu {
     max-height: 400px;
     overflow-y: auto;
-    min-width: 300px;
+    min-width: 280px;
+    max-width: 320px;
 }
 
 #notifications-menu .notification-item {

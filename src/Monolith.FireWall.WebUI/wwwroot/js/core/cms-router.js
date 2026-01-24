@@ -25,7 +25,7 @@ Monolith.CmsRouter = {
         try {
             this.manifest = await Monolith.Cms.loadManifest();
             this.indexRoutes();
-            this.renderMenus();
+            // Menu rendering moved to menu.js
             this.attachEvents();
             this.initialized = true;
 
@@ -110,67 +110,7 @@ Monolith.CmsRouter = {
             this.push(href);
         });
 
-        // Hover support for package submenus (dropend)
-        $(document).off('mouseenter', '#packages-menu .dropend');
-        $(document).on('mouseenter', '#packages-menu .dropend', function() {
-            const $dropend = $(this);
-            const $link = $dropend.find('a').first();
-            const $submenu = $dropend.find('.dropdown-menu').first();
-
-            if ($submenu.length && $link.length) {
-                const offset = $link.offset();
-                const width = $link.outerWidth();
-
-                $submenu.css({
-                    'display': 'block',
-                    'position': 'fixed',
-                    'top': offset.top + 'px',
-                    'left': (offset.left + width) + 'px',
-                    'z-index': '1050',
-                    'opacity': '1',
-                    'visibility': 'visible'
-                }).addClass('show');
-            }
-        });
-
-        $(document).off('mouseleave', '#packages-menu .dropend');
-        $(document).on('mouseleave', '#packages-menu .dropend', function() {
-            const $dropend = $(this);
-            const $submenu = $dropend.find('.dropdown-menu').first();
-            setTimeout(() => {
-                if (!$dropend.is(':hover') && !$submenu.is(':hover')) {
-                    $submenu.css({
-                        'display': 'none',
-                        'opacity': '0',
-                        'visibility': 'hidden'
-                    }).removeClass('show');
-                }
-            }, 200);
-        });
-
-        $(document).off('mouseenter', '#packages-menu .dropend .dropdown-menu');
-        $(document).on('mouseenter', '#packages-menu .dropend .dropdown-menu', function() {
-            $(this).css({
-                'display': 'block',
-                'opacity': '1',
-                'visibility': 'visible'
-            }).addClass('show');
-        });
-
-        $(document).off('mouseleave', '#packages-menu .dropend .dropdown-menu');
-        $(document).on('mouseleave', '#packages-menu .dropend .dropdown-menu', function() {
-            const $submenu = $(this);
-            const $dropend = $submenu.closest('.dropend');
-            setTimeout(() => {
-                if (!$dropend.is(':hover') && !$submenu.is(':hover')) {
-                    $submenu.css({
-                        'display': 'none',
-                        'opacity': '0',
-                        'visibility': 'hidden'
-                    }).removeClass('show');
-                }
-            }, 200);
-        });
+        // Package menu hover handlers moved to menu.js
     },
 
     push: async function(path) {
@@ -342,9 +282,14 @@ Monolith.CmsRouter = {
             return;
         }
 
-        moduleName = (route.meta && route.meta.module) ? route.meta.module : this.getModuleFromPath(route.path);
+        // Try both camelCase and PascalCase for meta (JSON serialization might vary)
+        const meta = route.meta || route.Meta || {};
+        moduleName = meta.module || meta.Module || this.getModuleFromPath(route.path);
         if (moduleName) {
+            console.log(`Initializing module for route ${route.path}: ${moduleName}`);
             this.initModuleByName(moduleName);
+        } else {
+            console.warn(`No module name found for route: ${route.path}`);
         }
     },
 
@@ -360,6 +305,10 @@ Monolith.CmsRouter = {
         console.log(`Searching for module: ${moduleName} (Targets: ${targets.join(', ')})`);
 
         for (const target of targets) {
+            const obj = this.getObjectByPath(target);
+            if (obj) {
+                console.log(`Found module object at path: ${target}`, obj);
+            }
             if (this.initOrRenderModule(target)) {
                 console.log(`Successfully initialized module: ${target}`);
                 return true;
@@ -450,165 +399,14 @@ Monolith.CmsRouter = {
         return parts.length ? parts[parts.length - 1] : null;
     },
 
-    renderMenus: function() {
-        if (!this.manifest || !Array.isArray(this.manifest.menu)) {
-            return;
-        }
-
-        const containerMap = {
-            'system': '#menu-system',
-            'interfaces': '#interfaces-menu',
-            'firewall': '#menu-firewall',
-            'status': '#menu-status',
-            'packages': '#packages-menu'
-        };
-
-        this.manifest.menu.forEach(group => {
-            if (!group || !group.label) {
-                return;
-            }
-            const key = String(group.label).toLowerCase();
-            const selector = containerMap[key];
-            if (!selector) {
-                return;
-            }
-            const container = $(selector);
-            if (!container.length) {
-                return;
-            }
-
-            const html = this.buildMenuHtml(group.children || [], key);
-            let content = html || '<li><span class="dropdown-item-text text-muted small">No items</span></li>';
-            if (!html && key === 'packages') {
-                content = '<li><span class="dropdown-item-text text-muted small">No packages installed</span></li>';
-            }
-            container.html(content);
-
-            if (key === 'interfaces') {
-                container.append('<li><hr class="dropdown-divider"></li><li id="interfaces-list-placeholder"><span class="dropdown-item-text text-muted small">Loading interfaces...</span></li>');
-            }
-        });
-    },
-
-    buildMenuHtml: function(items, groupKey) {
-        if (!Array.isArray(items) || items.length === 0) {
-            return '';
-        }
-
-        return items.map(item => this.buildMenuItem(item, groupKey)).join('');
-    },
-
-    buildMenuItem: function(item, groupKey) {
-        if (!item) {
-            return '';
-        }
-
-        const hasChildren = Array.isArray(item.children) && item.children.length > 0;
-        const label = item.label || item.Label || item.Label || 'Unnamed';
-        const icon = item.icon || item.Icon || null;
-        const iconClass = this.resolveIconClass(icon, groupKey);
-        const path = this.getMenuPath(item);
-        
-        // Special styling for Status menu items
-        const isStatusMenu = groupKey === 'status';
-        const displayLabel = isStatusMenu 
-            ? `<span class="d-inline-flex align-items-center gap-2 w-100"><i class="dropdown-icon ${iconClass}"></i><span class="flex-grow-1">${label}</span></span>`
-            : `<span class="d-inline-flex align-items-center gap-2"><i class="dropdown-icon ${iconClass}"></i><span>${label}</span></span>`;
-
-        // Handle dividers
-        if (label.toLowerCase() === 'divider') {
-            return `<li><hr class="dropdown-divider"></li>`;
-        }
-
-        if (hasChildren) {
-            return `
-                <li class="dropend">
-                    <a class="dropdown-item d-flex align-items-center justify-content-between" href="javascript:void(0);" data-no-route="true">
-                        ${displayLabel}
-                        <i class="fa-solid fa-chevron-right"></i>
-                    </a>
-                    <ul class="dropdown-menu">
-                        ${this.buildMenuHtml(item.children, groupKey)}
-                    </ul>
-                </li>
-            `;
-        }
-
-        if (!path) {
-            return `<li><span class="dropdown-item-text text-muted small">${label}</span></li>`;
-        }
-
-        const itemClass = isStatusMenu ? 'dropdown-item status-menu-item' : 'dropdown-item';
-        return `<li><a class="${itemClass}" href="${path}" data-route="${path}">${displayLabel}</a></li>`;
-    },
-
-    getMenuPath: function(item) {
-        if (!item) {
-            return null;
-        }
-
-        const rawPath = item.Path || item.path;
-        if (rawPath) {
-            return this.normalizePath(rawPath);
-        }
-
-        const routeId = item.RouteId || item.routeId;
-        if (routeId) {
-            const route = this.routesById[routeId];
-            if (route && route.path) {
-                return this.normalizePath(route.path);
-            }
-        }
-
-        return null;
-    },
-
-    resolveIconClass: function(icon, groupKey) {
-        if (!icon) {
-            const defaults = {
-                system: 'fa-solid fa-gear',
-                status: 'fa-solid fa-chart-line',
-                interfaces: 'fa-solid fa-network-wired',
-                firewall: 'fa-solid fa-shield-halved',
-                status: 'fa-solid fa-circle-check',
-                packages: 'fa-solid fa-box-open'
-            };
-            return defaults[groupKey] || 'fa-solid fa-circle-dot';
-        }
-
-        const value = String(icon).toLowerCase().trim();
-        if (value.includes('fa-')) {
-            return value.includes('fa-solid') || value.includes('fa-regular') || value.includes('fa-light') || value.includes('fa-thin') || value.includes('fa-duotone')
-                ? value
-                : `fa-solid ${value}`;
-        }
-
-        const map = {
-            shield: 'fa-solid fa-shield-halved',
-            firewall: 'fa-solid fa-fire-flame-curved',
-            network: 'fa-solid fa-network-wired',
-            router: 'fa-solid fa-route',
-            package: 'fa-solid fa-box-open',
-            module: 'fa-solid fa-puzzle-piece',
-            settings: 'fa-solid fa-gear',
-            system: 'fa-solid fa-gear',
-            status: 'fa-solid fa-circle-check',
-            logs: 'fa-solid fa-clipboard-list',
-            user: 'fa-solid fa-user',
-            users: 'fa-solid fa-users',
-            bell: 'fa-solid fa-bell',
-            home: 'fa-solid fa-house',
-            info: 'fa-solid fa-circle-info'
-        };
-
-        return map[value] || 'fa-solid fa-circle-dot';
-    },
+    // Menu rendering functions moved to menu.js
 
     setActiveRoute: function(path) {
-        $('.nav-link, .dropdown-item').removeClass('active');
+        // Only remove active from top navbar navigation, not from tabbed page navigation
+        $('.top-navbar .nav-link, .top-navbar .dropdown-item').removeClass('active');
         
         // Match exact or parent path for sub-pages
-        $('.dropdown-item[data-route]').each(function() {
+        $('.top-navbar .dropdown-item[data-route]').each(function() {
             const route = $(this).data('route');
             if (path === route || (path.startsWith(route) && route !== '/')) {
                 $(this).addClass('active');

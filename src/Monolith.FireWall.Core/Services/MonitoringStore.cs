@@ -219,6 +219,77 @@ public sealed class MonitoringStore
         return ok;
     }
 
+    public async Task<bool> DeleteNotificationsAsync(IEnumerable<int> ids)
+    {
+        if (_notifications == null)
+        {
+            return false;
+        }
+
+        var idList = ids.Distinct().ToList();
+        if (idList.Count == 0)
+        {
+            return true;
+        }
+
+        var ok = true;
+        foreach (var id in idList)
+        {
+            var deleteResult = await _notifications.DeleteAsync(id);
+            ok = ok && deleteResult.IsSuccess;
+        }
+
+        return ok;
+    }
+
+    public async Task<bool> DeleteAllAsync()
+    {
+        if (_notifications == null || _sqlite == null)
+        {
+            return false;
+        }
+
+        var query = _sqlite.CreateQueryBuilder<SystemNotificationEntity>();
+        var result = await query.ExecuteAsync();
+        if (!result.IsSuccess || result.Data == null)
+        {
+            return false;
+        }
+
+        var ok = true;
+        foreach (var notification in result.Data)
+        {
+            var deleteResult = await _notifications.DeleteAsync(notification.Id);
+            ok = ok && deleteResult.IsSuccess;
+        }
+
+        return ok;
+    }
+
+    public async Task<bool> DeleteAllReadAsync()
+    {
+        if (_notifications == null || _sqlite == null)
+        {
+            return false;
+        }
+
+        var query = _sqlite.CreateQueryBuilder<SystemNotificationEntity>();
+        var result = await query.Where(n => n.ReadAt != null).ExecuteAsync();
+        if (!result.IsSuccess || result.Data == null)
+        {
+            return false;
+        }
+
+        var ok = true;
+        foreach (var notification in result.Data)
+        {
+            var deleteResult = await _notifications.DeleteAsync(notification.Id);
+            ok = ok && deleteResult.IsSuccess;
+        }
+
+        return ok;
+    }
+
     private void Initialize()
     {
         try

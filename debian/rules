@@ -14,14 +14,21 @@ override_dh_auto_build:
 	:
 
 override_dh_auto_install:
-	# Build Core
+	@echo "=== Building Core (Release, linux-x64, self-contained) ==="
+	# Clean only if needed (don't clean if we just restored in Step 10)
+	# Fix permissions on source directories to ensure we can write
+	find src -type d -exec chmod u+w {} \; 2>/dev/null || true
+	find tmp -type d -exec chmod u+w {} \; 2>/dev/null || true
+	# Publish directly (will build if needed, or use existing build artifacts)
 	dotnet publish src/Monolith.FireWall.Core/Monolith.FireWall.Core.csproj \
 		-c Release \
 		-r linux-x64 \
 		--self-contained true \
 		-o $(CURDIR)/debian/tmp/opt/monolith-firewall/core
+	@echo "=== Core build complete ==="
 
-	# Build WebUI
+	@echo "=== Building WebUI ==="
+	# Publish directly (will build if needed)
 	dotnet publish src/Monolith.FireWall.WebUI/Monolith.FireWall.WebUI.csproj \
 		-c Release \
 		-r linux-x64 \
@@ -39,7 +46,8 @@ override_dh_auto_install:
 		cp -r src/Monolith.FireWall.WebUI/Pages/* $(CURDIR)/debian/tmp/opt/monolith-firewall/webui/Pages/ 2>/dev/null || true; \
 	fi
 
-	# Build CLI tool
+	@echo "=== Building CLI tool ==="
+	# Publish directly (will build if needed)
 	dotnet publish src/Monolith.FireWall.CLI/Monolith.FireWall.CLI.csproj \
 		-c Release \
 		-r linux-x64 \
@@ -101,23 +109,36 @@ override_dh_auto_install:
 		ln -sf /opt/monolith-firewall/pkgmgr/Monolith.FireWall.PackageManager \
 			$(CURDIR)/debian/tmp/usr/bin/monolith-pkgmgr-legacy; \
 	fi
+	# Create build info file with timestamp (before moving to package directory)
+	@echo "Build Date: $$(date -u +"%Y-%m-%d %H:%M:%S UTC")" > $(CURDIR)/debian/tmp/opt/monolith-firewall/.build-info
+	@echo "Build Timestamp: $$(date +%s)" >> $(CURDIR)/debian/tmp/opt/monolith-firewall/.build-info
+	@echo "Package Version: $${PACKAGE_VERSION:-1.0.0-$$(date +%Y%m%d-%H%M%S)}" >> $(CURDIR)/debian/tmp/opt/monolith-firewall/.build-info
+	@echo "Git Commit: $$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')" >> $(CURDIR)/debian/tmp/opt/monolith-firewall/.build-info
+	@echo "Git Branch: $$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')" >> $(CURDIR)/debian/tmp/opt/monolith-firewall/.build-info
 
 override_dh_install:
 	# Move everything from tmp to package directory
 	mkdir -p $(CURDIR)/debian/monolith-firewall
 	cp -a $(CURDIR)/debian/tmp/* $(CURDIR)/debian/monolith-firewall/
+	# Update all file timestamps to current time (fixes stale timestamp issue)
+	@echo "=== Updating file timestamps to build time ==="
+	find $(CURDIR)/debian/monolith-firewall -type f -exec touch {} \;
 
 override_dh_missing:
 	# Skip missing file checks - we handle installation manually
 	dh_missing --list-missing
 
 override_dh_shlibdeps:
-	# Self-contained .NET publishes bundle runtime libs; ignore missing shlib metadata.
-	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
+	# Self-contained .NET publishes bundle runtime libs; skip shlibdeps entirely.
+	# The bundled .NET runtime libraries don't have Debian package metadata.
+	# This is safe because all dependencies are bundled in the self-contained publish.
+	:
 
 override_dh_builddeb:
 	# Fix permissions for WSL2/Windows filesystem
 	chmod 755 $(CURDIR)/debian/monolith-firewall/DEBIAN
+	# Ensure all files have current timestamps before packaging
+	find $(CURDIR)/debian/monolith-firewall -type f -exec touch {} \;
 	dh_builddeb
 
 clean:

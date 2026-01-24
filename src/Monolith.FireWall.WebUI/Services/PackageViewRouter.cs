@@ -103,16 +103,78 @@ public class PackageViewRouter
     /// <summary>
     /// Checks if user has permission to access a page
     /// </summary>
-    public bool HasPermission(UserContext? user, PageDefinition page)
+    public async Task<bool> HasPermissionAsync(UserContext? user, PageDefinition page)
     {
         if (user == null)
+        {
+            await LogPermissionDenialAsync(null, page, "User not authenticated");
             return false;
+        }
 
         if (page.RequiredPermissions.Length == 0)
             return true;
 
         // Check if user has any of the required permissions
-        return page.RequiredPermissions.Any(perm =>
+        var hasPermission = page.RequiredPermissions.Any(perm =>
             user.Permissions.Contains(perm) || user.Permissions.Contains("*"));
+
+        if (!hasPermission)
+        {
+            await LogPermissionDenialAsync(user, page, $"Missing required permissions: {string.Join(", ", page.RequiredPermissions)}");
+        }
+
+        return hasPermission;
+    }
+
+    /// <summary>
+    /// Synchronous version for backward compatibility
+    /// </summary>
+    public bool HasPermission(UserContext? user, PageDefinition page)
+    {
+        if (user == null)
+        {
+            _ = LogPermissionDenialAsync(null, page, "User not authenticated");
+            return false;
+        }
+
+        if (page.RequiredPermissions.Length == 0)
+            return true;
+
+        // Check if user has any of the required permissions
+        var hasPermission = page.RequiredPermissions.Any(perm =>
+            user.Permissions.Contains(perm) || user.Permissions.Contains("*"));
+
+        if (!hasPermission)
+        {
+            _ = LogPermissionDenialAsync(user, page, $"Missing required permissions: {string.Join(", ", page.RequiredPermissions)}");
+        }
+
+        return hasPermission;
+    }
+
+    private async Task LogPermissionDenialAsync(UserContext? user, PageDefinition page, string reason)
+    {
+        try
+        {
+            await Monolith.FireWall.Common.Services.LoggingManager.Instance.LogMonolithAsync(
+                category: "Permission",
+                level: "Warning",
+                source: "PackageViewRouter",
+                message: $"Permission denied for page: {page.Route}",
+                userId: user?.UserId,
+                ipAddress: null, // IP not available in this context
+                details: new Dictionary<string, object>
+                {
+                    { "route", page.Route },
+                    { "requiredPermissions", page.RequiredPermissions },
+                    { "userPermissions", user?.Permissions ?? Array.Empty<string>() },
+                    { "reason", reason }
+                }
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to log permission denial");
+        }
     }
 }

@@ -17,25 +17,48 @@ Monolith.Pages.Permissions = {
     },
 
     /**
-     * Load all permissions
+     * Load all permissions dynamically from installed packages
      */
     loadPermissions: async function() {
         try {
-            // For now, we'll hardcode permissions until Core provides them
-            this.allPermissions = this.getHardcodedPermissions();
+            Monolith.UI.showLoading('#page-content');
+            
+            // Load permissions from API
+            const response = await Monolith.API.get('/api/permissions');
+            if (response.success && response.data && Array.isArray(response.data)) {
+                // Normalize permission objects to ensure consistent property names (handle both camelCase and PascalCase)
+                this.allPermissions = response.data.map(perm => ({
+                    id: perm.id || perm.Id || '',
+                    name: perm.name || perm.Name || perm.id || perm.Id || '',
+                    category: perm.category || perm.Category || 'Other',
+                    subcategory: perm.subcategory || perm.Subcategory || '',
+                    packageId: perm.packageId || perm.PackageId || 'core',
+                    moduleId: perm.moduleId || perm.ModuleId || '',
+                    description: perm.description || perm.Description || ''
+                }));
+            } else {
+                console.warn('No permissions data received from API, using fallback');
+                this.allPermissions = this.getCorePermissions();
+            }
+            
             this.renderPermissions();
         } catch (error) {
             console.error('Error loading permissions:', error);
-            Monolith.UI.toast('Error loading permissions', 'error');
+            // Use fallback on error
+            this.allPermissions = this.getCorePermissions();
+            this.renderPermissions();
+            if (Monolith.UI && Monolith.UI.toast) {
+                Monolith.UI.toast('Error loading permissions, showing core permissions only', 'warning');
+            }
         }
     },
 
     /**
-     * Get hardcoded permissions (until Core provides them)
+     * Get core system permissions (always available)
      */
-    getHardcodedPermissions: function() {
+    getCorePermissions: function() {
         return [
-            // System permissions
+            // Core system permissions
             { id: 'system.users.read', name: 'View Users', category: 'System', subcategory: 'Users' },
             { id: 'system.users.write', name: 'Manage Users', category: 'System', subcategory: 'Users' },
             { id: 'system.users.delete', name: 'Delete Users', category: 'System', subcategory: 'Users' },
@@ -44,25 +67,7 @@ Monolith.Pages.Permissions = {
             { id: 'system.groups.delete', name: 'Delete Groups', category: 'System', subcategory: 'Groups' },
             { id: 'system.permissions.read', name: 'View Permissions', category: 'System', subcategory: 'Permissions' },
             { id: 'system.settings.read', name: 'View Settings', category: 'System', subcategory: 'Settings' },
-            { id: 'system.settings.write', name: 'Manage Settings', category: 'System', subcategory: 'Settings' },
-            
-            // Network permissions
-            { id: 'network.interfaces.read', name: 'View Interfaces', category: 'Network', subcategory: 'Interfaces' },
-            { id: 'network.interfaces.write', name: 'Manage Interfaces', category: 'Network', subcategory: 'Interfaces' },
-            { id: 'network.firewall.read', name: 'View Firewall Rules', category: 'Network', subcategory: 'Firewall' },
-            { id: 'network.firewall.write', name: 'Manage Firewall Rules', category: 'Network', subcategory: 'Firewall' },
-            { id: 'network.dhcp.read', name: 'View DHCP Configuration', category: 'Network', subcategory: 'DHCP' },
-            { id: 'network.dhcp.write', name: 'Manage DHCP Configuration', category: 'Network', subcategory: 'DHCP' },
-            { id: 'network.dns.read', name: 'View DNS Configuration', category: 'Network', subcategory: 'DNS' },
-            { id: 'network.dns.write', name: 'Manage DNS Configuration', category: 'Network', subcategory: 'DNS' },
-            
-            // Services permissions
-            { id: 'services.status.read', name: 'View Service Status', category: 'Services', subcategory: 'Status' },
-            { id: 'services.control.write', name: 'Control Services', category: 'Services', subcategory: 'Control' },
-            
-            // Diagnostics permissions
-            { id: 'diagnostics.logs.read', name: 'View Logs', category: 'Diagnostics', subcategory: 'Logs' },
-            { id: 'diagnostics.tools.use', name: 'Use Diagnostic Tools', category: 'Diagnostics', subcategory: 'Tools' }
+            { id: 'system.settings.write', name: 'Manage Settings', category: 'System', subcategory: 'Settings' }
         ];
     },
 
@@ -142,11 +147,12 @@ Monolith.Pages.Permissions = {
                 `;
 
                 perms.forEach(perm => {
+                    const description = perm.description || `${perm.packageId !== 'core' ? `From ${perm.packageId}` : 'Core system permission'}`;
                     html += `
                         <tr>
                             <td><code>${perm.id}</code></td>
                             <td>${perm.name}</td>
-                            <td class="text-muted">-</td>
+                            <td class="text-muted">${description}</td>
                         </tr>
                     `;
                 });

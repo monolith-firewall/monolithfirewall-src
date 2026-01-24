@@ -215,6 +215,19 @@
       }
     },
     {
+      "id": "notifications",
+      "path": "/notifications",
+      "title": "Notifications",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"notifications-page-container\" class=\"container-fluid p-4\"><div class=\"d-flex justify-content-between align-items-center mb-4\"><h2>Notifications</h2><div class=\"btn-group\"><button class=\"btn btn-outline-primary\" id=\"btn-mark-all-read\"><i class=\"fa-solid fa-check-double me-2\"></i>Mark All Read</button><button class=\"btn btn-outline-danger\" id=\"btn-delete-all-read\"><i class=\"fa-solid fa-trash me-2\"></i>Delete All Read</button><button class=\"btn btn-outline-danger\" id=\"btn-delete-all\"><i class=\"fa-solid fa-trash-can me-2\"></i>Delete All</button></div></div><div class=\"card mb-4\"><div class=\"card-body\"><div class=\"row g-3\"><div class=\"col-md-3\"><label class=\"form-label\">Status</label><select class=\"form-select\" id=\"filter-status\"><option value=\"all\">All</option><option value=\"unread\">Unread Only</option><option value=\"read\">Read Only</option></select></div><div class=\"col-md-3\"><label class=\"form-label\">Severity</label><select class=\"form-select\" id=\"filter-severity\"><option value=\"all\">All</option><option value=\"error\">Error</option><option value=\"warning\">Warning</option><option value=\"info\">Info</option></select></div><div class=\"col-md-3\"><label class=\"form-label\">Limit</label><select class=\"form-select\" id=\"filter-limit\"><option value=\"20\">20</option><option value=\"50\">50</option><option value=\"100\">100</option><option value=\"200\">200</option></select></div><div class=\"col-md-3 d-flex align-items-end\"><button class=\"btn btn-primary w-100\" id=\"btn-apply-filters\"><i class=\"fa-solid fa-filter me-2\"></i>Apply Filters</button></div></div></div></div><div class=\"card\"><div class=\"card-body\"><div id=\"notifications-loading\" class=\"text-center py-4\"><div class=\"spinner-border text-primary\" role=\"status\"><span class=\"visually-hidden\">Loading...</span></div><p class=\"mt-2 text-muted\">Loading notifications...</p></div><div id=\"notifications-empty\" class=\"text-center py-5 d-none\"><i class=\"fa-solid fa-bell-slash fa-3x text-muted mb-3\"></i><p class=\"text-muted\">No notifications found</p></div><div id=\"notifications-table-container\" class=\"d-none\"><div class=\"table-responsive\"><table class=\"table table-hover\"><thead><tr><th style=\"width: 40px;\"><input type=\"checkbox\" id=\"select-all\" class=\"form-check-input\"></th><th style=\"width: 80px;\">Severity</th><th>Title</th><th>Message</th><th style=\"width: 150px;\">Date</th><th style=\"width: 100px;\">Status</th><th style=\"width: 120px;\">Actions</th></tr></thead><tbody id=\"notifications-tbody\"></tbody></table></div></div></div></div></div>",
+      "assets": {
+        "js": [
+          "notifications"
+        ]
+      }
+    },
+    {
       "id": "interfaces",
       "path": "/interfaces",
       "title": "Interfaces",
@@ -317,6 +330,19 @@
           "status"
         ],
         "css": [
+          "status"
+        ]
+      }
+    },
+    {
+      "id": "status.routing-status",
+      "path": "/status/routing-status",
+      "title": "Routing Status",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"status-container\"></div>",
+      "assets": {
+        "js": [
           "status"
         ]
       }
@@ -490,11 +516,6 @@
           "label": "Backup",
           "routeId": "system.backup",
           "icon": "fa-solid fa-cloud-arrow-up"
-        },
-        {
-          "label": "About",
-          "routeId": "about",
-          "icon": "fa-solid fa-circle-info"
         }
       ]
     }

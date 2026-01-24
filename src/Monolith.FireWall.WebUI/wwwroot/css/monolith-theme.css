@@ -159,9 +159,11 @@ body {
     display: flex;
     align-items: center;
     text-decoration: none;
-    transition: all 0.3s ease;
     background: #0f172a !important;
     background-color: #0f172a !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
 }
 
 /* Keep navbar brand dark even in light theme */
@@ -172,24 +174,137 @@ body {
 }
 
 .top-navbar .navbar-brand:hover {
-    color: var(--primary-light);
     text-decoration: none;
-    transform: translateX(2px);
+    background: #0f172a !important;
+    background-color: #0f172a !important;
+    box-shadow: none !important;
+    border: none !important;
+    outline: none !important;
+    transform: none !important;
 }
 
-.top-navbar .brand-icon {
+.top-navbar .navbar-brand:focus {
+    outline: none !important;
+    box-shadow: none !important;
+    border: none !important;
+}
+
+.top-navbar .navbar-brand:active {
+    box-shadow: none !important;
+    border: none !important;
+    outline: none !important;
+}
+
+.top-navbar .navbar-brand:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+    border: none !important;
+}
+
+/* Setup logo style (from setup wizard) */
+.top-navbar .setup-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
     font-size: 1.25rem;
-    margin-right: 0.5rem;
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    font-weight: 600;
+    background: none !important;
+    border: none !important;
+    padding: 0;
+    margin: 0;
+    box-shadow: none !important;
+    outline: none !important;
 }
 
-.top-navbar .brand-text {
+.top-navbar .setup-logo i {
+    font-size: 1.5rem;
+    color: #60A5FA;
+    filter: drop-shadow(0 2px 4px rgba(96, 165, 250, 0.3));
+    display: inline-block;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    background: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+[data-bs-theme="light"] .top-navbar .setup-logo i {
+    color: #3B82F6;
+}
+
+[data-bs-theme="dark"] .top-navbar .setup-logo i {
+    color: #60A5FA;
+}
+
+.top-navbar .setup-brand {
     background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
     font-size: 1rem;
     font-weight: 600;
+    display: inline-block;
+}
+
+[data-bs-theme="light"] .top-navbar .setup-brand {
+    background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+[data-bs-theme="dark"] .top-navbar .setup-brand {
+    background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Remove all hover effects from logo - completely static */
+.top-navbar .navbar-brand:hover .setup-logo i,
+.top-navbar .navbar-brand:focus .setup-logo i,
+.top-navbar .navbar-brand:active .setup-logo i,
+.top-navbar .navbar-brand:hover .setup-logo,
+.top-navbar .navbar-brand:focus .setup-logo,
+.top-navbar .navbar-brand:active .setup-logo {
+    color: inherit !important;
+    transform: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    outline: none !important;
+    background: none !important;
+    filter: inherit !important;
+}
+
+.top-navbar .navbar-brand:hover .setup-brand,
+.top-navbar .navbar-brand:focus .setup-brand,
+.top-navbar .navbar-brand:active .setup-brand {
+    /* Maintain light gradient on dark theme when hovering */
+    background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+[data-bs-theme="light"] .top-navbar .navbar-brand:hover .setup-brand,
+[data-bs-theme="light"] .top-navbar .navbar-brand:focus .setup-brand,
+[data-bs-theme="light"] .top-navbar .navbar-brand:active .setup-brand {
+    /* Maintain blue gradient on light theme when hovering */
+    background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+[data-bs-theme="dark"] .top-navbar .navbar-brand:hover .setup-brand,
+[data-bs-theme="dark"] .top-navbar .navbar-brand:focus .setup-brand,
+[data-bs-theme="dark"] .top-navbar .navbar-brand:active .setup-brand {
+    /* Maintain light gradient on dark theme when hovering */
+    background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
 }
 
 .top-navbar .navbar-nav {
@@ -257,7 +372,7 @@ body {
 .top-navbar .nav-link:hover {
     color: #ffffff !important;
     background-color: rgba(255, 255, 255, 0.1);
-    border-bottom-color: var(--primary-light);
+    border-bottom: 2px solid var(--primary-light);
 }
 
 .top-navbar .nav-link:hover,
@@ -271,10 +386,21 @@ body {
     opacity: 1 !important;
 }
 
+/* Ensure icon-only nav links (Help, Monitoring, Notifications) get proper hover effects */
+.top-navbar .nav-link.nav-icon-button:hover,
+.top-navbar .nav-link[title="Help"]:hover {
+    color: #ffffff !important;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-bottom: 2px solid var(--primary-light);
+}
+
 .top-navbar .nav-link.active {
     color: #ffffff !important;
     background-color: rgba(255, 255, 255, 0.15);
     border-bottom-color: var(--primary-light);
+    /* Ensure top navbar active state doesn't affect tabbed nav */
+    border-bottom-width: 2px;
+    border-bottom-style: solid;
 }
 
 .top-navbar .nav-link.active,
@@ -336,6 +462,8 @@ body {
     border-radius: 0.5rem;
     overflow: hidden;
     padding: 0.5rem 0;
+    min-width: 280px;
+    max-width: 320px;
 }
 
 .top-navbar .dropdown-menu * {
@@ -356,6 +484,26 @@ body {
     gap: 0.5rem;
     transition: all 0.2s ease;
     background-color: transparent !important;
+}
+
+/* Ensure dropdown-item-text has same padding as dropdown-item */
+.top-navbar .dropdown-menu .dropdown-item-text {
+    padding: 0.5rem 1rem;
+    color: #1e293b !important;
+    margin: 0;
+    display: block;
+}
+
+/* Ensure monitoring and notification menus have consistent width */
+#monitoring-status-menu {
+    min-width: 280px;
+    max-width: 320px;
+}
+
+/* Ensure all right-side dropdown menus align */
+.top-navbar .navbar-nav[style*="margin-left: auto"] .dropdown-menu {
+    min-width: 280px;
+    max-width: 320px;
 }
 
 .top-navbar .dropdown-item,
@@ -405,9 +553,97 @@ body {
     opacity: 1;
 }
 
-/* User Menu in Top Nav */
+/* User Menu in Top Nav - positioned all the way to the right */
 .user-menu {
     padding: 0.5rem 1rem;
+    margin-left: 0;
+    display: flex;
+    align-items: center;
+}
+
+/* Ensure navbar items align properly */
+.top-navbar .navbar-nav {
+    align-items: center;
+}
+
+.top-navbar .navbar-nav .nav-item {
+    display: flex;
+    align-items: center;
+}
+
+/* Right side navbar items should align properly - use flexbox */
+.top-navbar .navbar-collapse {
+    display: flex !important;
+    flex-grow: 1;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 0;
+}
+
+.top-navbar .navbar-nav:not(.me-auto) {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-shrink: 0;
+}
+
+/* Remove gap between left and right navbar sections */
+.top-navbar .navbar-nav.me-auto {
+    margin-right: 0;
+}
+
+/* User menu should be right after the right-side nav items */
+.user-menu {
+    margin-left: 0;
+}
+
+/* Help menu icon only styling - match other nav links */
+.top-navbar .nav-item .nav-link[title="Help"] {
+    padding: 0.75rem 1rem;
+    padding-bottom: calc(0.75rem + 4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.top-navbar .nav-item .nav-link[title="Help"] .nav-icon {
+    margin: 0;
+}
+
+/* Ensure icon buttons have same padding as regular nav links */
+.top-navbar .nav-link.nav-icon-button {
+    padding: 0.75rem 1rem;
+    padding-bottom: calc(0.75rem + 4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    min-width: 3rem;
+}
+
+/* Ensure status indicator doesn't add extra spacing */
+.top-navbar .nav-link.nav-icon-button .status-indicator {
+    margin: 0;
+    padding: 0;
+    margin-right: 0.25rem;
+    flex-shrink: 0;
+}
+
+/* Ensure all icon buttons have consistent width and padding */
+.top-navbar .nav-link.nav-icon-button[aria-label="System status"],
+.top-navbar .nav-link.nav-icon-button[title="Help"],
+.top-navbar .nav-link.nav-icon-button[aria-label="System notifications"] {
+    min-width: 3rem;
+    justify-content: center;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+/* Add bottom padding to icon-only nav items (Help, Monitoring, Notifications) */
+.top-navbar .nav-link.nav-icon-button,
+.top-navbar .nav-link[title="Help"] {
+    padding-bottom: calc(0.75rem + 4px);
 }
 
 .user-dropdown {
@@ -776,8 +1012,10 @@ body {
 }
 
 .login-brand-icon {
-    font-size: 5rem;
-    margin-bottom: 1.5rem;
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 1.5rem;
+    display: block;
     filter: drop-shadow(0 10px 20px rgba(0,0,0,0.3));
     animation: float 3s ease-in-out infinite;
 }
@@ -1033,10 +1271,13 @@ body {
 }
 
 .nav-tabs .nav-link.active {
-    color: var(--primary);
-    background-color: transparent;
-    border-bottom-color: var(--primary);
+    color: var(--primary) !important;
+    background-color: transparent !important;
+    border-bottom-color: var(--primary) !important;
     font-weight: 600;
+    /* Ensure tabbed nav active state is not overridden by top navbar styles */
+    border-bottom-width: 2px;
+    border-bottom-style: solid;
 }
 
 /* Dark theme tabs */
@@ -1060,6 +1301,9 @@ body {
     background-color: transparent !important;
     border-bottom-color: #3b82f6 !important;
     font-weight: 600;
+    /* Ensure tabbed nav active state is not overridden by top navbar styles */
+    border-bottom-width: 2px;
+    border-bottom-style: solid;
 }
 
 [data-bs-theme="dark"] .tab-content {

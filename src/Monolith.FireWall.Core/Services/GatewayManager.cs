@@ -372,7 +372,7 @@ public sealed class GatewayManager
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
             LastSeenAt = entity.LastSeenAt,
-            Source = entity.IsDynamic ? "dynamic" : "static"
+            Source = entity.IsDynamic ? "dynamic" : "static" // Always "static" or "dynamic", never "kernel"
         };
     }
 }

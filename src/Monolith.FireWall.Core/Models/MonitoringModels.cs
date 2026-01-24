@@ -155,3 +155,50 @@ public sealed class NotificationQuery
     public int Limit { get; set; } = 20;
     public bool UnreadOnly { get; set; }
 }
+
+public sealed class NotificationDeleteRequest
+{
+    public List<int> Ids { get; set; } = new();
+    public bool All { get; set; }
+    public bool ReadOnly { get; set; } // Delete only read notifications
+}
+
+/// <summary>
+/// Request model for creating a new notification
+/// Services and packages can use this to send notifications to users
+/// </summary>
+public sealed class NotificationCreateRequest
+{
+    /// <summary>
+    /// Notification title (required, max 160 chars)
+    /// Example: "VPN Connection Established"
+    /// </summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Notification message (optional)
+    /// Example: "Successfully connected to remote VPN server 10.0.1.1"
+    /// </summary>
+    public string? Message { get; set; }
+
+    /// <summary>
+    /// Severity level: "info", "warning", or "error" (default: "info")
+    /// </summary>
+    public string? Severity { get; set; }
+
+    /// <summary>
+    /// Notification type/source (default: "system")
+    /// Examples: "vpn", "firewall", "dhcp", "system", etc.
+    /// </summary>
+    public string? Type { get; set; }
+
+    /// <summary>
+    /// Optional monitor key if this notification is related to a specific monitor
+    /// </summary>
+    public string? MonitorKey { get; set; }
+
+    /// <summary>
+    /// Optional JSON details for custom data
+    /// </summary>
+    public string? DetailsJson { get; set; }
+}

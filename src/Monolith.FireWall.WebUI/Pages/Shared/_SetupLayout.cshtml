@@ -65,10 +65,33 @@
         </div>
     </main>
 
-    <!-- Setup Footer -->
+    <!-- Setup Navigation Footer -->
     <footer class="setup-footer">
         <div class="container">
             <div class="row">
+                <div class="col-12">
+                    <!-- Navigation Buttons -->
+                    <div class="setup-nav" id="setup-nav-container">
+                        <div class="setup-nav-left">
+                            <button type="button" class="btn btn-outline-secondary" id="btn-setup-back">
+                                <i class="bi bi-arrow-left me-1"></i> Back
+                            </button>
+                        </div>
+                        <div class="setup-nav-right">
+                            <button type="button" class="btn btn-outline-warning me-2" id="btn-setup-skip" style="display: none;">
+                                Skip
+                            </button>
+                            <button type="button" class="btn btn-primary" id="btn-setup-next">
+                                Next <i class="bi bi-arrow-right ms-1"></i>
+                            </button>
+                            <button type="button" class="btn btn-success" id="btn-setup-finish" style="display: none;">
+                                <i class="bi bi-check-circle me-1"></i> Finish
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row mt-2">
                 <div class="col text-center">
                     <p class="text-muted small mb-0">
                         <i class="bi bi-info-circle me-1"></i>

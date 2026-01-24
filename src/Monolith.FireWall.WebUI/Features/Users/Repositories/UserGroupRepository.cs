@@ -136,7 +136,7 @@ public class UserGroupRepository
     {
         // Get all memberships and delete those for this group
         var allMembers = await _memberRepository.GetAllAsync();
-        if (allMembers.IsSuccess)
+        if (allMembers.IsSuccess && allMembers.Data != null)
         {
             foreach (var member in allMembers.Data.Where(m => m.GroupId == groupId))
             {

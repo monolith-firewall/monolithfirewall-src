@@ -15,6 +15,7 @@
 
     <link href="/css/bootstrap.min.css?v=20260103" rel="stylesheet" />
     <link href="/vendor/fontawesome/css/all.min.css?v=7.1.0" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css" />
     <link href="/css/monolith-theme.css?v=20260111" rel="stylesheet" />
     <link href="/css/app.css?v=20260103" rel="stylesheet" />
@@ -38,8 +39,10 @@
     <nav class="navbar navbar-expand-lg top-navbar sticky-top" id="top-navbar">
         <div class="container-fluid navbar-container">
             <a class="navbar-brand" href="/" data-route="/">
-                <span class="brand-icon">🛡️</span>
-                <span class="brand-text">Monolith Firewall</span>
+                <div class="setup-logo">
+                    <i class="bi bi-shield-check"></i>
+                    <span class="setup-brand">Monolith FireWall</span>
+                </div>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -61,10 +64,7 @@
                             Interfaces
                         </a>
                         <ul class="dropdown-menu" id="interfaces-menu">
-                            <li><a class="dropdown-item" href="/interfaces" data-route="/interfaces"><i class="dropdown-icon fa-solid fa-network-wired"></i> Overview</a></li>
-                            <li><a class="dropdown-item" href="/interfaces/network-cards" data-route="/interfaces/network-cards"><i class="dropdown-icon fa-solid fa-microchip"></i> Network Cards</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><span class="dropdown-item-text text-muted small">Loading interfaces...</span></li>
+                            <li><span class="dropdown-item-text text-muted small">Loading...</span></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -73,12 +73,7 @@
                             Firewall
                         </a>
                         <ul class="dropdown-menu" id="menu-firewall">
-                            <li><a class="dropdown-item" href="/firewall/rules" data-route="/firewall/rules"><i class="dropdown-icon fa-solid fa-shield-halved"></i> Rules</a></li>
-                            <li><a class="dropdown-item" href="/firewall/aliases" data-route="/firewall/aliases"><i class="dropdown-icon fa-solid fa-list-check"></i> Aliases</a></li>
-                            <li><a class="dropdown-item" href="/firewall/nat" data-route="/firewall/nat"><i class="dropdown-icon fa-solid fa-right-left"></i> NAT</a></li>
-                            <li><a class="dropdown-item" href="/firewall/virtual-ips" data-route="/firewall/virtual-ips"><i class="dropdown-icon fa-solid fa-circle-nodes"></i> Virtual IPs</a></li>
-                            <li><a class="dropdown-item" href="/firewall/traffic-shaper" data-route="/firewall/traffic-shaper"><i class="dropdown-icon fa-solid fa-wave-square"></i> Traffic Shaper</a></li>
-                            <li><a class="dropdown-item" href="/firewall/schedules" data-route="/firewall/schedules"><i class="dropdown-icon fa-solid fa-calendar-days"></i> Schedules</a></li>
+                            <li><span class="dropdown-item-text text-muted small">Loading...</span></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -90,6 +85,7 @@
                             <li><span class="dropdown-item-text text-muted small">Loading packages...</span></li>
                         </ul>
                     </li>
+                    <!-- Status Menu -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                             <i class="nav-icon fa-solid fa-chart-line"></i>
@@ -100,7 +96,43 @@
                         </ul>
                     </li>
                 </ul>
-                <div class="user-menu ms-auto d-flex align-items-center gap-2">
+                <!-- Right side menu items: Help, Monitoring, Notifications -->
+                <ul class="navbar-nav" style="margin-left: auto;">
+                    <!-- Help Menu (icon only) -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link nav-icon-button" href="#" role="button" data-bs-toggle="dropdown" title="Help">
+                            <i class="fa-solid fa-circle-question fa-lg"></i>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/about" data-route="/about"><i class="dropdown-icon fa-solid fa-circle-info"></i> About Monolith Firewall</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="https://monolithfirewall.com/" target="_blank" rel="noopener noreferrer"><i class="dropdown-icon fa-solid fa-globe"></i> Website</a></li>
+                            <li><a class="dropdown-item" href="https://github.com/monolith-firewall/" target="_blank" rel="noopener noreferrer"><i class="dropdown-icon fa-brands fa-github"></i> GitHub</a></li>
+                        </ul>
+                    </li>
+                    <!-- Monitoring Status Indicator -->
+                    <li class="nav-item dropdown">
+                        <a href="#" class="nav-link nav-icon-button" data-bs-toggle="dropdown" aria-label="System status" style="display: flex; align-items: center;">
+                            <span class="status-indicator status-unknown" id="monitoring-status-indicator"></span>
+                            <i class="fa-solid fa-circle-check fa-lg"></i>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" id="monitoring-status-menu">
+                            <li><span class="dropdown-item-text text-muted small">Loading system status...</span></li>
+                        </ul>
+                    </li>
+                    <!-- Notifications -->
+                    <li class="nav-item dropdown">
+                        <a href="#" class="nav-link nav-icon-button position-relative" data-bs-toggle="dropdown" aria-label="System notifications" style="display: flex; align-items: center;">
+                            <i class="fa-solid fa-bell fa-lg"></i>
+                            <span class="badge bg-danger nav-badge d-none" id="notifications-badge">0</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" id="notifications-menu">
+                            <li><span class="dropdown-item-text text-muted small">Loading notifications...</span></li>
+                        </ul>
+                    </li>
+                </ul>
+                <!-- User Menu (all the way to the right) -->
+                <div class="user-menu d-flex align-items-center gap-2">
                     <div class="dropdown">
                         <a href="#" class="user-dropdown" data-bs-toggle="dropdown">
                             <i class="user-icon fa-solid fa-user"></i>
@@ -135,24 +167,6 @@
                             <li><a class="dropdown-item text-danger" href="#" id="btn-logout">Logout</a></li>
                         </ul>
                     </div>
-                    <div class="dropdown">
-                        <a href="#" class="nav-icon-button" data-bs-toggle="dropdown" aria-label="System status">
-                            <span class="status-indicator status-unknown" id="monitoring-status-indicator"></span>
-                            <i class="fa-solid fa-circle-check fa-lg"></i>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end" id="monitoring-status-menu">
-                            <li><span class="dropdown-item-text text-muted small">Loading system status...</span></li>
-                        </ul>
-                    </div>
-                    <div class="dropdown">
-                        <a href="#" class="nav-icon-button position-relative" data-bs-toggle="dropdown" aria-label="System notifications">
-                            <i class="fa-solid fa-bell fa-lg"></i>
-                            <span class="badge bg-danger nav-badge d-none" id="notifications-badge">0</span>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end" id="notifications-menu">
-                            <li><span class="dropdown-item-text text-muted small">Loading notifications...</span></li>
-                        </ul>
-                    </div>
                 </div>
             </div>
         </div>
@@ -171,7 +185,8 @@
     <script src="/js/core/module-loader.js?v=20260101170000"></script>
     <script src="/js/core/cms-client.js?v=20260115090000"></script>
     <script src="/js/core/cms-router.js?v=20260115090000"></script>
+    <script src="/js/core/menu.js?v=20260123"></script>
     <script src="/js/nat.js?v=20260115"></script>
-    <script src="/js/app.js?v=20260115"></script>
+    <script src="/js/app.js?v=20260123"></script>
 </body>
 </html>

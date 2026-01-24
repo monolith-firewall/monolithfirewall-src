@@ -10,10 +10,22 @@ public record PackageManifest(
     string? License = null,
     string[]? Dependencies = null,
     string[]? AptDependencies = null,
+    BundledDebInfo[]? BundledDebs = null,
     string? MinCoreVersion = null,
     string? MaxCoreVersion = null,
     bool RequiresRestart = false,
     FirewallIntentDefinition[]? FirewallIntents = null
+);
+
+/// <summary>
+/// Information about a bundled .deb package included in the monolith package.
+/// </summary>
+public record BundledDebInfo(
+    string FileName,
+    string PackageName,
+    string Version,
+    string Architecture,
+    string[]? Dependencies = null
 );
 
 public record FirewallIntentDefinition(

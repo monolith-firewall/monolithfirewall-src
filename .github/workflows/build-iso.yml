@@ -8,6 +8,8 @@ on:
 jobs:
   build-iso:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases and upload assets
     
     steps:
       - name: Checkout repository
@@ -23,12 +25,15 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
+          # Ubuntu 24.04 uses libicu74, Debian uses libicu76
+          # Install libicu-dev for building, and the runtime library will be resolved by apt
           sudo apt-get install -y \
             debhelper \
             devscripts \
             build-essential \
             wget \
-            libicu76 \
+            libicu-dev \
+            libicu74 \
             libc6 \
             libgcc-s1 \
             libstdc++6 \
@@ -47,6 +52,8 @@ jobs:
       - name: Build Debian package
         run: |
           chmod +x build-scripts/build-deb.sh
+          # Patch build-deb.sh to work on Ubuntu (replace libicu76 with libicu74)
+          sed -i 's/libicu76/libicu74/g' build-scripts/build-deb.sh || true
           ./build-scripts/build-deb.sh
       
       - name: Build all packages
@@ -88,12 +95,25 @@ jobs:
           tag_name: ${{ steps.commit.outputs.short_sha }}
           name: Release ${{ steps.commit.outputs.short_sha }}
           body: |
-            Automated build from commit ${{ steps.commit.outputs.full_sha }}
+            ## Monolith FireWall ISO Build
             
-            **Commit:** ${{ steps.commit.outputs.full_sha }}
-            **Branch:** ${{ github.ref_name }}
-            **Workflow:** ${{ github.workflow }}
-            **Run ID:** ${{ github.run_id }}
+            **Commit Message:**
+            ```
+            ${{ github.event.head_commit.message }}
+            ```
+            
+            **Build Information:**
+            - **Commit:** ${{ steps.commit.outputs.full_sha }}
+            - **Short SHA:** ${{ steps.commit.outputs.short_sha }}
+            - **Branch:** ${{ github.ref_name }}
+            - **Workflow:** ${{ github.workflow }}
+            - **Run ID:** ${{ github.run_id }}
+            - **Build Date:** ${{ github.event.head_commit.timestamp }}
+            
+            **ISO File:**
+            - **Name:** ${{ steps.find-iso.outputs.iso_name }}
+            
+            This is an automated build from the main branch.
           files: ${{ steps.find-iso.outputs.iso_path }}
           draft: false
           prerelease: false

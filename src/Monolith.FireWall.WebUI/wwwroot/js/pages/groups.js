@@ -5,9 +5,11 @@ Monolith.Pages = Monolith.Pages || {};
 Monolith.Pages.Groups = {
     groups: [],
     allPermissions: [],
+    permissionCategories: {},
     currentGroup: null,
 
-    init: function() {
+    init: async function() {
+        await this.loadPermissionCategories();
         this.loadGroups();
         this.loadAllPermissions();
         this.setupEventHandlers();
@@ -36,9 +38,11 @@ Monolith.Pages.Groups = {
     loadGroups: async function() {
         try {
             Monolith.UI.showLoading('#groups-table-container');
-            const response = await Monolith.API.get('/usergroups');
+            const response = await Monolith.API.get('/api/usergroups');
             if (response.success && response.data) {
                 this.groups = response.data;
+                // Load user counts for each group
+                await this.loadGroupUserCounts();
                 this.renderTable();
             }
         } catch (error) {
@@ -47,17 +51,72 @@ Monolith.Pages.Groups = {
         }
     },
 
+    groupUserCounts: {},
+
+    loadGroupUserCounts: async function() {
+        this.groupUserCounts = {};
+        for (const group of this.groups) {
+            try {
+                const response = await Monolith.API.get(`/api/usergroups/${group.id}/users`);
+                if (response.success && response.data) {
+                    const users = Array.isArray(response.data) ? response.data : [];
+                    this.groupUserCounts[group.id] = users.length;
+                }
+            } catch (error) {
+                console.warn(`Error loading users for group ${group.id}:`, error);
+                this.groupUserCounts[group.id] = 0;
+            }
+        }
+    },
+
+    getGroupUserCount: function(groupId) {
+        const count = this.groupUserCounts[groupId] ?? 0;
+        return count > 0 ? `<span class="badge bg-info">${count}</span>` : '<span class="text-muted">0</span>';
+    },
+
     loadAllPermissions: async function() {
-        // Load permissions from Core
+        // Load permissions from API
         try {
-            const response = await Monolith.API.get('/core?action=get-packages');
+            const response = await Monolith.API.get('/api/permissions');
             if (response.success && response.data) {
-                // Extract permissions from packages/modules
-                this.allPermissions = [];
-                // TODO: Parse permissions from packages
+                this.allPermissions = response.data || [];
             }
         } catch (error) {
             console.error('Error loading permissions:', error);
+            this.allPermissions = [];
+        }
+    },
+
+    loadPermissionCategories: async function() {
+        // Load permissions and group by category
+        try {
+            const response = await Monolith.API.get('/api/permissions');
+            if (response.success && response.data) {
+                const permissions = response.data || [];
+                
+                // Group by category -> subcategory -> permissions
+                const categories = {};
+                permissions.forEach(perm => {
+                    const category = perm.category || perm.Category || 'Other';
+                    const subcategory = perm.subcategory || perm.Subcategory || '';
+                    const permId = perm.id || perm.Id || '';
+                    
+                    if (!categories[category]) {
+                        categories[category] = {};
+                    }
+                    
+                    if (!categories[category][subcategory]) {
+                        categories[category][subcategory] = [];
+                    }
+                    
+                    categories[category][subcategory].push(permId);
+                });
+                
+                this.permissionCategories = categories;
+            }
+        } catch (error) {
+            console.error('Error loading permission categories:', error);
+            this.permissionCategories = {};
         }
     },
 
@@ -86,11 +145,13 @@ Monolith.Pages.Groups = {
                 </tr>
             `;
         } else {
-            this.groups.forEach(group => {
+            const self = this;
+            this.groups.forEach(function(group) {
                 const perms = group.permissions || [];
                 const statusBadge = group.enabled 
                     ? '<span class="badge badge-success">Enabled</span>'
                     : '<span class="badge badge-danger">Disabled</span>';
+                const userCount = self.getGroupUserCount(group.id);
                 
                 html += `
                     <tr>
@@ -103,7 +164,7 @@ Monolith.Pages.Groups = {
                                   (perms.length > 3 ? ` <span class="text-muted">+${perms.length - 3} more</span>` : '')
                                 : '-'}
                         </td>
-                        <td>-</td>
+                        <td>${userCount}</td>
                         <td>${statusBadge}</td>
                         <td>
                             <button class="btn btn-sm btn-secondary btn-edit-group" data-id="${group.id}">Edit</button>
@@ -123,14 +184,24 @@ Monolith.Pages.Groups = {
         $('#groups-table-container').html(html);
     },
 
-    showAddModal: function() {
+    showAddModal: async function() {
+        // Ensure permissions are loaded before showing modal
+        if (Object.keys(this.permissionCategories).length === 0) {
+            await this.loadPermissionCategories();
+        }
+        
         this.currentGroup = null;
         this.showGroupModal();
     },
 
     showEditModal: async function(id) {
         try {
-            const response = await Monolith.API.get(`/usergroups/${id}`);
+            // Ensure permissions are loaded before showing modal
+            if (Object.keys(this.permissionCategories).length === 0) {
+                await this.loadPermissionCategories();
+            }
+            
+            const response = await Monolith.API.get(`/api/usergroups/${id}`);
             if (response.success && response.data) {
                 this.currentGroup = response.data;
                 this.showGroupModal();
@@ -216,39 +287,61 @@ Monolith.Pages.Groups = {
     },
 
     renderPermissionsList: function(selectedPerms) {
-        // Group permissions by category
-        const categories = {
-            'System': ['system.*', 'system.users.*', 'system.settings.*'],
-            'Network': ['network.*', 'network.dhcp.*', 'network.dns.*', 'network.firewall.*'],
-            'Packages': ['packages.*', 'packages.install', 'packages.uninstall']
-        };
+        // Use cached categories (loaded in init)
+        const categories = this.permissionCategories || {};
+        
+        if (Object.keys(categories).length === 0) {
+            // If permissions aren't loaded, try loading them and update the UI
+            const self = this;
+            this.loadPermissionCategories().then(() => {
+                // Re-render the permissions list after loading
+                const html = self.renderPermissionsList(selectedPerms);
+                $('#permissions-list').html(html);
+            }).catch(err => {
+                console.error('Failed to load permissions:', err);
+                $('#permissions-list').html('<div class="text-danger">Error loading permissions. Please refresh the page.</div>');
+            });
+            return '<div class="text-muted"><i class="spinner-border spinner-border-sm me-2"></i>Loading permissions...</div>';
+        }
 
         let html = '';
-        for (const [category, perms] of Object.entries(categories)) {
+        for (const [category, subcategories] of Object.entries(categories)) {
             html += `
                 <div class="mb-3">
                     <div class="d-flex align-items-center mb-2">
                         <button type="button" class="btn btn-sm btn-link p-0 permission-category-toggle" 
-                                data-category="${category.toLowerCase()}">
+                                data-category="${category.toLowerCase().replace(/\s+/g, '-')}">
                             <i class="bi bi-chevron-down"></i>
                         </button>
                         <strong class="ms-2">${category}</strong>
                     </div>
-                    <div class="permission-items ms-4" data-category="${category.toLowerCase()}">
+                    <div class="permission-items ms-4" data-category="${category.toLowerCase().replace(/\s+/g, '-')}">
             `;
             
-            perms.forEach(perm => {
-                const checked = selectedPerms.includes(perm) || selectedPerms.includes('*') ? 'checked' : '';
-                html += `
-                    <div class="form-check">
-                        <input class="form-check-input permission-checkbox" type="checkbox" 
-                               id="perm-${perm.replace(/[.*]/g, '-')}" value="${perm}" ${checked}>
-                        <label class="form-check-label" for="perm-${perm.replace(/[.*]/g, '-')}">
-                            ${perm}
-                        </label>
-                    </div>
-                `;
-            });
+            // Render subcategories
+            for (const [subcategory, perms] of Object.entries(subcategories)) {
+                if (subcategory && subcategory !== '') {
+                    html += `
+                        <div class="mb-2">
+                            <strong class="text-muted small">${subcategory}</strong>
+                        </div>
+                    `;
+                }
+                
+                perms.forEach(permId => {
+                    const checked = selectedPerms.includes(permId) || selectedPerms.includes('*') ? 'checked' : '';
+                    const safeId = permId.replace(/[.*]/g, '-').replace(/\s+/g, '-');
+                    html += `
+                        <div class="form-check">
+                            <input class="form-check-input permission-checkbox" type="checkbox" 
+                                   id="perm-${safeId}" value="${permId}" ${checked}>
+                            <label class="form-check-label" for="perm-${safeId}">
+                                <code>${permId}</code>
+                            </label>
+                        </div>
+                    `;
+                });
+            }
             
             html += `
                     </div>
@@ -278,7 +371,7 @@ Monolith.Pages.Groups = {
 
             if (!id) {
                 // Create new group
-                const response = await Monolith.API.post('/usergroups', {
+                const response = await Monolith.API.post('/api/usergroups', {
                     name: name,
                     description: description,
                     permissions: selectedPerms
@@ -293,7 +386,7 @@ Monolith.Pages.Groups = {
                 }
             } else {
                 // Update existing group
-                const response = await Monolith.API.put(`/usergroups/${id}`, {
+                const response = await Monolith.API.put(`/api/usergroups/${id}`, {
                     description: description,
                     permissions: selectedPerms,
                     enabled: enabled
@@ -319,7 +412,7 @@ Monolith.Pages.Groups = {
         }
 
         try {
-            const response = await Monolith.API.delete(`/usergroups/${id}`);
+            const response = await Monolith.API.delete(`/api/usergroups/${id}`);
             if (response.success) {
                 Monolith.UI.toast('Group deleted successfully', 'success');
                 this.loadGroups();

@@ -130,6 +130,42 @@ if [ -d "$PACKAGE_DIR/wwwroot" ]; then
     cp -r "$PACKAGE_DIR/wwwroot" "$STAGING_DIR/"
 fi
 
+# Bundle deb packages if aptDependencies exist
+if command -v jq &> /dev/null && [ -f "$PACKAGE_DIR/manifest.json" ]; then
+    if jq -e '.aptDependencies // [] | length > 0' "$PACKAGE_DIR/manifest.json" >/dev/null 2>&1; then
+        echo ""
+        echo "Bundling deb packages..."
+        DEBS_DIR="$PACKAGE_DIR/debs"
+        mkdir -p "$DEBS_DIR"
+        
+        # Download and bundle all debs
+        if [ -f "$ROOT_DIR/build-scripts/bundle-debs.sh" ]; then
+            "$ROOT_DIR/build-scripts/bundle-debs.sh" "$PACKAGE_ID" "$PACKAGE_DIR" "$DEBS_DIR"
+            
+            # Update manifest.json with BundledDebInfo
+            if [ -f "$ROOT_DIR/build-scripts/update-manifest-debs.sh" ]; then
+                "$ROOT_DIR/build-scripts/update-manifest-debs.sh" "$PACKAGE_DIR"
+                # Re-copy updated manifest.json to staging
+                cp "$PACKAGE_DIR/manifest.json" "$STAGING_DIR/"
+            fi
+        else
+            echo "  ⚠ Warning: bundle-debs.sh not found, skipping deb bundling"
+        fi
+        
+        # Copy debs directory to staging if it exists and has files
+        if [ -d "$DEBS_DIR" ] && [ -n "$(ls -A "$DEBS_DIR"/*.deb 2>/dev/null)" ]; then
+            echo "Copying bundled deb packages..."
+            cp -r "$DEBS_DIR" "$STAGING_DIR/"
+            DEB_COUNT=$(ls -1 "$DEBS_DIR"/*.deb 2>/dev/null | wc -l)
+            echo "  ✓ Copied $DEB_COUNT deb package(s)"
+        fi
+    fi
+elif [ -f "$PACKAGE_DIR/manifest.json" ] && grep -q '"aptDependencies"' "$PACKAGE_DIR/manifest.json"; then
+    echo ""
+    echo "  ⚠ Warning: jq not found, cannot bundle deb packages"
+    echo "  Install jq to enable deb bundling: apt-get install jq"
+fi
+
 # Note: Razor Pages are compiled into the main DLL, so we don't copy the Pages directory
 
 echo "Writing package archive..."
@@ -151,5 +187,9 @@ echo "  - manifest.json"
 echo "  - backend/ (with main DLL containing Razor views)"
 if [ -d "$STAGING_DIR/wwwroot" ]; then
     echo "  - wwwroot/ (static assets)"
+fi
+if [ -d "$STAGING_DIR/debs" ]; then
+    DEB_COUNT=$(ls -1 "$STAGING_DIR/debs"/*.deb 2>/dev/null | wc -l)
+    echo "  - debs/ ($DEB_COUNT bundled deb package(s))"
 fi
 echo ""

@@ -21,12 +21,12 @@ $(document).ready(function() {
             // Initialize theme toggle in navbar
             initNavbarThemeToggle();
             
-            // Initialize menu system (optional - menu-manager.js may not exist)
+            // Initialize menu system
             if (Monolith.Menu && typeof Monolith.Menu.init === 'function') {
                 try {
                     await Monolith.Menu.init();
                 } catch (error) {
-                    console.warn('Menu initialization failed (menu-manager.js may be missing):', error);
+                    console.error('Menu initialization failed:', error);
                 }
             }
             
@@ -47,15 +47,7 @@ $(document).ready(function() {
         Monolith.Auth.logout();
     });
 
-    // Load users page
-    $(document).on('click', '#btn-add-user', function() {
-        showAddUserModal();
-    });
-
-    // Load groups page
-    $(document).on('click', '#btn-add-group', function() {
-        showAddGroupModal();
-    });
+    // User/Group management is handled by their respective page modules (users.js, groups.js)
 
     // Guard tab behavior: ensure only the target pane is visible
     $(document).on('shown.bs.tab', '[data-bs-toggle="tab"]', function (e) {
@@ -171,40 +163,12 @@ async function loadInterfaces() {
             })
             .filter(item => item.interface);
 
-        renderInterfacesMenu(interfaces);
+        if (Monolith.Menu && typeof Monolith.Menu.renderInterfacesMenu === 'function') {
+            Monolith.Menu.renderInterfacesMenu(interfaces);
+        }
     } catch (error) {
         console.error('Error loading interfaces:', error);
         $('#interfaces-list-placeholder').html('<span class="dropdown-item-text text-muted small">Failed to load interfaces</span>');
-    }
-}
-
-function renderInterfacesMenu(interfaces) {
-    const container = $('#interfaces-list-placeholder');
-    if (!container.length) return;
-    
-    if (!interfaces || interfaces.length === 0) {
-        container.html('<span class="dropdown-item-text text-muted small">No managed interfaces</span>');
-        return;
-    }
-
-    let html = '';
-    interfaces.forEach(iface => {
-        const isUp = iface.status === 'up';
-        const statusDot = isUp
-            ? '<span class="badge bg-success me-2" style="width: 8px; height: 8px; padding: 0; border-radius: 50%;"></span>'
-            : '<span class="badge bg-secondary me-2" style="width: 8px; height: 8px; padding: 0; border-radius: 50%;"></span>';
-        
-        html += `
-            <li><a class="dropdown-item" href="/interfaces/${iface.interface}" data-route="/interfaces/${iface.interface}">
-                ${statusDot}
-                <strong>${iface.name}</strong>
-                <small class="text-muted d-block ms-3">${iface.ip || 'No IP assigned'}</small>
-            </a></li>
-        `;
-    });
-    
-    if (html) {
-        container.replaceWith(html);
     }
 }
 
@@ -241,7 +205,9 @@ async function loadMonitoringStatus() {
     try {
         const response = await Monolith.API.get('/monitoring/status');
         const monitors = response.Data || response.data || [];
-        renderMonitoringStatusMenu(monitors);
+        if (Monolith.Menu && typeof Monolith.Menu.renderMonitoringStatusMenu === 'function') {
+            Monolith.Menu.renderMonitoringStatusMenu(monitors);
+        }
     } catch (error) {
         console.error('Error loading monitoring status:', error);
         $('#monitoring-status-menu').html('<li><span class="dropdown-item-text text-muted small">Failed to load status</span></li>');
@@ -252,451 +218,13 @@ async function loadNotifications() {
     try {
         const response = await Monolith.API.get('/monitoring/notifications?limit=20&unreadOnly=false');
         const data = response.Data || response.data || {};
-        renderNotificationsMenu(data.Notifications || data.notifications || [], data.UnreadCount || data.unreadCount || 0);
+        if (Monolith.Menu && typeof Monolith.Menu.renderNotificationsMenu === 'function') {
+            Monolith.Menu.renderNotificationsMenu(data.Notifications || data.notifications || [], data.UnreadCount || data.unreadCount || 0);
+        }
     } catch (error) {
         console.error('Error loading notifications:', error);
         $('#notifications-menu').html('<li><span class="dropdown-item-text text-muted small">Failed to load notifications</span></li>');
     }
 }
 
-function renderMonitoringStatusMenu(monitors) {
-    const container = $('#monitoring-status-menu');
-    const indicator = $('#monitoring-status-indicator');
-    if (!container.length) return;
-
-    if (!Array.isArray(monitors) || monitors.length === 0) {
-        container.html('<li><span class="dropdown-item-text text-muted small">No monitors configured</span></li>');
-        indicator.removeClass('status-ok status-warn status-error status-unknown').addClass('status-unknown');
-        return;
-    }
-
-    let overall = 'ok';
-    monitors.forEach(m => {
-        const status = (m.Status || m.status || 'unknown').toLowerCase();
-        if (status === 'error') {
-            overall = 'error';
-        } else if (status === 'warning' && overall !== 'error') {
-            overall = 'warning';
-        } else if (status === 'unknown' && overall === 'ok') {
-            overall = 'unknown';
-        }
-    });
-
-    indicator.removeClass('status-ok status-warn status-error status-unknown');
-    indicator.addClass(`status-${overall === 'warning' ? 'warn' : overall}`);
-
-    const items = monitors.map(m => {
-        const status = (m.Status || m.status || 'unknown').toLowerCase();
-        const name = m.Name || m.name || m.Key || m.key || 'Monitor';
-        const message = m.Message || m.message || '';
-        const lastCheck = m.LastCheckAt || m.lastCheckAt;
-        const lastText = lastCheck ? new Date(lastCheck).toLocaleString() : 'Not checked yet';
-        const badgeClass = status === 'ok' ? 'bg-success' : status === 'warning' ? 'bg-warning' : status === 'error' ? 'bg-danger' : 'bg-secondary';
-
-        return `
-            <li>
-                <div class="dropdown-item-text monitoring-item">
-                    <div class="d-flex align-items-center justify-content-between">
-                        <span>${name}</span>
-                        <span class="badge ${badgeClass} text-uppercase">${status}</span>
-                    </div>
-                    <div class="small text-muted">${message || 'No details'}</div>
-                    <div class="small text-muted">Last check: ${lastText}</div>
-                </div>
-            </li>
-        `;
-    }).join('');
-
-    container.html(items);
-}
-
-function renderNotificationsMenu(notifications, unreadCount) {
-    const container = $('#notifications-menu');
-    const badge = $('#notifications-badge');
-    if (!container.length) return;
-
-    if (badge.length) {
-        if (unreadCount > 0) {
-            badge.text(unreadCount > 99 ? '99+' : unreadCount);
-            badge.removeClass('d-none');
-        } else {
-            badge.addClass('d-none');
-        }
-    }
-
-    if (!Array.isArray(notifications) || notifications.length === 0) {
-        container.html('<li><span class="dropdown-item-text text-muted small">No notifications</span></li>');
-        return;
-    }
-
-    const items = notifications.map(n => {
-        const severity = (n.Severity || n.severity || 'info').toLowerCase();
-        const title = n.Title || n.title || 'Notification';
-        const message = n.Message || n.message || '';
-        const created = n.CreatedAt || n.createdAt;
-        const createdText = created ? new Date(created).toLocaleString() : '';
-        const readAt = n.ReadAt || n.readAt;
-        const unreadClass = readAt ? '' : 'unread';
-        const badgeClass = severity === 'error' ? 'bg-danger' : severity === 'warning' ? 'bg-warning' : 'bg-info';
-
-        return `
-            <li>
-                <a href="javascript:void(0)" class="dropdown-item notification-item ${unreadClass}" data-id="${n.Id || n.id}">
-                    <div class="d-flex align-items-center justify-content-between">
-                        <span>${title}</span>
-                        <span class="badge ${badgeClass} text-uppercase">${severity}</span>
-                    </div>
-                    <div class="small text-muted">${message}</div>
-                    <div class="small text-muted">${createdText}</div>
-                </a>
-            </li>
-        `;
-    }).join('');
-
-    const footer = `
-        <li><hr class="dropdown-divider"></li>
-        <li>
-            <a href="javascript:void(0)" class="dropdown-item text-center text-primary" id="notifications-mark-read" style="font-weight: 500;">
-                <i class="fa-solid fa-check-double me-2"></i>Mark all read
-            </a>
-        </li>
-    `;
-
-    container.html(items + footer);
-}
-
-$(document).on('click', '.notification-item', async function() {
-    const id = $(this).data('id');
-    if (!id) return;
-    try {
-        await Monolith.API.post('/monitoring/notifications/read', { ids: [id] });
-        loadNotifications();
-    } catch (error) {
-        console.error('Error marking notification read:', error);
-    }
-});
-
-$(document).on('click', '#notifications-mark-read', async function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const btn = $(this);
-    const originalText = btn.html();
-    btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-2"></i>Marking read...');
-    
-    try {
-        const response = await Monolith.API.post('/monitoring/notifications/read', { all: true });
-        if (response.Success || response.success) {
-            // Reload notifications to update the UI
-            await loadNotifications();
-            if (typeof Monolith !== 'undefined' && Monolith.UI) {
-                Monolith.UI.toast('All notifications marked as read', 'success');
-            }
-        } else {
-            throw new Error(response.Error || response.error || 'Failed to mark notifications as read');
-        }
-    } catch (error) {
-        console.error('Error marking notifications read:', error);
-        if (typeof Monolith !== 'undefined' && Monolith.UI) {
-            Monolith.UI.toast('Failed to mark notifications as read', 'error');
-        }
-        btn.html(originalText);
-    } finally {
-        btn.prop('disabled', false);
-    }
-});
-
-function renderPackagesMenu(packages, menus) {
-    const container = $('#packages-menu');
-    if (!container.length) return;
-    
-    let html = '';
-    
-    // Group menus by package
-    const packageMenus = {};
-    menus.forEach(menu => {
-        const pkgId = menu.PackageId || menu.packageId;
-        const pkgName = menu.PackageName || menu.packageName;
-        const moduleId = menu.ModuleId || menu.moduleId;
-        const moduleName = menu.ModuleName || menu.moduleName || moduleId;
-        
-        if (pkgId) {
-            if (!packageMenus[pkgId]) {
-                packageMenus[pkgId] = {
-                    name: pkgName || pkgId,
-                    menus: []
-                };
-            }
-            packageMenus[pkgId].menus.push({
-                ...menu,
-                moduleId: moduleId,
-                moduleDisplayName: moduleName.toUpperCase()
-            });
-        }
-    });
-    
-    // Render each package as a nested dropdown
-    Object.keys(packageMenus).sort().forEach(pkgId => {
-        const pkgData = packageMenus[pkgId];
-        const pkgName = pkgData.name;
-        const pkgMenus = pkgData.menus;
-        
-        if (pkgMenus.length > 0) {
-            const packageMenuId = `package-${pkgId.replace(/[^a-z0-9]/gi, '-')}`;
-            html += `
-                <li class="dropend">
-                    <a class="dropdown-item" href="javascript:void(0);" id="${packageMenuId}-toggle">
-                        <svg class="dropdown-icon" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
-                            <path d="M2.5 3.5a.5.5 0 0 1 0-1h11a.5.5 0 0 1 0 1h-11zm2-2a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1h-7zM0 13a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 16 13V6a1.5 1.5 0 0 0-1.5-1.5h-13A1.5 1.5 0 0 0 0 6v7zm1.5.5A.5.5 0 0 1 1 13V6a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5h-13z"/>
-                        </svg>
-                        ${pkgName}
-                        <svg class="ms-auto" width="12" height="12" fill="currentColor" viewBox="0 0 16 16" style="transform: rotate(-90deg);">
-                            <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
-                        </svg>
-                    </a>
-                    <ul class="dropdown-menu" id="${packageMenuId}">
-            `;
-            
-            pkgMenus.forEach(menu => {
-                const menuLabel = menu.Label || menu.label;
-                const menuId = menu.Id || menu.id;
-                const moduleDisplayName = menu.moduleDisplayName || (menu.moduleId || '').toUpperCase();
-                const children = menu.Children || menu.children || [];
-                
-                if (children && children.length > 0) {
-                    // Module with submenu - render children without module badge (cleaner display)
-                    children.forEach(child => {
-                        const childLabel = child.Label || child.label;
-                        const childId = child.Id || child.id;
-                        
-                        // Dynamically construct route from package/module/page structure
-                        const pageName = childId.split('-').pop();
-                        const route = `/p/${pkgId}/${menu.moduleId || menuId.split('-').pop()}/${pageName}`;
-                        
-                        // Show just the child label without module badge
-                        html += `
-                            <li><a class="dropdown-item" href="#${route}" data-route="${route}">
-                                ${childLabel}
-                            </a></li>
-                        `;
-                    });
-                } else {
-                    // Direct module link (no submenu)
-                    const moduleIdForRoute = menu.moduleId || menuId.split('-').pop();
-                    // Check if menuId contains a page name (has multiple parts separated by '-')
-                    // e.g., "diagnostics-ping" -> route should be /p/pkg/diagnostics/ping
-                    const menuIdParts = menuId.split('-');
-                    let route;
-                    if (menuIdParts.length > 1 && menuIdParts[0] === moduleIdForRoute) {
-                        // Menu ID is like "diagnostics-ping", extract page name
-                        const pageName = menuIdParts.slice(1).join('-');
-                        route = `/p/${pkgId}/${moduleIdForRoute}/${pageName}`;
-                    } else {
-                        // Standard route without page name
-                        route = `/p/${pkgId}/${moduleIdForRoute}`;
-                    }
-                    // Show just the menu label without module badge for cleaner display
-                    
-                    html += `
-                        <li><a class="dropdown-item" href="#${route}" data-route="${route}">
-                            <svg class="dropdown-icon" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
-                                <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/>
-                            </svg>
-                            ${menuLabel}
-                        </a></li>
-                    `;
-                }
-            });
-            
-            html += `
-                    </ul>
-                </li>
-            `;
-        }
-    });
-    
-    if (html) {
-        container.html(html);
-        
-        // Initialize jQuery-based nested dropdowns
-        setTimeout(() => {
-            $('#packages-menu .dropend > a').on('mouseenter', function() {
-                const $submenu = $(this).next('.dropdown-menu');
-                const $link = $(this);
-                
-                // Position submenu to the right of the parent item
-                const offset = $link.offset();
-                const height = $link.outerHeight();
-                const width = $link.outerWidth();
-                
-                $submenu.css({
-                    'display': 'block',
-                    'position': 'fixed',
-                    'top': offset.top + 'px',
-                    'left': (offset.left + width) + 'px'
-                });
-            });
-            
-            $('#packages-menu .dropend').on('mouseleave', function() {
-                $(this).find('.dropdown-menu').css('display', 'none');
-            });
-            
-            // Keep submenu open when hovering over it
-            $('#packages-menu .dropend .dropdown-menu').on('mouseenter', function() {
-                $(this).css('display', 'block');
-            });
-        }, 100);
-    } else {
-        container.html('<li><span class="dropdown-item-text text-muted small">No package modules available</span></li>');
-    }
-}
-
-// Old renderNetworkMenu removed - packages now go in Packages menu
-
-async function loadUsersTable() {
-    try {
-        const response = await Monolith.API.get('/users');
-        if (response.success && response.data) {
-            renderUsersTable(response.data);
-        }
-    } catch (error) {
-        console.error('Error loading users:', error);
-        Monolith.UI.toast('Error loading users', 'error');
-    }
-}
-
-function renderUsersTable(users) {
-    let html = `
-        <table class="table table-hover">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Roles</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
-
-    users.forEach(user => {
-        const roles = user.roles || [];
-        const statusBadge = user.enabled 
-            ? '<span class="badge badge-success">Enabled</span>'
-            : '<span class="badge badge-danger">Disabled</span>';
-        
-        html += `
-            <tr>
-                <td>${user.id}</td>
-                <td>${user.username}</td>
-                <td>${user.email}</td>
-                <td>${roles.map(r => `<span class="badge badge-primary">${r}</span>`).join(' ')}</td>
-                <td>${statusBadge}</td>
-                <td>
-                    <button class="btn btn-sm btn-secondary" onclick="editUser(${user.id})">Edit</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id})">Delete</button>
-                </td>
-            </tr>
-        `;
-    });
-
-    html += `
-            </tbody>
-        </table>
-    `;
-
-    $('#users-table-container').html(html);
-}
-
-async function loadGroupsTable() {
-    try {
-        const response = await Monolith.API.get('/usergroups');
-        if (response.success && response.data) {
-            renderGroupsTable(response.data);
-        }
-    } catch (error) {
-        console.error('Error loading groups:', error);
-        Monolith.UI.toast('Error loading groups', 'error');
-    }
-}
-
-function renderGroupsTable(groups) {
-    let html = `
-        <table class="table table-hover">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Description</th>
-                    <th>Permissions</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
-
-    groups.forEach(group => {
-        const perms = group.permissions || [];
-        const statusBadge = group.enabled 
-            ? '<span class="badge badge-success">Enabled</span>'
-            : '<span class="badge badge-danger">Disabled</span>';
-        
-        html += `
-            <tr>
-                <td>${group.id}</td>
-                <td><strong>${group.name}</strong></td>
-                <td>${group.description || '-'}</td>
-                <td>${perms.length > 0 ? perms.slice(0, 3).map(p => `<span class="badge badge-primary">${p}</span>`).join(' ') + (perms.length > 3 ? ' ...' : '') : '-'}</td>
-                <td>${statusBadge}</td>
-                <td>
-                    <button class="btn btn-sm btn-secondary" onclick="editGroup(${group.id})">Edit</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteGroup(${group.id})">Delete</button>
-                </td>
-            </tr>
-        `;
-    });
-
-    html += `
-            </tbody>
-        </table>
-    `;
-
-    $('#groups-table-container').html(html);
-}
-
-function showAddUserModal() {
-    // TODO: Implement add user modal
-    Monolith.UI.toast('Add user feature coming soon', 'info');
-}
-
-function showAddGroupModal() {
-    // TODO: Implement add group modal
-    Monolith.UI.toast('Add group feature coming soon', 'info');
-}
-
-function editUser(id) {
-    // TODO: Implement edit user
-    Monolith.UI.toast('Edit user feature coming soon', 'info');
-}
-
-function deleteUser(id) {
-    if (confirm('Are you sure you want to delete this user?')) {
-        // TODO: Implement delete user
-        Monolith.UI.toast('Delete user feature coming soon', 'info');
-    }
-}
-
-function editGroup(id) {
-    // TODO: Implement edit group
-    Monolith.UI.toast('Edit group feature coming soon', 'info');
-}
-
-function deleteGroup(id) {
-    if (confirm('Are you sure you want to delete this group?')) {
-        // TODO: Implement delete group
-        Monolith.UI.toast('Delete group feature coming soon', 'info');
-    }
-}
+// Old user/group management functions removed - now handled by users.js and groups.js page modules

@@ -38,19 +38,17 @@
         });
 
         function loadNetworkInterfaces() {
-            // Check if network package is installed
-            Monolith.API.get('/api/setup/packages')
-                .then(response => {
-                    const data = response.data || response.Data || response;
-                    const packages = data.packages || data.Packages || [];
-                    const hasNetworkPackage = packages.some(p => (p.packageId || p.PackageId) === 'monolith-network');
-                    
-                    if (!hasNetworkPackage) {
+            // Check if any package provides network interface management
+            // Look for a package that provides the 'interfaces' module
+            Monolith.Packages.findPackageByModule('interfaces')
+                .then(packageId => {
+                    if (!packageId) {
+                        // No package provides interface management
                         $('#network-package-warning').show();
                         $('#network-setup-container').html(`
                             <div class="alert alert-info">
                                 <i class="bi bi-info-circle me-2"></i>
-                                The network package will be available after installation. You can configure interfaces later in the Network settings.
+                                Network interface management will be available after installing a package that provides this functionality. You can configure interfaces later in the Network settings.
                             </div>
                         `);
                         return;
@@ -81,11 +79,11 @@
                         });
                 })
                 .catch(err => {
-                    console.error('Failed to check packages:', err);
+                    console.error('Failed to check for network interface management:', err);
                     $('#network-setup-container').html(`
                         <div class="alert alert-warning">
                             <i class="bi bi-exclamation-triangle me-2"></i>
-                            Unable to verify network package. You can configure interfaces later in Network settings.
+                            Unable to verify network interface management availability. You can configure interfaces later in Network settings.
                         </div>
                     `);
                 });
@@ -193,6 +191,9 @@
                     addDnsServer('8.8.8.8');
                     addDnsServer('8.8.4.4');
                 });
+
+            // Load current gateway from routing status
+            loadCurrentGateway();
         }
 
         function addDnsServer(value = '') {
@@ -212,6 +213,67 @@
 
         function removeDnsServer(id) {
             $(`[data-dns-id="${id}"]`).remove();
+        }
+
+        async function loadCurrentGateway() {
+            try {
+                // Try routing status first
+                const statusResponse = await Monolith.API.get('/api/routing/status');
+                const statusData = statusResponse.Data || statusResponse.data || statusResponse;
+                const defaultGateway = statusData.DefaultGateway || statusData.defaultGateway;
+                
+                if (defaultGateway) {
+                    const gatewayAddress = defaultGateway.Address || defaultGateway.address;
+                    const gatewayInterface = defaultGateway.Interface || defaultGateway.interface;
+                    
+                    if (gatewayAddress) {
+                        $('#gateway').val(gatewayAddress);
+                    }
+                    
+                    // Try to match interface to WAN selector
+                    if (gatewayInterface) {
+                        const wanSelect = $('#wan-interface');
+                        // Wait a bit for the select to be populated
+                        setTimeout(() => {
+                            // Check if interface exists in the select options
+                            if (wanSelect.find(`option[value="${gatewayInterface}"]`).length > 0) {
+                                wanSelect.val(gatewayInterface);
+                            }
+                        }, 500);
+                    }
+                } else {
+                    // Fallback: try to get from gateways list
+                    try {
+                        const gatewaysResponse = await Monolith.API.get('/api/routing/gateways');
+                        const gatewaysData = gatewaysResponse.Data || gatewaysResponse.data || gatewaysResponse;
+                        const gateways = Array.isArray(gatewaysData) ? gatewaysData : (gatewaysData.gateways || []);
+                        const defaultGw = gateways.find(gw => (gw.IsDefault || gw.isDefault));
+                        
+                        if (defaultGw) {
+                            const gatewayAddress = defaultGw.Address || defaultGw.address;
+                            const gatewayInterface = defaultGw.Interface || defaultGw.interface;
+                            
+                            if (gatewayAddress) {
+                                $('#gateway').val(gatewayAddress);
+                            }
+                            
+                            if (gatewayInterface) {
+                                setTimeout(() => {
+                                    const wanSelect = $('#wan-interface');
+                                    if (wanSelect.find(`option[value="${gatewayInterface}"]`).length > 0) {
+                                        wanSelect.val(gatewayInterface);
+                                    }
+                                }, 500);
+                            }
+                        }
+                    } catch (gwErr) {
+                        console.warn('Could not load gateways:', gwErr);
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not load current gateway:', err);
+                // Continue without pre-filling gateway
+            }
         }
 
         // Export for setup.js
@@ -243,21 +305,6 @@
         window.getCurrentStepData = window.getNetworkSetupData;
     </script>
 
-    <!-- Navigation Buttons -->
-    <div class="setup-nav">
-        <div class="setup-nav-left">
-            <button type="button" class="btn btn-outline-secondary" id="btn-setup-back">
-                <i class="bi bi-arrow-left me-1"></i> Back
-            </button>
-        </div>
-        <div class="setup-nav-right">
-            <button type="button" class="btn btn-outline-warning me-2" id="btn-setup-skip">
-                Skip
-            </button>
-            <button type="button" class="btn btn-primary" id="btn-setup-next">
-                Next <i class="bi bi-arrow-right ms-1"></i>
-            </button>
-        </div>
-    </div>
+    <!-- Navigation buttons are in the layout footer -->
 </div>
 }

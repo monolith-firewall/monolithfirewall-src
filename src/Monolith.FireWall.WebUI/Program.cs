@@ -68,6 +68,7 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 builder.Services.AddSingleton<CoreApiClient>();
 builder.Services.AddSingleton<PackageViewRouter>();
 builder.Services.AddSingleton<PackageViewsRegistry>();
+builder.Services.AddSingleton<PackageDiscoveryService>();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<PackageUpdatesClient>();
 builder.Services.AddSingleton<RazorPartialRenderer>();
@@ -691,21 +692,55 @@ app.MapControllers();
 app.MapRazorPages();
 
 // Login endpoint
-app.MapPost("/api/auth/login", async (HttpContext context, UserService userService) =>
+app.MapPost("/api/auth/login", async (HttpContext context, UserService userService, UserGroupService userGroupService) =>
 {
+    var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var username = "";
+    
     try
     {
         var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
         var loginData = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
 
-        var username = loginData.GetProperty("username").GetString();
+        username = loginData.GetProperty("username").GetString() ?? "";
         var password = loginData.GetProperty("password").GetString();
 
-        var user = await userService.ValidateLoginAsync(username ?? "", password ?? "");
+        var user = await userService.ValidateLoginAsync(username, password ?? "");
         
         if (user == null)
         {
+            // Log failed login attempt
+            try
+            {
+                await Monolith.FireWall.Common.Services.LoggingManager.Instance.LogMonolithAsync(
+                    category: "Auth",
+                    level: "Warning",
+                    source: "Authentication",
+                    message: $"Failed login attempt for username: {username}",
+                    userId: null,
+                    ipAddress: ipAddress,
+                    details: new Dictionary<string, object> { { "username", username }, { "reason", "Invalid credentials" } }
+                );
+            }
+            catch (Exception logEx)
+            {
+                Console.WriteLine($"Failed to log failed login attempt: {logEx.Message}");
+            }
+            
             return Results.Json(new { success = false, error = "Invalid credentials" });
+        }
+
+        // Get effective permissions from user groups
+        string[] effectivePermissions;
+        try
+        {
+            effectivePermissions = await userGroupService.GetUserEffectivePermissionsAsync(user.Id);
+        }
+        catch (Exception permEx)
+        {
+            // If getting permissions fails, use wildcard as fallback
+            Console.WriteLine($"Warning: Failed to get user permissions: {permEx.Message}");
+            effectivePermissions = new[] { "*" };
         }
 
         // Create user context
@@ -713,11 +748,30 @@ app.MapPost("/api/auth/login", async (HttpContext context, UserService userServi
             user.Id,
             user.Username,
             user.GetRoles(),
-            new[] { "*" }
+            effectivePermissions
         );
 
         // Set session
         AuthenticationMiddleware.SetUserSession(context, userContext);
+
+        // Log successful login
+        try
+        {
+            await Monolith.FireWall.Common.Services.LoggingManager.Instance.LogMonolithAsync(
+                category: "Auth",
+                level: "Info",
+                source: "Authentication",
+                message: $"User '{user.Username}' logged in successfully",
+                userId: user.Id,
+                ipAddress: ipAddress,
+                details: new Dictionary<string, object> { { "username", user.Username }, { "roles", string.Join(", ", user.GetRoles()) } }
+            );
+        }
+        catch (Exception logEx)
+        {
+            // Log to console if logging fails, but don't fail the login
+            Console.WriteLine($"Failed to log authentication event: {logEx.Message}");
+        }
 
         return Results.Json(new { 
             success = true, 
@@ -734,12 +788,50 @@ app.MapPost("/api/auth/login", async (HttpContext context, UserService userServi
     }
     catch (Exception ex)
     {
+        // Log login error
+        await Monolith.FireWall.Common.Services.LoggingManager.Instance.LogMonolithAsync(
+            category: "Auth",
+            level: "Error",
+            source: "Authentication",
+            message: $"Login error for username: {username}",
+            userId: null,
+            ipAddress: ipAddress,
+            details: new Dictionary<string, object> { { "username", username }, { "error", ex.Message } }
+        );
+        
         return Results.Json(new { success = false, error = ex.Message });
     }
 });
 
-app.MapPost("/api/auth/logout", (HttpContext context) =>
+app.MapPost("/api/auth/logout", async (HttpContext context) =>
 {
+    var user = AuthenticationMiddleware.GetUser(context);
+    var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    
+    if (user != null)
+    {
+        var username = user.Username;
+        var userId = user.UserId;
+        
+        // Log logout
+        try
+        {
+            await Monolith.FireWall.Common.Services.LoggingManager.Instance.LogMonolithAsync(
+                category: "Auth",
+                level: "Info",
+                source: "Authentication",
+                message: $"User '{username}' logged out",
+                userId: userId,
+                ipAddress: ipAddress,
+                details: new Dictionary<string, object> { { "username", username } }
+            );
+        }
+        catch (Exception logEx)
+        {
+            Console.WriteLine($"Failed to log logout event: {logEx.Message}");
+        }
+    }
+    
     AuthenticationMiddleware.ClearUserSession(context);
     return Results.Json(new { success = true });
 });
@@ -1258,6 +1350,26 @@ app.MapPost("/api/monitoring/notifications/read", async (HttpContext context, Co
     }
 });
 
+app.MapPost("/api/monitoring/notifications/delete", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    try
+    {
+        using var doc = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+        var coreRequest = new
+        {
+            action = "monitoring.notifications.delete",
+            payload = doc.RootElement
+        };
+        var requestJson = JsonSerializer.Serialize(coreRequest);
+        var responseJson = await coreClient.SendRequestAsync(requestJson, 10000);
+        return Results.Content(responseJson, "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
 app.MapPost("/api/monitoring/monitors/update", async (HttpContext context, CoreApiClient coreClient) =>
 {
     try
@@ -1742,6 +1854,251 @@ app.MapPost("/api/webui/service/restart", async (HttpContext context, CoreApiCli
 
 // Firewall API routes are now handled by FirewallController via app.MapControllers()
 
+// Permissions API is handled by PermissionsController
+
+/*
+// Removed duplicate MapGet - using PermissionsController instead
+app.MapGet("/api/permissions", async (HttpContext context, CoreApiClient coreClient) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        // Query Core API for all modules to get permissions
+        var request = JsonSerializer.Serialize(new { action = "get-modules" });
+        logger.LogDebug("Sending request to Core API: get-modules");
+        
+        string responseJson;
+        try
+        {
+            responseJson = await coreClient.SendRequestAsync(request);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to communicate with Core API");
+            return Results.Json(new { success = false, error = $"Core API communication failed: {ex.Message}" }, statusCode: 500);
+        }
+        
+        if (string.IsNullOrWhiteSpace(responseJson))
+        {
+            logger.LogError("Core API returned empty response");
+            return Results.Json(new { success = false, error = "Core API returned empty response" }, statusCode: 500);
+        }
+        
+        Dictionary<string, object>? response;
+        try
+        {
+            response = JsonSerializer.Deserialize<Dictionary<string, object>>(responseJson);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to deserialize Core API response: {Response}", responseJson);
+            return Results.Json(new { success = false, error = $"Failed to parse Core API response: {ex.Message}" }, statusCode: 500);
+        }
+        
+        if (response == null || !(GetDictBoolHelper(response, "success") ?? GetDictBoolHelper(response, "Success") ?? false))
+        {
+            logger.LogWarning("Core API returned unsuccessful response: {Response}", responseJson);
+            return Results.Json(new { success = false, error = "Failed to get modules from Core" }, statusCode: 500);
+        }
+
+        if (!response.TryGetValue("data", out var dataObj) && !response.TryGetValue("Data", out dataObj))
+        {
+            logger.LogWarning("Core API response missing data field: {Response}", responseJson);
+            return Results.Json(new { success = false, error = "No data in response" }, statusCode: 500);
+        }
+
+        // Extract permissions from modules
+        List<Dictionary<string, object>>? modules = null;
+        try
+        {
+            var modulesJson = JsonSerializer.Serialize(dataObj);
+            modules = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(modulesJson);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to deserialize modules data");
+            return Results.Json(new { success = false, error = $"Failed to parse modules data: {ex.Message}" }, statusCode: 500);
+        }
+        
+        var allPermissions = new List<Dictionary<string, object>>();
+        var permissionSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (modules != null && modules.Count > 0)
+        {
+            logger.LogDebug("Processing {Count} modules for permissions", modules.Count);
+            
+            foreach (var module in modules)
+            {
+                var packageId = GetDictStringHelper(module, "packageId") ?? GetDictStringHelper(module, "PackageId") ?? "core";
+                var packageName = GetDictStringHelper(module, "packageName") ?? GetDictStringHelper(module, "PackageName") ?? "Core";
+                var moduleId = GetDictStringHelper(module, "id") ?? GetDictStringHelper(module, "Id") ?? "";
+                var moduleName = GetDictStringHelper(module, "name") ?? GetDictStringHelper(module, "Name") ?? "";
+                
+                // Get requiredPermissions array
+                object? permsObj = null;
+                if (module.TryGetValue("requiredPermissions", out var rp))
+                    permsObj = rp;
+                else if (module.TryGetValue("RequiredPermissions", out var rp2))
+                    permsObj = rp2;
+                
+                if (permsObj != null)
+                {
+                    try
+                    {
+                        List<string> permIds = new List<string>();
+                        
+                        // Handle JsonElement
+                        if (permsObj is JsonElement jsonElement)
+                        {
+                            if (jsonElement.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var item in jsonElement.EnumerateArray())
+                                {
+                                    if (item.ValueKind == JsonValueKind.String)
+                                    {
+                                        var permId = item.GetString();
+                                        if (!string.IsNullOrWhiteSpace(permId))
+                                            permIds.Add(permId);
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Try to deserialize as list
+                            var permsJson = JsonSerializer.Serialize(permsObj);
+                            var deserialized = JsonSerializer.Deserialize<List<string>>(permsJson);
+                            if (deserialized != null)
+                                permIds = deserialized;
+                        }
+                        
+                        foreach (var permId in permIds)
+                        {
+                            if (string.IsNullOrWhiteSpace(permId) || permissionSet.Contains(permId))
+                                continue;
+                                
+                            permissionSet.Add(permId);
+                            
+                            // Parse permission ID to extract category
+                            // Format: "category.subcategory.action" or "category.*" or "*"
+                            var parts = permId.Split('.');
+                            var category = parts.Length > 0 ? parts[0] : "Other";
+                            var subcategory = parts.Length > 1 ? parts[1] : "";
+                            var action = parts.Length > 2 ? parts[2] : "";
+                            
+                            // Generate display name
+                            var displayName = action == "*" ? "All Actions" : 
+                                             action != "" ? ToTitleHelper(action) :
+                                             subcategory == "*" ? "All " + ToTitleHelper(category) :
+                                             subcategory != "" ? ToTitleHelper(subcategory) :
+                                             category == "*" ? "All Permissions" :
+                                             ToTitleHelper(category);
+
+                            allPermissions.Add(new Dictionary<string, object>
+                            {
+                                ["id"] = permId,
+                                ["name"] = displayName,
+                                ["category"] = ToTitleHelper(category),
+                                ["subcategory"] = subcategory != "" && subcategory != "*" ? ToTitleHelper(subcategory) : "",
+                                ["packageId"] = packageId,
+                                ["moduleId"] = moduleId,
+                                ["description"] = $"Permission from {packageName} / {moduleName}"
+                            });
+                        }
+                        
+                        if (permIds.Count > 0)
+                        {
+                            logger.LogDebug("Module {ModuleId} ({PackageId}) contributed {Count} permissions", moduleId, packageId, permIds.Count);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log but continue processing other modules
+                        logger.LogWarning(ex, "Error processing permissions for module {ModuleId}", moduleId);
+                    }
+                }
+                else
+                {
+                    // Log modules without permissions for debugging
+                    logger.LogDebug("Module {ModuleId} ({PackageId}) has no requiredPermissions", moduleId, packageId);
+                }
+            }
+        }
+
+        // Add core system permissions (always available)
+        var corePerms = new[]
+        {
+            new Dictionary<string, object> { ["id"] = "system.users.read", ["name"] = "View Users", ["category"] = "System", ["subcategory"] = "Users", ["packageId"] = "core", ["moduleId"] = "system", ["description"] = "View user list and details" },
+            new Dictionary<string, object> { ["id"] = "system.users.write", ["name"] = "Manage Users", ["category"] = "System", ["subcategory"] = "Users", ["packageId"] = "core", ["moduleId"] = "system", ["description"] = "Create and edit users" },
+            new Dictionary<string, object> { ["id"] = "system.users.delete", ["name"] = "Delete Users", ["category"] = "System", ["subcategory"] = "Users", ["packageId"] = "core", ["moduleId"] = "system", ["description"] = "Delete users" },
+            new Dictionary<string, object> { ["id"] = "system.groups.read", ["name"] = "View Groups", ["category"] = "System", ["subcategory"] = "Groups", ["packageId"] = "core", ["moduleId"] = "system", ["description"] = "View group list and details" },
+            new Dictionary<string, object> { ["id"] = "system.groups.write", ["name"] = "Manage Groups", ["category"] = "System", ["subcategory"] = "Groups", ["packageId"] = "core", ["moduleId"] = "system", ["description"] = "Create and edit groups" },
+            new Dictionary<string, object> { ["id"] = "system.groups.delete", ["name"] = "Delete Groups", ["category"] = "System", ["subcategory"] = "Groups", ["packageId"] = "core", ["moduleId"] = "system", ["description"] = "Delete groups" },
+            new Dictionary<string, object> { ["id"] = "system.permissions.read", ["name"] = "View Permissions", ["category"] = "System", ["subcategory"] = "Permissions", ["packageId"] = "core", ["moduleId"] = "system", ["description"] = "View available permissions" },
+            new Dictionary<string, object> { ["id"] = "system.settings.read", ["name"] = "View Settings", ["category"] = "System", ["subcategory"] = "Settings", ["packageId"] = "core", ["moduleId"] = "system", ["description"] = "View system settings" },
+            new Dictionary<string, object> { ["id"] = "system.settings.write", ["name"] = "Manage Settings", ["category"] = "System", ["subcategory"] = "Settings", ["packageId"] = "core", ["moduleId"] = "system", ["description"] = "Modify system settings" },
+            new Dictionary<string, object> { ["id"] = "*", ["name"] = "All Permissions", ["category"] = "System", ["subcategory"] = "All", ["packageId"] = "core", ["moduleId"] = "system", ["description"] = "Full system access" }
+        };
+
+        foreach (var perm in corePerms)
+        {
+            var permId = perm["id"].ToString() ?? "";
+            if (!permissionSet.Contains(permId))
+            {
+                permissionSet.Add(permId);
+                allPermissions.Add(perm);
+            }
+        }
+
+        logger.LogInformation("Returning {Count} total permissions ({CoreCount} core, {ModuleCount} from modules)", 
+            allPermissions.Count, corePerms.Length, allPermissions.Count - corePerms.Length);
+        return Results.Json(new { success = true, data = allPermissions });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Unexpected error getting permissions");
+        return Results.Json(new { success = false, error = ex.Message }, statusCode: 500);
+    }
+});
+*/
+
+static bool? GetDictBoolHelper(Dictionary<string, object> dict, string key)
+{
+    if (dict.TryGetValue(key, out var val) && val != null)
+    {
+        if (val is JsonElement elem)
+        {
+            if (elem.ValueKind == JsonValueKind.True) return true;
+            if (elem.ValueKind == JsonValueKind.False) return false;
+        }
+        if (val is bool b) return b;
+        if (bool.TryParse(val.ToString(), out var parsed)) return parsed;
+    }
+    return null;
+}
+
+static string? GetDictStringHelper(Dictionary<string, object> dict, string key)
+{
+    if (dict.TryGetValue(key, out var val) && val != null)
+    {
+        if (val is JsonElement elem && elem.ValueKind == JsonValueKind.String) return elem.GetString();
+        return val.ToString();
+    }
+    return null;
+}
+
+static string ToTitleHelper(string slug)
+{
+    if (string.IsNullOrWhiteSpace(slug)) return slug ?? "";
+    var parts = (slug ?? "").Split(new[] { '-', '.' }, StringSplitOptions.RemoveEmptyEntries);
+    return string.Join(' ', parts.Select(s => 
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+        if (s.Length == 1) return char.ToUpperInvariant(s[0]).ToString();
+        return char.ToUpperInvariant(s[0]) + s.Substring(1).ToLowerInvariant();
+    }));
+}
+
 // Firewall pages route - serve Razor pages as SPA partials
 app.MapGet("/firewall/{module}", async (HttpContext context, string module) =>
 {
@@ -1979,18 +2336,22 @@ app.MapGet("/api/logs/monolith", async (HttpContext context, SystemLogsManager l
 {
     try
     {
+        var category = context.Request.Query["category"].FirstOrDefault() ?? "";
+        var level = context.Request.Query["level"].FirstOrDefault() ?? "";
+        var source = context.Request.Query["source"].FirstOrDefault() ?? "";
+        
         var queryParams = new Monolith.FireWall.Common.Models.LogQueryParams
         {
-            Category = context.Request.Query["category"].ToString(),
-            Level = context.Request.Query["level"].ToString(),
-            Source = context.Request.Query["source"].ToString(),
-            Limit = int.TryParse(context.Request.Query["limit"].ToString(), out var limit) ? limit : 100,
-            Offset = int.TryParse(context.Request.Query["offset"].ToString(), out var offset) ? offset : 0
+            Category = string.IsNullOrWhiteSpace(category) ? null : category,
+            Level = string.IsNullOrWhiteSpace(level) ? null : level,
+            Source = string.IsNullOrWhiteSpace(source) ? null : source,
+            Limit = int.TryParse(context.Request.Query["limit"].FirstOrDefault(), out var limit) ? limit : 100,
+            Offset = int.TryParse(context.Request.Query["offset"].FirstOrDefault(), out var offset) ? offset : 0
         };
 
-        if (DateTime.TryParse(context.Request.Query["startDate"].ToString(), out var startDate))
+        if (DateTime.TryParse(context.Request.Query["startDate"].FirstOrDefault(), out var startDate))
             queryParams.StartDate = startDate;
-        if (DateTime.TryParse(context.Request.Query["endDate"].ToString(), out var endDate))
+        if (DateTime.TryParse(context.Request.Query["endDate"].FirstOrDefault(), out var endDate))
             queryParams.EndDate = endDate;
 
         var result = await logsManager.QueryMonolithLogsAsync(queryParams);
@@ -2006,18 +2367,22 @@ app.MapGet("/api/logs/system", async (HttpContext context, SystemLogsManager log
 {
     try
     {
+        var category = context.Request.Query["category"].FirstOrDefault() ?? "";
+        var level = context.Request.Query["level"].FirstOrDefault() ?? "";
+        var source = context.Request.Query["source"].FirstOrDefault() ?? "";
+        
         var queryParams = new Monolith.FireWall.Common.Models.LogQueryParams
         {
-            Category = context.Request.Query["category"].ToString(),
-            Level = context.Request.Query["level"].ToString(),
-            Source = context.Request.Query["source"].ToString(),
-            Limit = int.TryParse(context.Request.Query["limit"].ToString(), out var limit) ? limit : 100,
-            Offset = int.TryParse(context.Request.Query["offset"].ToString(), out var offset) ? offset : 0
+            Category = string.IsNullOrWhiteSpace(category) ? null : category,
+            Level = string.IsNullOrWhiteSpace(level) ? null : level,
+            Source = string.IsNullOrWhiteSpace(source) ? null : source,
+            Limit = int.TryParse(context.Request.Query["limit"].FirstOrDefault(), out var limit) ? limit : 100,
+            Offset = int.TryParse(context.Request.Query["offset"].FirstOrDefault(), out var offset) ? offset : 0
         };
 
-        if (DateTime.TryParse(context.Request.Query["startDate"].ToString(), out var startDate))
+        if (DateTime.TryParse(context.Request.Query["startDate"].FirstOrDefault(), out var startDate))
             queryParams.StartDate = startDate;
-        if (DateTime.TryParse(context.Request.Query["endDate"].ToString(), out var endDate))
+        if (DateTime.TryParse(context.Request.Query["endDate"].FirstOrDefault(), out var endDate))
             queryParams.EndDate = endDate;
 
         var result = await logsManager.QuerySystemLogsAsync(queryParams);
@@ -2033,18 +2398,22 @@ app.MapGet("/api/logs/security", async (HttpContext context, SystemLogsManager l
 {
     try
     {
+        var category = context.Request.Query["category"].FirstOrDefault() ?? "";
+        var level = context.Request.Query["level"].FirstOrDefault() ?? "";
+        var source = context.Request.Query["source"].FirstOrDefault() ?? "";
+        
         var queryParams = new Monolith.FireWall.Common.Models.LogQueryParams
         {
-            Category = context.Request.Query["category"].ToString(),
-            Level = context.Request.Query["level"].ToString(),
-            Source = context.Request.Query["source"].ToString(),
-            Limit = int.TryParse(context.Request.Query["limit"].ToString(), out var limit) ? limit : 100,
-            Offset = int.TryParse(context.Request.Query["offset"].ToString(), out var offset) ? offset : 0
+            Category = string.IsNullOrWhiteSpace(category) ? null : category,
+            Level = string.IsNullOrWhiteSpace(level) ? null : level,
+            Source = string.IsNullOrWhiteSpace(source) ? null : source,
+            Limit = int.TryParse(context.Request.Query["limit"].FirstOrDefault(), out var limit) ? limit : 100,
+            Offset = int.TryParse(context.Request.Query["offset"].FirstOrDefault(), out var offset) ? offset : 0
         };
 
-        if (DateTime.TryParse(context.Request.Query["startDate"].ToString(), out var startDate))
+        if (DateTime.TryParse(context.Request.Query["startDate"].FirstOrDefault(), out var startDate))
             queryParams.StartDate = startDate;
-        if (DateTime.TryParse(context.Request.Query["endDate"].ToString(), out var endDate))
+        if (DateTime.TryParse(context.Request.Query["endDate"].FirstOrDefault(), out var endDate))
             queryParams.EndDate = endDate;
 
         var result = await logsManager.QuerySecurityLogsAsync(queryParams);
@@ -2053,6 +2422,45 @@ app.MapGet("/api/logs/security", async (HttpContext context, SystemLogsManager l
     catch (Exception ex)
     {
         return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+    }
+});
+
+// Test endpoint to verify logging works
+app.MapGet("/api/logs/test", async (HttpContext context) =>
+{
+    try
+    {
+        var loggingManager = Monolith.FireWall.Common.Services.LoggingManager.Instance;
+        var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var user = AuthenticationMiddleware.GetUser(context);
+        
+        // Test Auth log
+        await loggingManager.LogMonolithAsync(
+            category: "Auth",
+            level: "Info",
+            source: "Test",
+            message: "Test authentication log entry",
+            userId: user?.UserId,
+            ipAddress: ipAddress,
+            details: new Dictionary<string, object> { { "test", true } }
+        );
+        
+        // Test Permission log
+        await loggingManager.LogMonolithAsync(
+            category: "Permission",
+            level: "Warning",
+            source: "Test",
+            message: "Test permission log entry",
+            userId: user?.UserId,
+            ipAddress: ipAddress,
+            details: new Dictionary<string, object> { { "test", true }, { "permission", "test.permission.read" } }
+        );
+        
+        return Results.Json(new { Success = true, Message = "Test logs created successfully" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { Success = false, Error = ex.Message }, statusCode: 500);
     }
 });
 

@@ -1,3 +1,10 @@
+monolith-firewall (1.0.0-20260124-134954) unstable; urgency=medium
+
+  * Automated build with timestamp versioning
+  * Build timestamp: 2026-01-24 13:49:54 UTC
+
+ -- Monolith FireWall Team <dev@monolithfirewall.org>  Sat, 24 Jan 2026 13:49:54 +0000
+
 monolith-firewall (1.0.0-12) unstable; urgency=medium
 
   * Fix missing JsonDocument disposal in PermissionSyncService

@@ -268,6 +268,16 @@ body {
     height: 8px;
     border-radius: 50%;
     display: inline-block;
+    margin: 0;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+/* Ensure status indicator in navbar doesn't add extra spacing */
+.top-navbar .nav-link.nav-icon-button .status-indicator {
+    margin: 0;
+    padding: 0;
+    margin-right: 0.25rem;
 }
 
 .status-ok {
@@ -300,11 +310,58 @@ body {
     background-color: rgba(var(--bs-primary-rgb), 0.1);
 }
 
+/* Fix notification dropdown item layout - title on new line */
+#notifications-menu .notification-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0.75rem 1rem;
+    white-space: normal;
+    word-wrap: break-word;
+    gap: 0.25rem;
+}
+
+#notifications-menu .notification-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 0.5rem;
+}
+
+#notifications-menu .notification-title {
+    flex: 1;
+    font-weight: 600;
+    font-size: 0.875rem;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#notifications-menu .notification-message {
+    width: 100%;
+    line-height: 1.4;
+    font-size: 0.8125rem;
+    color: #64748b !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+#notifications-menu .notification-date {
+    width: 100%;
+    font-size: 0.75rem;
+    color: #94a3b8 !important;
+}
+
 /* Fix notification menu z-index and positioning */
 #notifications-menu {
     max-height: 400px;
     overflow-y: auto;
-    min-width: 320px;
+    min-width: 280px;
+    max-width: 320px;
     z-index: 1051 !important;
     position: absolute;
 }
@@ -345,9 +402,13 @@ body {
     z-index: 1050 !important;
 }
 
-.monitoring-item {
+/* Ensure monitoring items align properly with other dropdown items */
+.top-navbar .dropdown-menu /* Ensure monitoring items align properly with other dropdown items */
+.top-navbar .dropdown-menu .monitoring-item {
     white-space: normal;
     line-height: 1.2;
+    padding: 0;
+    margin: 0;
 }
 
 .app-loader {

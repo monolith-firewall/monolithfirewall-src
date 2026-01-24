@@ -18,10 +18,29 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<UserEntity>>> GetAllUsers()
+    public async Task<ActionResult<List<object>>> GetAllUsers()
     {
         var users = await _userService.GetAllUsersAsync();
-        return Ok(new { success = true, data = users });
+        var groupService = HttpContext.RequestServices.GetRequiredService<UserGroupService>();
+        
+        var usersWithDetails = new List<object>();
+        foreach (var user in users)
+        {
+            var groups = await groupService.GetUserGroupsAsync(user.Id);
+            usersWithDetails.Add(new
+            {
+                id = user.Id,
+                username = user.Username,
+                email = user.Email,
+                enabled = user.Enabled,
+                roles = user.GetRoles(),
+                groups = groups.Select(g => new { id = g.Id, name = g.Name }).ToList(),
+                createdAt = user.CreatedAt,
+                updatedAt = user.UpdatedAt
+            });
+        }
+        
+        return Ok(new { success = true, data = usersWithDetails });
     }
 
     [HttpGet("{id}")]

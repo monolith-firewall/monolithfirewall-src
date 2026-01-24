@@ -68,7 +68,12 @@ public class PackageScanner
         {
             PropertyNameCaseInsensitive = true
         };
-        var manifest = JsonSerializer.Deserialize<PackageManifest>(manifestJson, options);
+            var manifest = JsonSerializer.Deserialize<PackageManifest>(manifestJson, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                AllowTrailingCommas = true,
+                ReadCommentHandling = JsonCommentHandling.Skip
+            });
 
         if (manifest == null)
         {

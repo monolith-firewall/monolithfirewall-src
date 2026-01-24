@@ -6,10 +6,71 @@ window.Monolith = Monolith;
 
 Monolith.UI = {
     /**
+     * Toast container and active toasts tracking
+     */
+    _toastContainer: null,
+    _activeToasts: [],
+
+    /**
+     * Initialize toast container if it doesn't exist
+     */
+    _initToastContainer: function() {
+        if (!this._toastContainer || !this._toastContainer.length) {
+            this._toastContainer = $('#monolith-toast-container');
+            if (!this._toastContainer.length) {
+                this._toastContainer = $(`
+                    <div id="monolith-toast-container" 
+                         style="position: fixed; top: 20px; right: 20px; z-index: 99999; pointer-events: none;">
+                    </div>
+                `);
+                $('body').append(this._toastContainer);
+            }
+        }
+        return this._toastContainer;
+    },
+
+    /**
+     * Update positions of all active toasts
+     */
+    _updateToastPositions: function() {
+        const container = this._toastContainer;
+        if (!container || !container.length) return;
+
+        let topOffset = 0;
+        const spacing = 10; // Space between toasts
+
+        // Update positions for all active toasts
+        this._activeToasts.forEach((toastId) => {
+            const toast = $(`#${toastId}`);
+            if (toast.length) {
+                toast.css({
+                    'top': topOffset + 'px',
+                    'right': '0px',
+                    'pointer-events': 'auto'
+                });
+                // Get height of this toast (including margin)
+                const toastHeight = toast.outerHeight(true);
+                topOffset += toastHeight + spacing;
+            }
+        });
+    },
+
+    /**
+     * Remove toast from active list and update positions
+     */
+    _removeToast: function(toastId) {
+        const index = this._activeToasts.indexOf(toastId);
+        if (index > -1) {
+            this._activeToasts.splice(index, 1);
+        }
+        this._updateToastPositions();
+    },
+
+    /**
      * Show toast notification
      */
     toast: function(message, type = 'info') {
-        const toastId = 'toast-' + Date.now();
+        const toastId = 'toast-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
         const bgClass = {
             'success': 'alert-success',
             'error': 'alert-danger',
@@ -24,21 +85,52 @@ Monolith.UI = {
             'info': 'ℹ'
         }[type] || 'ℹ';
 
+        // Initialize container
+        const container = this._initToastContainer();
+
         const toast = $(`
-            <div id="${toastId}" class="alert ${bgClass} alert-dismissible fade show position-fixed" 
-                 style="top: 20px; right: 20px; z-index: 9999; min-width: 300px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+            <div id="${toastId}" class="alert ${bgClass} alert-dismissible fade show" 
+                 style="min-width: 300px; max-width: 400px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); margin-bottom: 0; margin-right: 0;">
                 <strong>${icon}</strong> ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         `);
 
-        $('body').append(toast);
+        // Add to container and active list
+        container.append(toast);
+        this._activeToasts.push(toastId);
 
-        setTimeout(() => {
-            toast.fadeOut(300, function() {
-                $(this).remove();
-            });
+        // Update positions
+        this._updateToastPositions();
+
+        // Handle manual close (Bootstrap alert dismiss)
+        toast.on('closed.bs.alert', () => {
+            this._removeToast(toastId);
+        });
+
+        // Also handle close button click directly (fallback)
+        toast.find('.btn-close').on('click', () => {
+            setTimeout(() => {
+                if ($(`#${toastId}`).length) {
+                    this._removeToast(toastId);
+                }
+            }, 350); // Wait for fade animation
+        });
+
+        // Auto-remove after 5 seconds
+        const autoRemoveTimeout = setTimeout(() => {
+            if ($(`#${toastId}`).length) {
+                toast.fadeOut(300, () => {
+                    toast.remove();
+                    this._removeToast(toastId);
+                });
+            }
         }, 5000);
+
+        // Clear timeout if toast is manually closed
+        toast.on('closed.bs.alert', () => {
+            clearTimeout(autoRemoveTimeout);
+        });
     },
     showError: function(message) {
         this.toast(message, 'error');

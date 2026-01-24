@@ -32,23 +32,7 @@
                     </div>
 
     </div>
-
-    <!-- Navigation Buttons -->
-    <div class="setup-nav">
-        <div class="setup-nav-left">
-            <button type="button" class="btn btn-outline-secondary" id="btn-setup-back">
-                <i class="bi bi-arrow-left me-1"></i> Back
-            </button>
-        </div>
-        <div class="setup-nav-right">
-            <button type="button" class="btn btn-outline-warning me-2" id="btn-setup-skip" style="display: none;">
-                Skip
-            </button>
-            <button type="button" class="btn btn-primary" id="btn-setup-next">
-                Next <i class="bi bi-arrow-right ms-1"></i>
-            </button>
-        </div>
-    </div>
+    <!-- Navigation buttons are in the layout footer -->
 </div>
 
 <script>
@@ -199,7 +183,8 @@
             console.log('Content loaded, applying styles...');
 
             ensurePackagePageStyles();
-            $('.setup-nav').show();
+            // Navigation is in layout footer, ensure it's visible
+            $('#setup-nav-container').show();
 
             runPackageScripts(parsed.scripts, () => {
                 initializePackagePage();
@@ -287,12 +272,8 @@
                    $container.show();
                    $formContent.show();
                    
-                   // Ensure navigation stays visible (force it)
-                   $('.setup-nav').css({
-                       'display': 'flex !important',
-                       'visibility': 'visible !important',
-                       'opacity': '1 !important'
-                   });
+                   // Navigation is in layout footer, ensure it's visible
+                   $('#setup-nav-container').show();
                }
 
                function initializePackagePage() {
@@ -311,8 +292,13 @@
                    // Setup validation and data getters
                    setupPackagePageHandlers();
                    
-                   // Ensure navigation is visible
-                   $('.setup-nav').show();
+                   // Ensure navigation is visible (in layout footer)
+                   $('#setup-nav-container').show();
+                   
+                   // Update navigation state
+                   if (window.SetupWizard) {
+                       window.SetupWizard.updateNavigation();
+                   }
                }
                
                function setupPackagePageHandlers() {
@@ -340,8 +326,11 @@
 
         // Initialize when document is ready
         $(document).ready(function() {
-            // Ensure navigation is visible
-            $('.setup-nav').show();
+            // Ensure navigation is visible (in layout footer)
+            $('#setup-nav-container').show();
+            
+            // Wire up navigation handlers
+            setupStepPageNavigation();
             
             loadPackageSetupPage();
         });

@@ -11,7 +11,9 @@ public sealed class MonitoringHandler : ICoreRequestHandler
         "monitoring.status.list",
         "monitoring.monitor.update",
         "monitoring.notifications.list",
-        "monitoring.notifications.read"
+        "monitoring.notifications.create",
+        "monitoring.notifications.read",
+        "monitoring.notifications.delete"
     };
 
     public bool CanHandle(string action) => Actions.Contains(action);
@@ -61,6 +63,17 @@ public sealed class MonitoringHandler : ICoreRequestHandler
                 var notificationSummary = await context.MonitoringManager.GetNotificationsAsync(notificationQuery);
                 return new ApiResponse(true, notificationSummary, null);
 
+            case "monitoring.notifications.create":
+                if (!CoreRequestParsing.TryGetPayload(request, out NotificationCreateRequest createRequest, out var createError))
+                {
+                    return new ApiResponse(false, null, createError);
+                }
+
+                var createResult = await context.MonitoringManager.CreateNotificationAsync(createRequest);
+                return createResult.Success
+                    ? new ApiResponse(true, new { id = createResult.NotificationId }, null)
+                    : new ApiResponse(false, null, createResult.Error ?? "Failed to create notification");
+
             case "monitoring.notifications.read":
                 if (!CoreRequestParsing.TryGetPayload(request, out NotificationReadRequest readRequest, out var readError))
                 {
@@ -71,6 +84,17 @@ public sealed class MonitoringHandler : ICoreRequestHandler
                 return readResult.Success
                     ? new ApiResponse(true, new { read = true }, null)
                     : new ApiResponse(false, null, readResult.Error ?? "Failed to mark notifications read");
+
+            case "monitoring.notifications.delete":
+                if (!CoreRequestParsing.TryGetPayload(request, out NotificationDeleteRequest deleteRequest, out var deleteError))
+                {
+                    return new ApiResponse(false, null, deleteError);
+                }
+
+                var deleteResult = await context.MonitoringManager.DeleteNotificationsAsync(deleteRequest);
+                return deleteResult.Success
+                    ? new ApiResponse(true, new { deleted = true }, null)
+                    : new ApiResponse(false, null, deleteResult.Error ?? "Failed to delete notifications");
         }
 
         return new ApiResponse(false, null, $"Unhandled action: {action}");

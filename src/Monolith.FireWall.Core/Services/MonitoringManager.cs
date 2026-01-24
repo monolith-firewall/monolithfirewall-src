@@ -134,6 +134,73 @@ public sealed class MonitoringManager
         return okIds ? (true, null) : (false, "Failed to mark notifications read");
     }
 
+    public async Task<(bool Success, string? Error)> DeleteNotificationsAsync(NotificationDeleteRequest request)
+    {
+        if (request.ReadOnly)
+        {
+            var ok = await _store.DeleteAllReadAsync();
+            return ok ? (true, null) : (false, "Failed to delete read notifications");
+        }
+
+        if (request.All)
+        {
+            var ok = await _store.DeleteAllAsync();
+            return ok ? (true, null) : (false, "Failed to delete notifications");
+        }
+
+        var okIds = await _store.DeleteNotificationsAsync(request.Ids ?? new List<int>());
+        return okIds ? (true, null) : (false, "Failed to delete notifications");
+    }
+
+    /// <summary>
+    /// Create a new notification (for use by services and packages)
+    /// </summary>
+    /// <param name="request">Notification creation request</param>
+    /// <returns>Success status with notification ID or error message</returns>
+    public async Task<(bool Success, int? NotificationId, string? Error)> CreateNotificationAsync(NotificationCreateRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Title))
+        {
+            return (false, null, "Title is required");
+        }
+
+        var severity = (request.Severity ?? "info").ToLowerInvariant();
+        if (severity != "info" && severity != "warning" && severity != "error")
+        {
+            return (false, null, "Severity must be 'info', 'warning', or 'error'");
+        }
+
+        var type = string.IsNullOrWhiteSpace(request.Type) ? "system" : request.Type;
+
+        var notification = new SystemNotificationEntity
+        {
+            Type = type,
+            Severity = severity,
+            Title = request.Title.Trim(),
+            Message = request.Message?.Trim(),
+            MonitorKey = request.MonitorKey?.Trim(),
+            DetailsJson = request.DetailsJson?.Trim(),
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var id = await _store.InsertNotificationAsync(notification);
+        if (id > 0)
+        {
+            await _loggingManager.LogSystemAsync(
+                "Notifications",
+                severity,
+                type,
+                notification.Title,
+                new Dictionary<string, object>
+                {
+                    ["message"] = notification.Message ?? string.Empty
+                });
+            return (true, id, null);
+        }
+
+        return (false, null, "Failed to create notification");
+    }
+
     private async Task RunLoopAsync(CancellationToken cancellationToken)
     {
         await EnsureDefaultsAsync();

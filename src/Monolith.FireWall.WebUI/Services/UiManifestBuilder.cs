@@ -45,6 +45,9 @@ public sealed class UiManifestBuilder
         // Build menu dynamically from discovered routes
         BuildMenuFromRoutes(manifest);
         BuildPackagesMenu(manifest);
+        
+        // Resolve all menu item paths from routeId
+        ResolveMenuPaths(manifest);
 
         // Include interface assignments in metadata for easy access by frontend routers/components
         await IncludeInterfaceAssignmentsAsync(manifest, ct);
@@ -91,6 +94,15 @@ public sealed class UiManifestBuilder
         }
 
         target.Menu = CloneMenuItems(source.Menu);
+        
+        // Ensure group icons are set if missing
+        foreach (var menuItem in target.Menu)
+        {
+            if (string.IsNullOrWhiteSpace(menuItem.Icon))
+            {
+                menuItem.Icon = GetDefaultGroupIcon(menuItem.Label);
+            }
+        }
     }
 
     private List<UiMenuItem> CloneMenuItems(IEnumerable<UiMenuItem> items)
@@ -273,6 +285,9 @@ public sealed class UiManifestBuilder
                     string.Equals(r.Id, routeId, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(r.Path, routePath, StringComparison.OrdinalIgnoreCase));
 
+                // Extract icon from menu if available
+                var icon = GetDictString(menu, "icon") ?? GetDictString(menu, "Icon");
+
                 if (existingRoute == null)
                 {
                     var route = new UiRoute
@@ -290,6 +305,12 @@ public sealed class UiManifestBuilder
                         }
                     };
 
+                    // Store icon in route meta for menu building
+                    if (!string.IsNullOrWhiteSpace(icon))
+                    {
+                        route.Meta["icon"] = icon;
+                    }
+
                     EnsurePackageAssets(route);
                     manifest.Routes.Add(route);
                 }
@@ -300,6 +321,11 @@ public sealed class UiManifestBuilder
                     if (!string.IsNullOrWhiteSpace(pageName) && existingRoute.Meta != null)
                     {
                         existingRoute.Meta["pageId"] = pageName;
+                    }
+                    // Update icon if provided
+                    if (!string.IsNullOrWhiteSpace(icon) && existingRoute.Meta != null)
+                    {
+                        existingRoute.Meta["icon"] = icon;
                     }
                 }
 
@@ -368,6 +394,7 @@ public sealed class UiManifestBuilder
             var packageGroup = new UiMenuItem
             {
                 Label = "Packages",
+                Icon = "fa-solid fa-box-open",
                 Children = packages.Select(pkgGroup =>
                 {
                     var pkgLabel = _packageNames.TryGetValue(pkgGroup.Key, out var name) ? name : pkgGroup.Key;
@@ -377,7 +404,8 @@ public sealed class UiManifestBuilder
                         {
                             Label = x.Route.Title,
                             RouteId = x.Route.Id,
-                            Path = x.Route.Path
+                            Path = x.Route.Path,
+                            Icon = GetRouteIcon(x.Route)
                         })
                         .ToList();
 
@@ -386,6 +414,7 @@ public sealed class UiManifestBuilder
                     return new UiMenuItem
                     {
                         Label = pkgLabel,
+                        Icon = "fa-solid fa-box-open",
                         Children = moduleItems
                     };
                 }).ToList()
@@ -868,18 +897,71 @@ public sealed class UiManifestBuilder
             return;
         }
 
+        // Get default icon for menu group
+        var groupIcon = GetDefaultGroupIcon(label);
+
         var menuItem = new UiMenuItem
         {
             Label = label,
+            Icon = groupIcon,
             Children = routes.Select(route => new UiMenuItem
             {
                 Label = route.Title,
                 RouteId = route.Id,
-                Path = route.Path
+                Path = route.Path ?? string.Empty, // Ensure path is set
+                Icon = GetRouteIcon(route)
             }).ToList()
         };
 
         manifest.Menu.Add(menuItem);
+    }
+
+    private static string GetDefaultGroupIcon(string label)
+    {
+        return label.ToLowerInvariant() switch
+        {
+            "system" => "fa-solid fa-gear",
+            "interfaces" => "fa-solid fa-network-wired",
+            "firewall" => "fa-solid fa-shield-halved",
+            "status" => "fa-solid fa-chart-line",
+            "packages" => "fa-solid fa-box-open",
+            _ => "fa-solid fa-circle-dot"
+        };
+    }
+
+    private static string? GetRouteIcon(UiRoute route)
+    {
+        // Check if route has icon in meta
+        if (route.Meta.TryGetValue("icon", out var iconObj) && iconObj != null)
+        {
+            return iconObj.ToString();
+        }
+
+        // Default icons based on route path
+        var path = route.Path.ToLowerInvariant();
+        if (path.Contains("settings")) return "fa-solid fa-sliders";
+        if (path.Contains("packages")) return "fa-solid fa-box-open";
+        if (path.Contains("modules")) return "fa-solid fa-puzzle-piece";
+        if (path.Contains("routing")) return "fa-solid fa-route";
+        if (path.Contains("logs")) return "fa-solid fa-clipboard-list";
+        if (path.Contains("backup")) return "fa-solid fa-floppy-disk";
+        if (path.Contains("users")) return "fa-solid fa-users";
+        if (path.Contains("groups")) return "fa-solid fa-user-group";
+        if (path.Contains("permissions")) return "fa-solid fa-key";
+        if (path.Contains("network-cards")) return "fa-solid fa-microchip";
+        if (path.Contains("rules")) return "fa-solid fa-shield-halved";
+        if (path.Contains("aliases")) return "fa-solid fa-list-check";
+        if (path.Contains("/nat")) return "fa-solid fa-right-left";
+        if (path.Contains("virtual-ips")) return "fa-solid fa-circle-nodes";
+        if (path.Contains("traffic-shaper")) return "fa-solid fa-wave-square";
+        if (path.Contains("schedules")) return "fa-solid fa-calendar-days";
+        if (path.Contains("system")) return "fa-solid fa-gauge-high";
+        if (path.Contains("interfaces")) return "fa-solid fa-network-wired";
+        if (path.Contains("services")) return "fa-solid fa-server";
+        if (path.Contains("states")) return "fa-solid fa-network-wired";
+        if (path.Contains("routing-status")) return "fa-solid fa-route";
+
+        return null;
     }
 
     private static string? TryParsePageRoute(string content)
@@ -984,5 +1066,36 @@ public sealed class UiManifestBuilder
         }
 
         return new string(chars.ToArray());
+    }
+
+    private void ResolveMenuPaths(UiManifest manifest)
+    {
+        foreach (var menuItem in manifest.Menu)
+        {
+            ResolveMenuItemPath(menuItem, manifest);
+        }
+    }
+
+    private void ResolveMenuItemPath(UiMenuItem item, UiManifest manifest)
+    {
+        // If path is missing but routeId exists, resolve it from routes
+        if (string.IsNullOrWhiteSpace(item.Path) && !string.IsNullOrWhiteSpace(item.RouteId))
+        {
+            var route = manifest.Routes.FirstOrDefault(r => 
+                string.Equals(r.Id, item.RouteId, StringComparison.OrdinalIgnoreCase));
+            if (route != null && !string.IsNullOrWhiteSpace(route.Path))
+            {
+                item.Path = route.Path;
+            }
+        }
+
+        // Recursively resolve children
+        if (item.Children != null && item.Children.Count > 0)
+        {
+            foreach (var child in item.Children)
+            {
+                ResolveMenuItemPath(child, manifest);
+            }
+        }
     }
 }

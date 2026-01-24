@@ -40,6 +40,22 @@ public sealed class CmsController : ControllerBase
         }
     }
 
+    [HttpGet("menu.json")]
+    public async Task<IActionResult> GetMenuJson(CancellationToken ct)
+    {
+        try
+        {
+            var manifest = await _manifestBuilder.BuildAsync(ct);
+            var menu = manifest.Menu ?? new List<UiMenuItem>();
+            return Ok(new { success = true, menu = menu });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get menu JSON");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
     [HttpGet("manifest")]
     public async Task<IActionResult> GetManifest(CancellationToken ct)
     {

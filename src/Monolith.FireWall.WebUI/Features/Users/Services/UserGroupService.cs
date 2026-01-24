@@ -145,10 +145,16 @@ public class UserGroupService
     {
         try
         {
-            var adminGroup = await _repository.GetByNameAsync("Admin");
+            // Check for "Administrators" group (preferred) or "Admin" group (legacy)
+            var adminGroup = await _repository.GetByNameAsync("Administrators");
             if (adminGroup == null)
             {
-                _logger.LogWarning("Admin group not found, cannot add permissions");
+                adminGroup = await _repository.GetByNameAsync("Admin");
+            }
+            
+            if (adminGroup == null)
+            {
+                _logger.LogWarning("Administrators/Admin group not found, cannot add permissions");
                 return false;
             }
 

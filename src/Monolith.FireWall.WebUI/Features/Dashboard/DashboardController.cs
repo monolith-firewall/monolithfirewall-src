@@ -17,13 +17,20 @@ public class DashboardController : ControllerBase
     private readonly UserService _userService;
     private readonly CoreApiClient _coreClient;
     private readonly SystemLogsManager _logsManager;
+    private readonly PackageDiscoveryService _packageDiscovery;
     private readonly ILogger<DashboardController> _logger;
 
-    public DashboardController(UserService userService, CoreApiClient coreClient, SystemLogsManager logsManager, ILogger<DashboardController> logger)
+    public DashboardController(
+        UserService userService, 
+        CoreApiClient coreClient, 
+        SystemLogsManager logsManager,
+        PackageDiscoveryService packageDiscovery,
+        ILogger<DashboardController> logger)
     {
         _userService = userService;
         _coreClient = coreClient;
         _logsManager = logsManager;
+        _packageDiscovery = packageDiscovery;
         _logger = logger;
     }
 
@@ -362,10 +369,23 @@ public class DashboardController : ControllerBase
                 var parts = id.Split('.');
                 if (parts.Length >= 3)
                 {
-                    var packagePrefix = parts[0]; // "network" -> "monolith-network"
+                    var packagePrefix = parts[0]; // "network"
                     var module = parts[1]; // "dhcp"
                     var widgetAction = parts[2]; // "status"
-                    var packageId = $"monolith-{packagePrefix}";
+                    
+                    // Find the package that provides this module dynamically
+                    var packageId = await _packageDiscovery.FindPackageByModuleAsync(packagePrefix);
+                    if (string.IsNullOrEmpty(packageId))
+                    {
+                        // Try alternative: find package by module ID directly
+                        packageId = await _packageDiscovery.FindPackageByModuleAsync(module);
+                    }
+                    
+                    if (string.IsNullOrEmpty(packageId))
+                    {
+                        _logger.LogWarning("No package found for widget {WidgetId}", id);
+                        return NotFound(new { success = false, error = $"No package provides module '{packagePrefix}' or '{module}'" });
+                    }
 
                     // Try the new package API format first: /api/packages/{package}/modules/{module}/{action}
                     // This uses the standard package module action format
@@ -426,11 +446,8 @@ public class DashboardController : ControllerBase
                         _logger.LogWarning(ex, "Core API request failed for widget {WidgetId}, trying fallback", id);
                     }
 
-                    // Fallback for DHCP widget
-                    if (id == "network.dhcp.status")
-                    {
-                        return Ok(new { success = true, data = await GetDhcpStatus() });
-                    }
+                    // No hardcoded fallbacks - all widgets must come from packages
+                    _logger.LogWarning("Widget {WidgetId} not found in package {PackageId}", id, packageId);
                 }
             }
 
