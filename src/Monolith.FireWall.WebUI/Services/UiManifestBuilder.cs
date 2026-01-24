@@ -163,7 +163,15 @@ public sealed class UiManifestBuilder
                 if (!string.Equals(route.Kind, "package", StringComparison.OrdinalIgnoreCase) &&
                     !route.Meta.ContainsKey("module"))
                 {
-                    route.Meta["module"] = GetInternalModuleName(route.Path);
+                    // Special handling for status routes
+                    if (route.Path.StartsWith("/status/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        route.Meta["module"] = "status";
+                    }
+                    else
+                    {
+                        route.Meta["module"] = GetInternalModuleName(route.Path);
+                    }
                 }
 
                 target.Routes.Add(route);
@@ -193,7 +201,15 @@ public sealed class UiManifestBuilder
             if (!string.Equals(existing.Kind, "package", StringComparison.OrdinalIgnoreCase) &&
                 !existing.Meta.ContainsKey("module"))
             {
-                existing.Meta["module"] = GetInternalModuleName(existing.Path);
+                // Special handling for status routes
+                if (existing.Path.StartsWith("/status/", StringComparison.OrdinalIgnoreCase))
+                {
+                    existing.Meta["module"] = "status";
+                }
+                else
+                {
+                    existing.Meta["module"] = GetInternalModuleName(existing.Path);
+                }
             }
         }
 
@@ -1016,6 +1032,11 @@ public sealed class UiManifestBuilder
 
     private static string GetInternalModuleName(string route)
     {
+        if (route.StartsWith("/status/routing-status", StringComparison.OrdinalIgnoreCase))
+        {
+            return "routing-status";
+        }
+        
         if (route.StartsWith("/status/", StringComparison.OrdinalIgnoreCase))
         {
             return "status";

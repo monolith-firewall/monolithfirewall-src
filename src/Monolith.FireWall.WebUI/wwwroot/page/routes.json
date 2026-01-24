@@ -267,58 +267,6 @@
       }
     },
     {
-      "id": "status.system",
-      "path": "/status/system",
-      "title": "System Status",
-      "kind": "internal",
-      "requiresAuth": true,
-      "shell": "<div id=\"status-container\"></div>",
-      "assets": {
-        "js": [
-          "status"
-        ]
-      }
-    },
-    {
-      "id": "status.interfaces",
-      "path": "/status/interfaces",
-      "title": "Interface Status",
-      "kind": "internal",
-      "requiresAuth": true,
-      "shell": "<div id=\"status-container\"></div>",
-      "assets": {
-        "js": [
-          "status"
-        ]
-      }
-    },
-    {
-      "id": "status.services",
-      "path": "/status/services",
-      "title": "Services Status",
-      "kind": "internal",
-      "requiresAuth": true,
-      "shell": "<div id=\"status-container\"></div>",
-      "assets": {
-        "js": [
-          "status"
-        ]
-      }
-    },
-    {
-      "id": "status.logs",
-      "path": "/status/logs",
-      "title": "System Logs",
-      "kind": "internal",
-      "requiresAuth": true,
-      "shell": "<div id=\"status-container\"></div>",
-      "assets": {
-        "js": [
-          "status"
-        ]
-      }
-    },
-    {
       "id": "status.states",
       "path": "/status/states",
       "title": "Firewall States",
@@ -343,7 +291,7 @@
       "shell": "<div id=\"status-container\"></div>",
       "assets": {
         "js": [
-          "status"
+          "routing-status"
         ]
       }
     },
@@ -374,29 +322,14 @@
       "label": "Status",
       "children": [
         {
-          "label": "System",
-          "routeId": "status.system",
-          "icon": "fa-solid fa-gauge-high"
-        },
-        {
-          "label": "Interfaces",
-          "routeId": "status.interfaces",
-          "icon": "fa-solid fa-network-wired"
-        },
-        {
-          "label": "Services",
-          "routeId": "status.services",
-          "icon": "fa-solid fa-server"
-        },
-        {
-          "label": "Logs",
-          "routeId": "status.logs",
-          "icon": "fa-solid fa-clipboard-list"
-        },
-        {
           "label": "States",
           "routeId": "status.states",
           "icon": "fa-solid fa-network-wired"
+        },
+        {
+          "label": "Routing Status",
+          "routeId": "status.routing-status",
+          "icon": "fa-solid fa-route"
         }
       ]
     },

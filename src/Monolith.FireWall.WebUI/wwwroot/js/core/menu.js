@@ -153,11 +153,8 @@ Monolith.Menu = {
         const iconClass = this.resolveIconClass(icon, groupKey);
         const path = this.getMenuPath(item);
         
-        // Special styling for Status menu items
-        const isStatusMenu = groupKey === 'status';
-        const displayLabel = isStatusMenu 
-            ? `<span class="d-inline-flex align-items-center gap-2 w-100"><i class="dropdown-icon ${iconClass}"></i><span class="flex-grow-1">${label}</span></span>`
-            : `<span class="d-inline-flex align-items-center gap-2"><i class="dropdown-icon ${iconClass}"></i><span>${label}</span></span>`;
+        // Use consistent styling for all menus
+        const displayLabel = `<span class="d-inline-flex align-items-center gap-2"><i class="dropdown-icon ${iconClass}"></i><span>${label}</span></span>`;
 
         // Handle dividers
         if (label.toLowerCase() === 'divider') {
@@ -182,8 +179,7 @@ Monolith.Menu = {
             return `<li><span class="dropdown-item-text text-muted small">${label}</span></li>`;
         }
 
-        const itemClass = isStatusMenu ? 'dropdown-item status-menu-item' : 'dropdown-item';
-        return `<li><a class="${itemClass}" href="${path}" data-route="${path}">${displayLabel}</a></li>`;
+        return `<li><a class="dropdown-item" href="${path}" data-route="${path}">${displayLabel}</a></li>`;
     },
 
     getMenuPath: function(item) {

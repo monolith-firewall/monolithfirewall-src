@@ -9,6 +9,8 @@
     margin-top: 0.5rem;
     border-radius: 1rem;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    position: relative;
+    z-index: 1 !important; /* Lower than top-navbar (1030) but above content */
 }
 
 /* Light theme adjustments */

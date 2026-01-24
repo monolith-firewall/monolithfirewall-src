@@ -1,75 +1,5 @@
 /* Status Pages Styles */
-
-/* Status Menu Styling - Keep it consistent with other menus */
-/* Removed custom menu container styles to match other menus */
-
-/* Match default dropdown-item styles from monolith-theme.css exactly */
-#menu-status .dropdown-item {
-    padding: 0.5rem 1rem !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem !important;
-    font-size: 0.8125rem !important;
-    background-color: transparent !important;
-}
-
-/* Keep hover effect but don't override default padding/spacing */
-#menu-status .dropdown-item:hover {
-    background: linear-gradient(135deg, var(--bs-primary) 0%, #3b82f6 100%) !important;
-    color: white !important;
-    transform: translateX(2px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-/* Match icon size with other menus - FontAwesome icons use font-size, not width/height */
-#menu-status .dropdown-icon {
-    width: auto !important;
-    height: auto !important;
-    min-width: auto !important;
-    max-width: none !important;
-    text-align: center;
-    color: var(--bs-primary) !important;
-    transition: transform 0.2s ease, color 0.2s ease;
-    font-size: 0.75rem !important;
-    line-height: 1 !important;
-    transform: scale(1) !important;
-    display: inline-block;
-    flex-shrink: 0;
-    opacity: 0.8 !important;
-}
-
-/* Reset transform when not hovering - ensures icons don't stay scaled */
-#menu-status .dropdown-item:not(:hover) .dropdown-icon {
-    transform: scale(1) !important;
-}
-
-/* Scale on hover */
-#menu-status .dropdown-item:hover .dropdown-icon {
-    color: white !important;
-    opacity: 1 !important;
-    transform: scale(1.05) !important;
-}
-
-#menu-status .dropdown-item span:last-child {
-    flex: 1;
-    font-weight: 500;
-}
-
-[data-bs-theme="dark"] #menu-status {
-    background-color: #1e293b;
-    border: 1px solid #334155;
-}
-
-[data-bs-theme="dark"] #menu-status .dropdown-item:hover {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-}
-
-[data-bs-theme="dark"] #menu-status .dropdown-icon {
-    color: #60a5fa;
-}
+/* Menu styling removed - Status menu now uses same styles as other menus via monolith-theme.css */
 
 /* States Page */
 #states-table {
@@ -285,6 +215,12 @@
 
 .navbar {
     z-index: 1030 !important;
+}
+
+/* Ensure page header doesn't overlap top navbar */
+.page-header {
+    z-index: 1 !important;
+    position: relative;
 }
 
 /* Status page container fixes */

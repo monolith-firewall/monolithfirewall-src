@@ -1196,6 +1196,47 @@ app.MapGet("/api/firewall/states", async (HttpContext context, CoreApiClient cor
         };
         var requestJson = JsonSerializer.Serialize(coreRequest);
         var responseJson = await coreClient.SendRequestAsync(requestJson);
+        
+        // Parse the Core response and return in consistent format
+        try
+        {
+            var coreResponse = JsonSerializer.Deserialize<Dictionary<string, object>>(responseJson);
+            if (coreResponse != null)
+            {
+                var success = GetDictBoolHelper(coreResponse, "success") ?? GetDictBoolHelper(coreResponse, "Success") ?? false;
+                if (success)
+                {
+                    // Extract the data object which contains States, Total, Page, etc.
+                    if (coreResponse.TryGetValue("data", out var data) || coreResponse.TryGetValue("Data", out data))
+                    {
+                        // Return in consistent format with the states data
+                        return Results.Json(new
+                        {
+                            Success = true,
+                            Data = data,
+                            Error = (string?)null
+                        });
+                    }
+                }
+                else
+                {
+                    // Return error response
+                    return Results.Json(new
+                    {
+                        Success = false,
+                        Data = (object?)null,
+                        Error = GetDictStringHelper(coreResponse, "error") ?? GetDictStringHelper(coreResponse, "Error") ?? "Unknown error"
+                    });
+                }
+            }
+        }
+        catch (Exception parseEx)
+        {
+            // If parsing fails, return raw response
+            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogWarning(parseEx, "Failed to parse firewall states response, returning raw JSON");
+        }
+        
         return Results.Content(responseJson, "application/json");
     }
     catch (Exception ex)

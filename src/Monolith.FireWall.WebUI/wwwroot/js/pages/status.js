@@ -2,119 +2,24 @@
 var Status = {
     init: function() {
         console.log('Initializing Status module...');
+        // Auto-render if we're on a status page
+        if (window.location.pathname.startsWith('/status/')) {
+            this.renderPage();
+        }
     },
 
     renderPage: function() {
         console.log('Rendering Status page...');
         const path = window.location.pathname || '';
-        if (path.startsWith('/status/system')) {
-            this.renderSystem();
-        } else if (path.startsWith('/status/interfaces')) {
-            this.renderInterfaces();
-        } else if (path.startsWith('/status/services')) {
-            this.renderServices();
-        } else if (path.startsWith('/status/logs')) {
-            this.renderLogs();
-        } else if (path.startsWith('/status/states')) {
+        if (path.startsWith('/status/states')) {
             this.renderStates();
-        } else if (path.startsWith('/status/routing-status')) {
-            this.renderRoutingStatus();
         } else {
-            this.renderSystem();
+            // Default to states page
+            // Note: routing-status is handled by routing-status.js module
+            this.renderStates();
         }
     },
 
-    renderSystem: function() {
-        const container = $('#status-container, #page-content').first();
-        if (!container.length) return;
-        
-        container.html(`
-            <div class="container-fluid">
-                <div class="row">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-header">
-                                <h4 class="mb-0">System Status</h4>
-                            </div>
-                            <div class="card-body">
-                                <p class="text-muted">System status information - Coming soon</p>
-                                <p>This page will display system uptime, CPU usage, memory usage, and disk usage.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `);
-    },
-
-    renderInterfaces: function() {
-        const container = $('#status-container, #page-content').first();
-        if (!container.length) return;
-
-        container.html(`
-            <div class="container-fluid">
-                <div class="row">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-header">
-                                <h4 class="mb-0">Interface Status</h4>
-                            </div>
-                            <div class="card-body">
-                                <p class="text-muted">Interface status information - Coming soon</p>
-                                <p>This page will display detailed interface statistics and status.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `);
-    },
-
-    renderServices: function() {
-        const container = $('#status-container, #page-content').first();
-        if (!container.length) return;
-
-        container.html(`
-            <div class="container-fluid">
-                <div class="row">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-header">
-                                <h4 class="mb-0">Services Status</h4>
-                            </div>
-                            <div class="card-body">
-                                <p class="text-muted">Services status information - Coming soon</p>
-                                <p>This page will display the status of all system services.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `);
-    },
-
-    renderLogs: function() {
-        const container = $('#status-container, #page-content').first();
-        if (!container.length) return;
-
-        container.html(`
-            <div class="container-fluid">
-                <div class="row">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-header">
-                                <h4 class="mb-0">System Logs</h4>
-                            </div>
-                            <div class="card-body">
-                                <p class="text-muted">System logs viewer - Coming soon</p>
-                                <p>This page will display system logs with filtering and search capabilities.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `);
-    },
 
     renderStates: function() {
         const container = $('#status-container, #page-content').first();
@@ -144,7 +49,19 @@ var Status = {
             autoRefreshTimer: null
         };
 
-        container.html(`
+        // Render page header first (title and description can be auto-detected from route)
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "Firewall States",
+                icon: "fa-network-wired",
+                description: "View and manage active firewall connections",
+                container: container,
+                prepend: true
+            });
+        }
+
+        // Render page content
+        container.append(`
             <div class="container-fluid p-4">
                 <!-- Header -->
                 <div class="card mb-3">
@@ -403,44 +320,49 @@ var Status = {
         params.append('page', self.statesData.page);
         params.append('pageSize', self.statesData.pageSize);
 
-        $.ajax({
-            url: `/api/firewall/states?${params.toString()}`,
-            method: 'GET',
-            success: function(response) {
+        Monolith.API.get(`/api/firewall/states?${params.toString()}`)
+            .then(function(response) {
+                console.log('States API response:', response);
+                
                 // Handle both Success (PascalCase) and success (camelCase) responses
                 const success = response.Success !== undefined ? response.Success : response.success;
                 const data = response.Data || response.data;
                 
                 if (success && data) {
+                    // The data object contains States, Total, Page, PageSize, TotalPages
                     self.statesData.states = data.States || data.states || [];
-                    self.statesData.total = data.Total || data.total || 0;
-                    self.statesData.page = data.Page || data.page || 1;
-                    self.statesData.pageSize = data.PageSize || data.pageSize || 50;
-                    self.statesData.totalPages = data.TotalPages || data.totalPages || 1;
+                    self.statesData.total = data.Total !== undefined ? data.Total : (data.total !== undefined ? data.total : 0);
+                    self.statesData.page = data.Page !== undefined ? data.Page : (data.page !== undefined ? data.page : 1);
+                    self.statesData.pageSize = data.PageSize !== undefined ? data.PageSize : (data.pageSize !== undefined ? data.pageSize : 50);
+                    self.statesData.totalPages = data.TotalPages !== undefined ? data.TotalPages : (data.totalPages !== undefined ? data.totalPages : 1);
+                    
+                    console.log(`Loaded ${self.statesData.states.length} states (total: ${self.statesData.total})`);
                     self.renderStatesTable();
                     self.updatePagination();
                 } else {
+                    const errorMsg = response.Error || response.error || 'Failed to load states';
+                    console.error('Failed to load states:', errorMsg);
                     tbody.html(`
                         <tr>
                             <td colspan="9" class="text-center text-danger py-4">
                                 <i class="fa-solid fa-exclamation-triangle me-2"></i>
-                                ${response.Error || response.error || 'Failed to load states'}
+                                ${errorMsg}
                             </td>
                         </tr>
                     `);
                 }
-            },
-            error: function(xhr, status, error) {
+            })
+            .catch(function(error) {
+                console.error('Error loading states:', error);
                 tbody.html(`
                     <tr>
                         <td colspan="9" class="text-center text-danger py-4">
                             <i class="fa-solid fa-exclamation-triangle me-2"></i>
-                            Error loading states: ${error}
+                            Error loading states: ${error.message || error}
                         </td>
                     </tr>
                 `);
-            }
-        });
+            });
     },
 
     renderStatesTable: function() {
@@ -561,63 +483,33 @@ var Status = {
             return;
         }
 
-        $.ajax({
-            url: '/api/firewall/states/kill',
-            method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify({ id: stateId }),
-            success: function(response) {
-                if (response.Success) {
+        Monolith.API.post('/api/firewall/states/kill', { id: stateId })
+            .then(function(response) {
+                const success = response.Success !== undefined ? response.Success : response.success;
+                if (success) {
                     if (typeof Monolith !== 'undefined' && Monolith.UI) {
                         Monolith.UI.toast('Connection killed successfully', 'success');
                     }
                     self.loadStates();
                 } else {
                     if (typeof Monolith !== 'undefined' && Monolith.UI) {
-                        Monolith.UI.toast(response.Error || 'Failed to kill connection', 'error');
+                        Monolith.UI.toast(response.Error || response.error || 'Failed to kill connection', 'error');
                     }
                 }
-            },
-            error: function(xhr, status, error) {
+            })
+            .catch(function(error) {
+                console.error('Error killing state:', error);
                 if (typeof Monolith !== 'undefined' && Monolith.UI) {
-                    Monolith.UI.toast(`Error: ${error}`, 'error');
+                    Monolith.UI.toast(`Error: ${error.message || error}`, 'error');
                 }
-            }
-        });
-    }
-};
+            });
+    },
 
+    // Note: renderRoutingStatus is now handled by routing-status.js module
+    // This function is kept for backwards compatibility but routing-status.js is self-contained
     renderRoutingStatus: function() {
-        const container = $('#status-container, #page-content').first();
-        if (!container.length) return;
-
-        container.html(`
-            <div class="container-fluid p-4">
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <div>
-                        <h2 class="page-title mb-1">Routing Status</h2>
-                        <p class="text-muted mb-0">View current routing configuration and status</p>
-                    </div>
-                    <div>
-                        <button type="button" class="btn btn-outline-primary" id="routing-status-refresh">
-                            <i class="bi bi-arrow-clockwise me-1"></i> Refresh
-                        </button>
-                    </div>
-                </div>
-
-                <div class="card mb-4">
-                    <div class="card-body" id="routing-status-content">
-                        <div class="text-center text-muted py-4">
-                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                            Loading routing status...
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `);
-
-        this.loadRoutingStatus();
-        this.attachRoutingStatusHandlers();
+        // This should not be called anymore - routing-status.js handles it
+        console.warn('Status.renderRoutingStatus() called - routing-status.js should handle this');
     },
 
     loadRoutingStatus: async function() {
@@ -759,6 +651,7 @@ var Status = {
         $('#routing-status-refresh').off('click').on('click', () => this.loadRoutingStatus());
     },
 
+
     applyIpForwarding: async function() {
         const enabled = $('#routing-toggle-ip-forwarding').is(':checked');
         const value = enabled ? '1' : '0';
@@ -818,7 +711,16 @@ var Status = {
     }
 };
 
-if (typeof Monolith !== 'undefined') {
-    Monolith.Pages = Monolith.Pages || {};
+// Register module immediately (before router tries to find it)
+(function() {
+    if (typeof Monolith === 'undefined') {
+        window.Monolith = {};
+    }
+    if (typeof Monolith.Pages === 'undefined') {
+        Monolith.Pages = {};
+    }
+    // Register with both Status (PascalCase) and status (lowercase) for compatibility
     Monolith.Pages.Status = Status;
-}
+    Monolith.Pages.status = Status; // Also register lowercase for router compatibility
+    console.log('Status module registered:', typeof Monolith.Pages.Status, typeof Monolith.Pages.status);
+})();
