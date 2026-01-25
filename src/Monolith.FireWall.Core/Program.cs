@@ -7,6 +7,7 @@ using Monolith.FireWall.Core.Services.Platform;
 using Monolith.FireWall.Common.Models;
 using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Firewall;
+using Monolith.FireWall.Core.Services.Settings;
 using System.Reflection;
 
 namespace Monolith.FireWall.Core;
@@ -115,7 +116,22 @@ class Program
                 await sqlite.TableSyncService.SyncTableAsync<FirewallRuleEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<WebUiSettingsEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<SetupStateEntity>();
-                
+
+                // Settings overhaul: new configuration management tables
+                await sqlite.TableSyncService.SyncTableAsync<SystemConfigEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<ModuleConfigEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<PendingChangeEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<ConfigHistoryEntity>();
+
+                // Network operational state and gateway groups (dual-state model)
+                await sqlite.TableSyncService.SyncTableAsync<InterfaceOperationalStateEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<NetworkStateChangeEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<GatewayGroupEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<GatewayGroupMemberEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<GatewayHealthEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<GatewayMonitorConfigEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<FirewallDynamicAliasEntity>();
+
                 // Sync DHCP tables (from monolith-network package)
                 // Note: These are in a package, but we sync them here to ensure tables exist
                 try
@@ -208,8 +224,10 @@ class Program
         var commandRunner = new Services.Platform.PlatformCommandRunner();
         var networkInventory = new NetworkInventoryService(commandRunner);
         var interfaceConfigManager = new InterfaceConfigManager();
-        var settingsCommandRunner = new Services.Platform.PlatformCommandRunner();
-        var settingsManager = new SystemSettingsManager(new SystemSettingsStore(), settingsCommandRunner);
+
+        // Create the central settings service (new unified config system)
+        ISettingsService settingsService = new SettingsService(logger);
+
         var firewallManager = new Services.Firewall.FirewallManager(commandRunner, interfaceAssignmentStore, logger);
         var tuneablesManager = new SystemTuneablesManager(
             new SystemTuneablesStore(),
@@ -219,10 +237,12 @@ class Program
             networkInventory,
             interfaceConfigManager,
             commandRunner,
-            settingsManager,
-            tuneablesManager);
+            settingsService,
+            tuneablesManager,
+            firewallManager.Nat,
+            firewallManager.ApplyManager);
         var gatewayStore = new GatewayStore();
-        var gatewayManager = new GatewayManager(gatewayStore, commandRunner);
+        var gatewayManager = new GatewayManager(gatewayStore, commandRunner, interfaceAssignmentStore);
         var gatewaySyncService = new GatewaySyncService(gatewayManager);
         var routingManager = new RoutingManager(
             new RoutingStore(),
@@ -240,7 +260,7 @@ class Program
             logger,
             interfaceAssignmentStore,
             interfaceConfigManager,
-            settingsManager);
+            settingsService);
         var moduleConfigGenerator = new ModuleConfigGenerator(
             logger,
             moduleRegistry,
@@ -251,12 +271,13 @@ class Program
             commandRunner);
         var startupManager = new StartupManager(
             logger,
-            settingsManager,
+            settingsService,
             tuneablesManager,
             interfaceConfigApplier,
             firewallManager.ApplyManager,
             moduleConfigGenerator,
-            moduleServiceManager);
+            moduleServiceManager,
+            gatewayManager);
         
         // Create WebUI services
         var webUiSettingsManager = new WebUiSettingsManager(logger);
@@ -264,18 +285,73 @@ class Program
         
         // Create Backup manager
         var backupManager = new Services.BackupManager(logger, commandRunner);
-        
+
+        // Create network operational state stores and services (dual-state model)
+        var operationalStateStore = new InterfaceOperationalStateStore();
+        var networkStateChangeStore = new NetworkStateChangeStore();
+        var gatewayGroupStore = new GatewayGroupStore();
+        var gatewayHealthStore = new GatewayHealthStore();
+        var dynamicAliasStore = new FirewallDynamicAliasStore();
+
+        // Create gateway group and health services
+        var gatewayGroupManager = new GatewayGroupManager(
+            gatewayGroupStore,
+            gatewayStore,
+            gatewayHealthStore,
+            networkStateChangeStore,
+            commandRunner);
+        var gatewayHealthMonitor = new GatewayHealthMonitor(
+            gatewayStore,
+            gatewayHealthStore,
+            networkStateChangeStore,
+            commandRunner,
+            gatewayGroupManager);
+
+        // Create network state monitor (background service for link/IP changes)
+        var networkStateMonitor = new NetworkStateMonitorService(
+            operationalStateStore,
+            networkStateChangeStore,
+            commandRunner);
+
+        // Create reconciliation engine (handles state drift)
+        var reconciliationEngine = new ReconciliationEngine(
+            operationalStateStore,
+            interfaceAssignmentStore,
+            gatewayStore,
+            gatewayHealthStore,
+            networkStateChangeStore,
+            commandRunner,
+            gatewayGroupManager);
+
+        // Create firewall interface integration (dynamic aliases)
+        var firewallInterfaceIntegration = new FirewallInterfaceIntegration(
+            dynamicAliasStore,
+            operationalStateStore,
+            interfaceAssignmentStore);
+
+        // Create initial network capture service (first-boot baseline)
+        var initialNetworkCapture = new InitialNetworkCaptureService(
+            operationalStateStore,
+            interfaceAssignmentStore,
+            gatewayStore,
+            gatewayHealthStore,
+            dynamicAliasStore,
+            commandRunner);
+
+        // Register reconciliation engine as network state listener
+        networkStateMonitor.RegisterListener(reconciliationEngine);
+        networkStateMonitor.RegisterListener(firewallInterfaceIntegration);
+
         var socketListener = new UnixSocketListener(
             logger,
             moduleRegistry,
             platformExecutor,
             packageStateStore,
-            new PackageInstaller(logger, packageScanner, packageLoader, moduleRegistry, packageStateStore, commandRunner, config),
+            new PackageInstaller(logger, packageScanner, packageLoader, moduleRegistry, packageStateStore, commandRunner, config, settingsService),
             interfaceAssignmentManager,
             routingManager,
             tuneablesManager,
             monitoringManager,
-            settingsManager,
             firewallManager,
             setupManager,
             startupManager,
@@ -283,6 +359,7 @@ class Program
             webUiServiceManager,
             backupManager,
             commandRunner,
+            settingsService,
             config.SocketPath,
             config.MaxConcurrentConnections
         );
@@ -350,12 +427,14 @@ class Program
                             moduleInfo.Module is Monolith.FireWall.Common.Interfaces.IMonolithModuleLifecycle lifecycle)
                         {
                             var defaultCapabilities = PlatformCapabilityMapper.FromSystemPermissions(moduleInfo.Module.GetSystemPermissions());
+                            var serviceManager = new SystemdServiceManager(commandRunner);
                             var moduleContext = new Adapter(
                                 logger,
                                 packageInfo.Definition.Id,
                                 moduleInfo.Module.Id,
                                 platformExecutor,
-                                defaultCapabilities);
+                                defaultCapabilities,
+                                serviceManager);
                             await lifecycle.OnStartAsync(moduleContext);
                         }
                     }
@@ -375,6 +454,154 @@ class Program
         // Create shutdown token
         var cts = new CancellationTokenSource();
 
+        // Initialize system configuration on fresh install only
+        var freshInstallSetupStateStore = new Services.SetupStateStore();
+        var freshInstallSetupState = await freshInstallSetupStateStore.GetSetupStateAsync();
+        var isFreshInstall = freshInstallSetupState?.IsFreshInstall == true && !freshInstallSetupState.SetupCompleted;
+
+        if (isFreshInstall)
+        {
+            Console.WriteLine("→ Initializing fresh installation...");
+
+            // Capture network baseline first (operational state)
+            Console.WriteLine("  → Capturing network baseline...");
+            try
+            {
+                var captureResult = await initialNetworkCapture.CaptureNetworkBaselineAsync(cts.Token);
+                if (captureResult.Success)
+                {
+                    Console.WriteLine($"  ✓ Network baseline captured ({captureResult.InterfacesDiscovered} interfaces, {captureResult.GatewaysDiscovered} gateways)");
+                    if (captureResult.SuggestedAssignments.Any())
+                    {
+                        Console.WriteLine($"  → Suggested interface assignments:");
+                        foreach (var suggestion in captureResult.SuggestedAssignments.Where(s => s.Role != InterfaceRole.Unknown))
+                        {
+                            Console.WriteLine($"    - {suggestion.InterfaceName}: {suggestion.SuggestedName} ({suggestion.Role}, {suggestion.Confidence} confidence)");
+                        }
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"  ⚠ Network baseline capture failed: {captureResult.Error}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ⚠ Network baseline capture failed: {ex.Message}");
+                coreLogger.Warning($"Network baseline capture failed: {ex.Message}");
+            }
+
+            // Initialize gateways (imports existing dynamic gateways from system)
+            Console.WriteLine("  → Importing gateways from system...");
+            try
+            {
+                await gatewayManager.InitializeGatewaysAsync(cts.Token);
+                var initialGateways = await gatewayManager.GetGatewaysAsync(cts.Token);
+                Console.WriteLine($"  ✓ Gateways imported ({initialGateways.Count} gateway(s) found)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ⚠ Gateway import failed: {ex.Message}");
+                coreLogger.Warning($"Gateway import failed: {ex.Message}");
+            }
+
+            // Initialize firewall defaults (set safe defaults for fresh install)
+            Console.WriteLine("  → Setting firewall defaults...");
+            try
+            {
+                var firewallDefaults = firewallManager.Defaults;
+                var existingDefaults = await firewallDefaults.GetAsync();
+                
+                // Only set defaults if none exist
+                if (string.IsNullOrWhiteSpace(existingDefaults.LanDefaultAction))
+                {
+                    var defaultRequest = new FirewallDefaultsRequest
+                    {
+                        LanDefaultAction = "pass",
+                        WanDefaultAction = "block",
+                        OptDefaultAction = "block",
+                        BlockReservedOnWan = true,
+                        AllowManagementWebUi = true,
+                        AllowDeveloperSystemAccess = false
+                    };
+                    var defaultsResult = await firewallDefaults.UpdateAsync(defaultRequest);
+                    if (defaultsResult.Success)
+                    {
+                        Console.WriteLine("  ✓ Firewall defaults set (LAN: pass, WAN: block, OPT: block)");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  ⚠ Failed to set firewall defaults: {defaultsResult.Error}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("  ✓ Firewall defaults already configured");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ⚠ Failed to set firewall defaults: {ex.Message}");
+                coreLogger.Warning($"Firewall defaults initialization failed: {ex.Message}");
+            }
+
+            // Clear any existing firewall rules (start fresh)
+            Console.WriteLine("  → Clearing existing firewall rules...");
+            try
+            {
+                var allRules = await firewallManager.Rules.ListRulesAsync();
+                var managedRules = allRules.Where(r => r.IsManaged).ToList();
+                
+                if (managedRules.Count > 0)
+                {
+                    int deletedCount = 0;
+                    foreach (var rule in managedRules)
+                    {
+                        try
+                        {
+                            var deleteResult = await firewallManager.Rules.DeleteRuleAsync(rule.Id);
+                            if (deleteResult)
+                            {
+                                deletedCount++;
+                            }
+                        }
+                        catch
+                        {
+                            // Ignore individual rule deletion errors
+                        }
+                    }
+                    Console.WriteLine($"  ✓ Cleared {deletedCount} existing firewall rule(s)");
+                }
+                else
+                {
+                    Console.WriteLine("  ✓ No existing firewall rules to clear");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ⚠ Failed to clear firewall rules: {ex.Message}");
+                coreLogger.Warning($"Firewall rules clearing failed: {ex.Message}");
+            }
+
+            Console.WriteLine("✓ Fresh installation initialization completed");
+        }
+        else
+        {
+            // On update, just sync gateways without clearing anything
+            Console.WriteLine("→ Syncing gateways (update mode - preserving configuration)...");
+            try
+            {
+                await gatewayManager.SyncDynamicGatewaysAsync(cts.Token);
+                var gateways = await gatewayManager.GetGatewaysAsync(cts.Token);
+                Console.WriteLine($"✓ Gateways synced ({gateways.Count} gateway(s))");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ⚠ Gateway sync failed: {ex.Message}");
+                coreLogger.Warning($"Gateway sync failed: {ex.Message}");
+            }
+        }
+
         // Start named pipe listener
         Console.WriteLine("→ Starting Unix socket listener...");
         socketListener.Start();
@@ -383,6 +610,17 @@ class Program
         Console.WriteLine("✓ Gateway sync service started");
         monitoringManager.Start(cts.Token);
         Console.WriteLine("✓ Monitoring scheduler started");
+
+        // Start network state monitoring and gateway health monitoring
+        await networkStateMonitor.StartAsync(cts.Token);
+        Console.WriteLine("✓ Network state monitor started");
+        await gatewayHealthMonitor.StartAsync(cts.Token);
+        Console.WriteLine("✓ Gateway health monitor started");
+
+        // Ensure standard dynamic aliases exist for all assigned interfaces
+        await firewallInterfaceIntegration.EnsureStandardAliasesAsync();
+        Console.WriteLine("✓ Dynamic firewall aliases initialized");
+
         coreLogger.Info("Core components started");
         Console.WriteLine("✓ Core components started\n");
 
@@ -409,7 +647,15 @@ class Program
         }
 
         // Stop
-        Console.WriteLine("[4/4] Stopping libraries...");
+        Console.WriteLine("[4/4] Stopping services...");
+
+        // Stop network monitoring services
+        await networkStateMonitor.StopAsync();
+        Console.WriteLine("  ✓ Network state monitor stopped");
+        await gatewayHealthMonitor.StopAsync();
+        Console.WriteLine("  ✓ Gateway health monitor stopped");
+
+        Console.WriteLine("Stopping libraries...");
         await CodeLogic.CodeLogic.StopAsync();
         Console.WriteLine("✓ All libraries stopped\n");
 

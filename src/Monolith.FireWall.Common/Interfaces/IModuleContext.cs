@@ -19,4 +19,10 @@ public interface IModuleContext
 
     /// <summary>Logger instance</summary>
     ILogger Logger { get; }
+
+    /// <summary>
+    /// Network state provider for accessing operational network state.
+    /// May be null if network state monitoring is not available.
+    /// </summary>
+    INetworkStateProvider? NetworkState { get; }
 }

@@ -1,4 +1,5 @@
 using Monolith.FireWall.Common.Interfaces;
+using Monolith.FireWall.Core.Services.Settings;
 using Monolith.FireWall.Platform;
 using Monolith.FireWall.Platform.Models;
 
@@ -12,23 +13,33 @@ public class ModuleContextAdapter : IModuleContext
     private readonly string _packageId;
     private readonly Services.Platform.PlatformExecutor? _platformExecutor;
     private readonly PlatformCapability _defaultCapabilities;
+    private readonly SystemdServiceManager? _serviceManager;
+    private readonly ISettingsService? _settingsService;
+    private readonly INetworkStateProvider? _networkStateProvider;
 
     public ModuleContextAdapter(
         ILogger logger,
         string packageId,
         string moduleId,
         Services.Platform.PlatformExecutor? platformExecutor = null,
-        PlatformCapability defaultCapabilities = PlatformCapability.None)
+        PlatformCapability defaultCapabilities = PlatformCapability.None,
+        SystemdServiceManager? serviceManager = null,
+        ISettingsService? settingsService = null,
+        INetworkStateProvider? networkStateProvider = null)
     {
         _packageId = packageId;
         ModuleId = moduleId;
         Logger = logger;
         _platformExecutor = platformExecutor;
         _defaultCapabilities = defaultCapabilities;
+        _serviceManager = serviceManager;
+        _settingsService = settingsService;
+        _networkStateProvider = networkStateProvider;
     }
 
     public string ModuleId { get; }
     public ILogger Logger { get; }
+    public INetworkStateProvider? NetworkState => _networkStateProvider;
 
     public Task<string?> GetConfigAsync(string key)
     {
@@ -76,6 +87,21 @@ public class ModuleContextAdapter : IModuleContext
                 return await _platformExecutor.HandleAsync(request, cancellationToken);
             });
             return (T)(object)client;
+        }
+
+        if (typeof(T) == typeof(SystemdServiceManager) && _serviceManager != null)
+        {
+            return (T)(object)_serviceManager;
+        }
+
+        if (typeof(T) == typeof(ISettingsService) && _settingsService != null)
+        {
+            return (T)(object)_settingsService;
+        }
+
+        if (typeof(T) == typeof(INetworkStateProvider) && _networkStateProvider != null)
+        {
+            return (T)(object)_networkStateProvider;
         }
 
         throw new InvalidOperationException($"Service {typeof(T).Name} not found");
