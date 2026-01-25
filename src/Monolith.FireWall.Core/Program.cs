@@ -228,7 +228,17 @@ class Program
         // Create the central settings service (new unified config system)
         ISettingsService settingsService = new SettingsService(logger);
 
-        var firewallManager = new Services.Firewall.FirewallManager(commandRunner, interfaceAssignmentStore, logger);
+        // Create operational state stores early (needed for firewall integration)
+        var operationalStateStore = new InterfaceOperationalStateStore();
+        var dynamicAliasStore = new FirewallDynamicAliasStore();
+
+        // Create firewall interface integration for dynamic aliases
+        var firewallInterfaceIntegration = new FirewallInterfaceIntegration(
+            dynamicAliasStore,
+            operationalStateStore,
+            interfaceAssignmentStore);
+
+        var firewallManager = new Services.Firewall.FirewallManager(commandRunner, interfaceAssignmentStore, logger, firewallInterfaceIntegration);
         var tuneablesManager = new SystemTuneablesManager(
             new SystemTuneablesStore(),
             commandRunner);
@@ -286,12 +296,10 @@ class Program
         // Create Backup manager
         var backupManager = new Services.BackupManager(logger, commandRunner);
 
-        // Create network operational state stores and services (dual-state model)
-        var operationalStateStore = new InterfaceOperationalStateStore();
+        // Create remaining network operational state stores (operationalStateStore and dynamicAliasStore created earlier)
         var networkStateChangeStore = new NetworkStateChangeStore();
         var gatewayGroupStore = new GatewayGroupStore();
         var gatewayHealthStore = new GatewayHealthStore();
-        var dynamicAliasStore = new FirewallDynamicAliasStore();
 
         // Create gateway group and health services
         var gatewayGroupManager = new GatewayGroupManager(
@@ -322,12 +330,6 @@ class Program
             networkStateChangeStore,
             commandRunner,
             gatewayGroupManager);
-
-        // Create firewall interface integration (dynamic aliases)
-        var firewallInterfaceIntegration = new FirewallInterfaceIntegration(
-            dynamicAliasStore,
-            operationalStateStore,
-            interfaceAssignmentStore);
 
         // Create initial network capture service (first-boot baseline)
         var initialNetworkCapture = new InitialNetworkCaptureService(

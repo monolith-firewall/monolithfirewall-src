@@ -6,7 +6,11 @@ namespace Monolith.FireWall.Core.Services.Firewall;
 
 public sealed class FirewallManager
 {
-    public FirewallManager(PlatformCommandRunner commandRunner, InterfaceAssignmentStore interfaceStore, ILogger logger)
+    public FirewallManager(
+        PlatformCommandRunner commandRunner,
+        InterfaceAssignmentStore interfaceStore,
+        ILogger logger,
+        FirewallInterfaceIntegration? interfaceIntegration = null)
     {
         Aliases = new FirewallAliasManager();
         Nat = new FirewallNatManager();
@@ -15,7 +19,7 @@ public sealed class FirewallManager
         InterfaceSettings = new FirewallInterfaceSettingsManager();
         Rules = new FirewallRulesManager(interfaceStore);
         States = new FirewallStatesManager(commandRunner, logger, interfaceStore);
-        ApplyManager = new FirewallApplyManager(Aliases, Nat, NatSettings, Rules, Defaults, InterfaceSettings, interfaceStore, commandRunner);
+        ApplyManager = new FirewallApplyManager(Aliases, Nat, NatSettings, Rules, Defaults, InterfaceSettings, interfaceStore, commandRunner, interfaceIntegration);
     }
 
     public FirewallAliasManager Aliases { get; }
