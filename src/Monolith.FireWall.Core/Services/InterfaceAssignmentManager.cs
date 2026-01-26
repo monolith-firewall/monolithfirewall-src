@@ -1,6 +1,8 @@
 using Monolith.FireWall.Common.Services;
 using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Platform;
+using Monolith.FireWall.Core.Services.Firewall;
+using Monolith.FireWall.Core.Services.Settings;
 using Monolith.FireWall.Platform.Validation;
 using System.Text.Json;
 
@@ -12,8 +14,11 @@ public sealed class InterfaceAssignmentManager
     private readonly NetworkInventoryService _inventory;
     private readonly InterfaceConfigManager _configManager;
     private readonly PlatformCommandRunner _commandRunner;
-    private readonly SystemSettingsManager _settingsManager;
+    private readonly ISettingsService _settingsService;
     private readonly SystemTuneablesManager? _tuneablesManager;
+    private readonly FirewallNatManager? _natManager;
+    private readonly FirewallApplyManager? _firewallApplyManager;
+    private readonly InterfaceOperationalStateStore? _operationalStateStore;
     private readonly LoggingManager _loggingManager;
 
     public InterfaceAssignmentManager(
@@ -21,15 +26,21 @@ public sealed class InterfaceAssignmentManager
         NetworkInventoryService inventory,
         InterfaceConfigManager configManager,
         PlatformCommandRunner commandRunner,
-        SystemSettingsManager settingsManager,
-        SystemTuneablesManager? tuneablesManager = null)
+        ISettingsService settingsService,
+        SystemTuneablesManager? tuneablesManager = null,
+        FirewallNatManager? natManager = null,
+        FirewallApplyManager? firewallApplyManager = null,
+        InterfaceOperationalStateStore? operationalStateStore = null)
     {
         _store = store;
         _inventory = inventory;
         _configManager = configManager;
         _commandRunner = commandRunner;
-        _settingsManager = settingsManager;
+        _settingsService = settingsService;
         _tuneablesManager = tuneablesManager;
+        _natManager = natManager;
+        _firewallApplyManager = firewallApplyManager;
+        _operationalStateStore = operationalStateStore;
         _loggingManager = LoggingManager.Instance;
     }
 
@@ -328,14 +339,90 @@ public sealed class InterfaceAssignmentManager
             }
         }
 
+        // Check if role changed to/from WAN for auto-outbound rule management
+        var wasWan = existingAssignment?.Role == InterfaceRole.Wan;
+        var isWan = assignment.Role == InterfaceRole.Wan;
+        var roleChangedToWan = !wasWan && isWan;
+        var roleChangedFromWan = wasWan && !isWan;
+
         var saved = await _store.UpsertAsync(assignment);
         if (!saved)
         {
             return (false, "Failed to save assignment", null);
         }
 
+        // Sync operational state for the interface
+        await SyncOperationalStateAsync(assignment.InterfaceName, cancellationToken);
+
         // Auto-enable IP forwarding if WAN and LAN interfaces are configured
         await EnsureIpForwardingEnabledAsync(cancellationToken);
+
+        // Auto-create outbound NAT rule for WAN interfaces
+        // This should trigger for new WAN assignments OR when role changes to WAN
+        if (isWan)
+        {
+            // Always try to ensure the rule exists for WAN interfaces
+            // The method itself checks if a rule already exists
+            await EnsureWanOutboundRuleAsync(assignment, cancellationToken);
+        }
+
+        // Remove auto-created outbound rule if role changed from WAN
+        if (roleChangedFromWan && _natManager != null)
+        {
+            await RemoveWanOutboundRuleAsync(assignment.InterfaceName, cancellationToken);
+        }
+
+        // Auto-apply firewall rules when WAN/LAN roles are assigned/changed
+        // This ensures NAT masquerade and forward rules are generated
+        if ((isWan || assignment.Role == InterfaceRole.Lan) && _firewallApplyManager != null)
+        {
+            try
+            {
+                var firewallResult = await _firewallApplyManager.ApplyAsync(cancellationToken);
+                if (firewallResult.Success)
+                {
+                    await _loggingManager.LogSystemAsync(
+                        "Network",
+                        "info",
+                        "InterfaceAssignmentManager",
+                        $"Auto-applied firewall rules after interface role assignment",
+                        new Dictionary<string, object>
+                        {
+                            ["interface"] = assignment.InterfaceName,
+                            ["role"] = assignment.Role.ToString()
+                        });
+                }
+                else
+                {
+                    await _loggingManager.LogSystemAsync(
+                        "Network",
+                        "warning",
+                        "InterfaceAssignmentManager",
+                        $"Failed to auto-apply firewall rules: {firewallResult.Error}",
+                        new Dictionary<string, object>
+                        {
+                            ["interface"] = assignment.InterfaceName,
+                            ["role"] = assignment.Role.ToString(),
+                            ["error"] = firewallResult.Error ?? "Unknown error"
+                        });
+                }
+            }
+            catch (Exception ex)
+            {
+                await _loggingManager.LogSystemAsync(
+                    "Network",
+                    "error",
+                    "InterfaceAssignmentManager",
+                    $"Exception auto-applying firewall rules: {ex.Message}",
+                    new Dictionary<string, object>
+                    {
+                        ["interface"] = assignment.InterfaceName,
+                        ["role"] = assignment.Role.ToString(),
+                        ["error"] = ex.Message
+                    });
+                // Don't fail the interface assignment if firewall apply fails
+            }
+        }
 
         await _loggingManager.LogSystemAsync(
             "Network",
@@ -359,10 +446,16 @@ public sealed class InterfaceAssignmentManager
             return (false, "Interface is required");
         }
 
+        // Check if this is a WAN interface and remove auto-created outbound rules
         var assignment = await _store.GetAssignmentAsync(iface);
         if (assignment == null)
         {
             return (true, null);
+        }
+
+        if (assignment.Role == InterfaceRole.Wan)
+        {
+            await RemoveWanOutboundRuleAsync(iface, cancellationToken);
         }
 
         var exportResult = await _configManager.ExportAssignmentToUnmanagedAsync(assignment, cancellationToken);
@@ -376,6 +469,9 @@ public sealed class InterfaceAssignmentManager
         {
             return (false, "Failed to delete assignment");
         }
+
+        // Remove operational state for the interface
+        await RemoveOperationalStateAsync(iface);
 
         await _loggingManager.LogSystemAsync(
             "Network",
@@ -601,7 +697,8 @@ public sealed class InterfaceAssignmentManager
     public async Task<InterfaceApplyResult> ApplyConfigAsync(CancellationToken cancellationToken)
     {
         var assignments = await _store.GetAssignmentsAsync();
-        var dnsServers = await _settingsManager.GetDnsServersAsync();
+        var dnsConfig = await _settingsService.GetSystemConfigAsync<DnsConfig>(SystemConfigKeys.Dns);
+        var dnsServers = dnsConfig?.Servers ?? new List<string>();
         var applyResult = await _configManager.ApplyAsync(assignments, dnsServers, cancellationToken);
         if (applyResult.Success)
         {
@@ -609,6 +706,8 @@ public sealed class InterfaceAssignmentManager
             foreach (var assignment in assignments)
             {
                 await _store.UpdateAppliedAsync(assignment.InterfaceName, appliedAt);
+                // Sync operational state after apply
+                await SyncOperationalStateAsync(assignment.InterfaceName, cancellationToken);
             }
 
             await UpdateWebUiBindingsAsync(assignments, cancellationToken);
@@ -1389,6 +1488,319 @@ public sealed class InterfaceAssignmentManager
                 "Error checking/enabling IP forwarding",
                 new Dictionary<string, object>
                 {
+                    ["error"] = ex.Message
+                });
+        }
+    }
+
+    /// <summary>
+    /// Ensure outbound NAT rule exists for WAN interface
+    /// </summary>
+    private async Task EnsureWanOutboundRuleAsync(InterfaceAssignmentEntity assignment, CancellationToken cancellationToken)
+    {
+        if (_natManager == null)
+        {
+            return;
+        }
+
+        try
+        {
+            // Check if outbound rule already exists for this interface
+            var existingRules = await _natManager.ListRulesAsync();
+            var autoOutboundRule = existingRules.FirstOrDefault(r =>
+                r.Type.Equals("outbound", StringComparison.OrdinalIgnoreCase) &&
+                r.Interface.Equals(assignment.InterfaceName, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(r.Description) &&
+                r.Description.StartsWith("Auto:", StringComparison.OrdinalIgnoreCase));
+
+            if (autoOutboundRule != null)
+            {
+                // Rule already exists
+                return;
+            }
+
+            // Create IPv4 outbound rule
+            var ipv4Rule = new FirewallNatRuleRequest
+            {
+                Type = "outbound",
+                Interface = assignment.InterfaceName,
+                AddressFamily = "ipv4",
+                Protocol = "any",
+                SourceType = "any",
+                DestinationType = "any",
+                Description = $"Auto: Outbound NAT for WAN interface {assignment.InterfaceName}",
+                Enabled = true
+            };
+
+            var ipv4Result = await _natManager.CreateRuleAsync(ipv4Rule);
+            if (ipv4Result.Success)
+            {
+                await _loggingManager.LogSystemAsync(
+                    "Network",
+                    "info",
+                    "InterfaceAssignmentManager",
+                    $"Auto-created IPv4 outbound NAT rule for WAN interface {assignment.InterfaceName}",
+                    new Dictionary<string, object>
+                    {
+                        ["interface"] = assignment.InterfaceName,
+                        ["ruleId"] = ipv4Result.Rule?.Id ?? 0,
+                        ["addressFamily"] = "ipv4"
+                    });
+            }
+            else
+            {
+                await _loggingManager.LogSystemAsync(
+                    "Network",
+                    "warning",
+                    "InterfaceAssignmentManager",
+                    $"Failed to auto-create IPv4 outbound NAT rule for WAN interface {assignment.InterfaceName}: {ipv4Result.Error}",
+                    new Dictionary<string, object>
+                    {
+                        ["interface"] = assignment.InterfaceName,
+                        ["error"] = ipv4Result.Error ?? "Unknown error"
+                    });
+            }
+
+            // Create IPv6 outbound rule if IPv6 is configured
+            if (assignment.Ipv6Mode == InterfaceIpMode.Static || assignment.Ipv6Mode == InterfaceIpMode.Dhcp)
+            {
+                var ipv6Rule = new FirewallNatRuleRequest
+                {
+                    Type = "outbound",
+                    Interface = assignment.InterfaceName,
+                    AddressFamily = "ipv6",
+                    Protocol = "any",
+                    SourceType = "any",
+                    DestinationType = "any",
+                    Description = $"Auto: Outbound NAT for WAN interface {assignment.InterfaceName} (IPv6)",
+                    Enabled = true
+                };
+
+                var ipv6Result = await _natManager.CreateRuleAsync(ipv6Rule);
+                if (ipv6Result.Success)
+                {
+                    await _loggingManager.LogSystemAsync(
+                        "Network",
+                        "info",
+                        "InterfaceAssignmentManager",
+                        $"Auto-created IPv6 outbound NAT rule for WAN interface {assignment.InterfaceName}",
+                        new Dictionary<string, object>
+                        {
+                            ["interface"] = assignment.InterfaceName,
+                            ["ruleId"] = ipv6Result.Rule?.Id ?? 0,
+                            ["addressFamily"] = "ipv6"
+                        });
+                }
+                else
+                {
+                    await _loggingManager.LogSystemAsync(
+                        "Network",
+                        "warning",
+                        "InterfaceAssignmentManager",
+                        $"Failed to auto-create IPv6 outbound NAT rule for WAN interface {assignment.InterfaceName}: {ipv6Result.Error}",
+                        new Dictionary<string, object>
+                        {
+                            ["interface"] = assignment.InterfaceName,
+                            ["error"] = ipv6Result.Error ?? "Unknown error"
+                        });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await _loggingManager.LogSystemAsync(
+                "Network",
+                "error",
+                "InterfaceAssignmentManager",
+                $"Exception while creating auto outbound NAT rule for WAN interface {assignment.InterfaceName}: {ex.Message}",
+                new Dictionary<string, object>
+                {
+                    ["interface"] = assignment.InterfaceName,
+                    ["error"] = ex.Message
+                });
+        }
+    }
+
+    /// <summary>
+    /// Sync the operational state for an interface after assignment changes.
+    /// Creates or updates the operational state record with current network information.
+    /// </summary>
+    private async Task SyncOperationalStateAsync(string interfaceName, CancellationToken cancellationToken)
+    {
+        if (_operationalStateStore == null)
+        {
+            return;
+        }
+
+        try
+        {
+            // Get current interface state from inventory
+            var interfaces = await _inventory.ListInterfacesAsync();
+            var addresses = await _inventory.ListAddressesAsync(interfaceName, cancellationToken);
+            var iface = interfaces.FirstOrDefault(i =>
+                string.Equals(i.Name, interfaceName, StringComparison.OrdinalIgnoreCase));
+
+            // Get or create operational state
+            var opState = await _operationalStateStore.GetAsync(interfaceName)
+                          ?? new InterfaceOperationalStateEntity { InterfaceName = interfaceName };
+
+            // Update with current values
+            opState.LinkState = iface?.IsUp == true ? LinkState.Up : LinkState.Down;
+            opState.MacAddress = iface?.MacAddress;
+            opState.LastSeenAt = DateTime.UtcNow;
+
+            if (iface != null)
+            {
+                opState.LastLinkChangeAt = DateTime.UtcNow;
+            }
+
+            // Update IP addresses from current state
+            var ipv4 = addresses.FirstOrDefault(a =>
+                string.Equals(a.Family, "inet", StringComparison.OrdinalIgnoreCase));
+            var ipv6 = addresses.FirstOrDefault(a =>
+                string.Equals(a.Family, "inet6", StringComparison.OrdinalIgnoreCase) &&
+                !a.Address.StartsWith("fe80:", StringComparison.OrdinalIgnoreCase)); // Skip link-local
+
+            if (ipv4 != null)
+            {
+                var oldIp = opState.CurrentIpv4Address;
+                opState.CurrentIpv4Address = ipv4.Address;
+                opState.CurrentIpv4Prefix = ipv4.PrefixLength;
+
+                if (oldIp != ipv4.Address)
+                {
+                    opState.LastIpChangeAt = DateTime.UtcNow;
+                }
+            }
+
+            if (ipv6 != null)
+            {
+                opState.CurrentIpv6Address = ipv6.Address;
+            }
+
+            // Determine health status based on link state
+            opState.HealthStatus = opState.LinkState == LinkState.Up
+                ? InterfaceHealthStatus.Healthy
+                : InterfaceHealthStatus.Down;
+
+            await _operationalStateStore.UpsertAsync(opState);
+
+            await _loggingManager.LogSystemAsync(
+                "Network",
+                "debug",
+                "InterfaceAssignmentManager",
+                $"Synced operational state for interface {interfaceName}",
+                new Dictionary<string, object>
+                {
+                    ["interface"] = interfaceName,
+                    ["linkState"] = opState.LinkState.ToString().ToLowerInvariant(),
+                    ["ipv4"] = opState.CurrentIpv4Address ?? "none",
+                    ["healthStatus"] = opState.HealthStatus.ToString().ToLowerInvariant()
+                });
+        }
+        catch (Exception ex)
+        {
+            await _loggingManager.LogSystemAsync(
+                "Network",
+                "warning",
+                "InterfaceAssignmentManager",
+                $"Failed to sync operational state for interface {interfaceName}: {ex.Message}",
+                new Dictionary<string, object>
+                {
+                    ["interface"] = interfaceName,
+                    ["error"] = ex.Message
+                });
+        }
+    }
+
+    /// <summary>
+    /// Remove the operational state for an interface when it's unassigned.
+    /// </summary>
+    private async Task RemoveOperationalStateAsync(string interfaceName)
+    {
+        if (_operationalStateStore == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var deleted = await _operationalStateStore.DeleteAsync(interfaceName);
+            if (deleted)
+            {
+                await _loggingManager.LogSystemAsync(
+                    "Network",
+                    "debug",
+                    "InterfaceAssignmentManager",
+                    $"Removed operational state for interface {interfaceName}",
+                    new Dictionary<string, object>
+                    {
+                        ["interface"] = interfaceName
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            await _loggingManager.LogSystemAsync(
+                "Network",
+                "warning",
+                "InterfaceAssignmentManager",
+                $"Failed to remove operational state for interface {interfaceName}: {ex.Message}",
+                new Dictionary<string, object>
+                {
+                    ["interface"] = interfaceName,
+                    ["error"] = ex.Message
+                });
+        }
+    }
+
+    /// <summary>
+    /// Remove auto-created outbound NAT rules for WAN interface
+    /// </summary>
+    private async Task RemoveWanOutboundRuleAsync(string interfaceName, CancellationToken cancellationToken)
+    {
+        if (_natManager == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var existingRules = await _natManager.ListRulesAsync();
+            var autoOutboundRules = existingRules.Where(r =>
+                r.Type.Equals("outbound", StringComparison.OrdinalIgnoreCase) &&
+                r.Interface.Equals(interfaceName, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(r.Description) &&
+                r.Description.StartsWith("Auto:", StringComparison.OrdinalIgnoreCase)).ToList();
+
+            foreach (var rule in autoOutboundRules)
+            {
+                var deleted = await _natManager.DeleteRuleAsync(rule.Id);
+                if (deleted)
+                {
+                    await _loggingManager.LogSystemAsync(
+                        "Network",
+                        "info",
+                        "InterfaceAssignmentManager",
+                        $"Removed auto-created outbound NAT rule for interface {interfaceName}",
+                        new Dictionary<string, object>
+                        {
+                            ["interface"] = interfaceName,
+                            ["ruleId"] = rule.Id
+                        });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await _loggingManager.LogSystemAsync(
+                "Network",
+                "error",
+                "InterfaceAssignmentManager",
+                $"Exception while removing auto outbound NAT rule for interface {interfaceName}: {ex.Message}",
+                new Dictionary<string, object>
+                {
+                    ["interface"] = interfaceName,
                     ["error"] = ex.Message
                 });
         }

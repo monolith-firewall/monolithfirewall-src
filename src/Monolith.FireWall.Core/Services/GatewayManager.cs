@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Monolith.FireWall.Common.Services;
 using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Platform;
@@ -12,25 +13,90 @@ public sealed class GatewayManager
     private readonly GatewayStore _store;
     private readonly PlatformCommandRunner _commandRunner;
     private readonly LoggingManager _loggingManager;
+    private readonly InterfaceAssignmentStore? _interfaceStore;
+    private readonly GatewayHealthStore? _healthStore;
+    private HashSet<string>? _cachedDhcpInterfaces;
+    private DateTime _dhcpCacheTime = DateTime.MinValue;
+    private static readonly TimeSpan DhcpCacheTimeout = TimeSpan.FromMinutes(1);
 
-    public GatewayManager(GatewayStore store, PlatformCommandRunner commandRunner)
+    public GatewayManager(
+        GatewayStore store,
+        PlatformCommandRunner commandRunner,
+        InterfaceAssignmentStore? interfaceStore = null,
+        GatewayHealthStore? healthStore = null)
     {
         _store = store;
         _commandRunner = commandRunner;
+        _interfaceStore = interfaceStore;
+        _healthStore = healthStore;
         _loggingManager = LoggingManager.Instance;
     }
 
     public async Task<List<GatewayView>> GetGatewaysAsync(CancellationToken cancellationToken)
     {
+        // Always sync dynamic gateways before returning to ensure we have the latest
         await SyncDynamicGatewaysAsync(cancellationToken);
         var entities = await _store.GetGatewaysAsync();
+
+        // Get health data for all gateways if health store is available
+        Dictionary<int, GatewayHealthEntity>? healthMap = null;
+        if (_healthStore != null)
+        {
+            try
+            {
+                var healthData = await _healthStore.GetAllHealthAsync();
+                healthMap = healthData.ToDictionary(h => h.GatewayId);
+            }
+            catch
+            {
+                // Continue without health data if unavailable
+            }
+        }
+
         return entities
-            .Select(ToView)
+            .Select(e => ToView(e, healthMap?.GetValueOrDefault(e.Id)))
             .OrderByDescending(g => g.IsDefault)
             .ThenBy(g => g.AddressFamily, StringComparer.OrdinalIgnoreCase)
             .ThenBy(g => g.Interface ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .ThenBy(g => g.Metric ?? int.MaxValue)
             .ToList();
+    }
+
+    /// <summary>
+    /// Initialize gateways on first run by syncing dynamic gateways from the system.
+    /// This is called during initial setup to import existing gateways.
+    /// </summary>
+    public async Task InitializeGatewaysAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await SyncDynamicGatewaysAsync(cancellationToken);
+            var gateways = await _store.GetGatewaysAsync();
+            await _loggingManager.LogSystemAsync(
+                "Routing",
+                "info",
+                "GatewayManager",
+                $"Initialized {gateways.Count} gateway(s) on first run",
+                new Dictionary<string, object>
+                {
+                    ["dynamicCount"] = gateways.Count(g => g.IsDynamic),
+                    ["staticCount"] = gateways.Count(g => !g.IsDynamic),
+                    ["totalCount"] = gateways.Count
+                });
+        }
+        catch (Exception ex)
+        {
+            await _loggingManager.LogSystemAsync(
+                "Routing",
+                "error",
+                "GatewayManager",
+                $"Failed to initialize gateways: {ex.Message}",
+                new Dictionary<string, object>
+                {
+                    ["error"] = ex.Message
+                });
+            throw;
+        }
     }
 
     public async Task<(bool Success, string? Error, GatewayView? Gateway)> CreateStaticGatewayAsync(
@@ -282,13 +348,20 @@ public sealed class GatewayManager
 
     private async Task<List<GatewayEntity>> DiscoverDynamicGatewaysAsync(CancellationToken cancellationToken)
     {
+        // Get existing static gateways once for fallback detection
+        var existingGateways = await _store.GetGatewaysAsync();
+        var staticGatewayAddresses = existingGateways
+            .Where(g => !g.IsDynamic)
+            .Select(g => g.Address)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var gateways = new List<GatewayEntity>();
-        gateways.AddRange(await ParseRoutesAsync("-j route show", "ipv4", cancellationToken));
-        gateways.AddRange(await ParseRoutesAsync("-6 -j route show", "ipv6", cancellationToken));
+        gateways.AddRange(await ParseRoutesAsync("-j route show", "ipv4", cancellationToken, staticGatewayAddresses));
+        gateways.AddRange(await ParseRoutesAsync("-6 -j route show", "ipv6", cancellationToken, staticGatewayAddresses));
         return gateways;
     }
 
-    private async Task<List<GatewayEntity>> ParseRoutesAsync(string arguments, string family, CancellationToken cancellationToken)
+    private async Task<List<GatewayEntity>> ParseRoutesAsync(string arguments, string family, CancellationToken cancellationToken, HashSet<string> staticGatewayAddresses)
     {
         var result = new List<GatewayEntity>();
         if (!_commandRunner.CommandExists("ip"))
@@ -309,6 +382,9 @@ public sealed class GatewayManager
         {
             return result;
         }
+
+        // Get list of interfaces with DHCP configured to help identify dynamic gateways
+        var dhcpInterfaces = await GetDhcpInterfacesAsync(cancellationToken);
 
         using var doc = JsonDocument.Parse(response.StdOut);
         foreach (var route in doc.RootElement.EnumerateArray())
@@ -331,9 +407,59 @@ public sealed class GatewayManager
                 continue;
             }
 
-            var isDhcp = !string.IsNullOrWhiteSpace(protocol) &&
-                         (protocol.Contains("dhcp", StringComparison.OrdinalIgnoreCase) ||
-                          protocol.Contains("ra", StringComparison.OrdinalIgnoreCase));
+            // Check if this is a DHCP gateway:
+            // 1. Protocol explicitly contains "dhcp" or "ra"
+            // 2. Protocol is "dhcp" or "ra" 
+            // 3. Protocol is "boot" (systemd-networkd)
+            // 4. Protocol is "kernel" or "static" but interface has DHCP configured (common case)
+            // 5. No protocol but interface has DHCP configured
+            // 6. FALLBACK: If no static gateway exists for this address, treat as dynamic (common on fresh installs)
+            //    This is the most important fallback for fresh installs where DHCP config might not be detected
+            var isDhcp = false;
+            var protocolName = "dhcp";
+
+            // First check: Explicit DHCP protocol indicators
+            if (!string.IsNullOrWhiteSpace(protocol))
+            {
+                var protocolLower = protocol.ToLowerInvariant();
+                isDhcp = protocolLower.Contains("dhcp") || 
+                         protocolLower.Contains("ra") ||
+                         protocolLower == "boot";
+                if (isDhcp)
+                {
+                    protocolName = protocol;
+                }
+            }
+
+            // Second check: If interface has DHCP configured, treat it as dynamic regardless of protocol
+            // This is reliable when we can detect DHCP config
+            if (!isDhcp && !string.IsNullOrWhiteSpace(dev) && dhcpInterfaces.Contains(dev, StringComparer.OrdinalIgnoreCase))
+            {
+                isDhcp = true;
+                protocolName = !string.IsNullOrWhiteSpace(protocol) ? protocol : "dhcp";
+            }
+
+            // Third check: FALLBACK - if protocol is "kernel" and no static gateway exists in DB,
+            // treat as dynamic (common on fresh installs where DHCP config isn't detected)
+            // This is the critical fallback that ensures gateways are imported on fresh installs
+            if (!isDhcp && !string.IsNullOrWhiteSpace(protocol) && protocol.Equals("kernel", StringComparison.OrdinalIgnoreCase))
+            {
+                // If no static gateway exists for this address, assume this is dynamic (likely DHCP-assigned)
+                // This handles the common case where DHCP assigns routes but they show as "kernel" protocol
+                if (!staticGatewayAddresses.Contains(gateway))
+                {
+                    isDhcp = true;
+                    protocolName = "dhcp";
+                }
+            }
+
+            // Final fallback: If we still haven't detected it and there's no static gateway,
+            // and it's a default route, treat as dynamic (safest assumption on fresh install)
+            if (!isDhcp && !staticGatewayAddresses.Contains(gateway))
+            {
+                isDhcp = true;
+                protocolName = !string.IsNullOrWhiteSpace(protocol) ? protocol : "dhcp";
+            }
 
             if (!isDhcp)
             {
@@ -349,16 +475,202 @@ public sealed class GatewayManager
                 Metric = metric,
                 IsDefault = true,
                 IsDynamic = true,
-                Description = $"Dynamic gateway ({protocol ?? "dhcp"})"
+                Description = $"Dynamic gateway ({protocolName})"
             });
         }
 
         return result;
     }
 
-    private static GatewayView ToView(GatewayEntity entity)
+    private async Task<HashSet<string>> GetDhcpInterfacesAsync(CancellationToken cancellationToken)
     {
-        return new GatewayView
+        // Use cached result if recent
+        if (_cachedDhcpInterfaces != null && DateTime.UtcNow - _dhcpCacheTime < DhcpCacheTimeout)
+        {
+            return _cachedDhcpInterfaces;
+        }
+
+        var dhcpInterfaces = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        
+        try
+        {
+            // Method 1: Check interface assignments from database (if available)
+            if (_interfaceStore != null)
+            {
+                try
+                {
+                    var assignments = await _interfaceStore.GetAssignmentsAsync();
+                    foreach (var assignment in assignments)
+                    {
+                        // Check if assignment has DHCP configured
+                        if (assignment.IpMode == InterfaceIpMode.Dhcp || assignment.Ipv6Mode == InterfaceIpMode.Dhcp)
+                        {
+                            dhcpInterfaces.Add(assignment.InterfaceName);
+                        }
+                    }
+                }
+                catch
+                {
+                    // Continue to file-based detection
+                }
+            }
+
+            // Method 2: Check systemd-networkd configuration files
+            var networkdDir = "/etc/systemd/network";
+            if (Directory.Exists(networkdDir))
+            {
+                var networkFiles = Directory.GetFiles(networkdDir, "*.network", SearchOption.TopDirectoryOnly);
+                foreach (var file in networkFiles)
+                {
+                    try
+                    {
+                        var content = await File.ReadAllTextAsync(file, cancellationToken);
+                        if (content.Contains("[DHCP]", StringComparison.OrdinalIgnoreCase) ||
+                            content.Contains("DHCP=yes", StringComparison.OrdinalIgnoreCase) ||
+                            content.Contains("DHCP=ipv4", StringComparison.OrdinalIgnoreCase) ||
+                            content.Contains("DHCP=ipv6", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Extract interface name from [Match] section or filename
+                            var matchSection = Regex.Match(content, @"\[Match\]\s+Name\s*=\s*(\S+)", RegexOptions.IgnoreCase | RegexOptions.Multiline);
+                            if (matchSection.Success)
+                            {
+                                dhcpInterfaces.Add(matchSection.Groups[1].Value.Trim());
+                            }
+                            else
+                            {
+                                // Fallback: try to extract from filename (e.g., "10-eth0.network")
+                                var fileName = Path.GetFileNameWithoutExtension(file);
+                                var parts = fileName.Split('-');
+                                if (parts.Length > 1)
+                                {
+                                    // Last part is often the interface name
+                                    var potentialInterface = parts[parts.Length - 1];
+                                    if (!string.IsNullOrWhiteSpace(potentialInterface))
+                                    {
+                                        dhcpInterfaces.Add(potentialInterface);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Skip files that can't be read
+                    }
+                }
+            }
+
+            // Method 2.5: Check if interfaces are using DHCP via networkctl (systemd-networkd)
+            // This is more reliable than config files since it shows actual runtime state
+            if (_commandRunner.CommandExists("networkctl"))
+            {
+                try
+                {
+                    var networkctlCommand = new PlatformCommand
+                    {
+                        FileName = "networkctl",
+                        Arguments = "list",
+                        UseSudo = false,
+                        TimeoutMs = 3000
+                    };
+                    var networkctlResult = await _commandRunner.RunAsync(networkctlCommand, cancellationToken);
+                    if (networkctlResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(networkctlResult.StdOut))
+                    {
+                        // Parse networkctl output to find interfaces with DHCP
+                        var lines = networkctlResult.StdOut.Split('\n');
+                        foreach (var line in lines)
+                        {
+                            if (line.Contains("routable", StringComparison.OrdinalIgnoreCase) || 
+                                line.Contains("configured", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                                if (parts.Length >= 2)
+                                {
+                                    var ifaceName = parts[0].Trim();
+                                    if (!string.IsNullOrWhiteSpace(ifaceName) && ifaceName != "IDX")
+                                    {
+                                        // Check if this interface has DHCP configured
+                                        var statusCommand = new PlatformCommand
+                                        {
+                                            FileName = "networkctl",
+                                            Arguments = $"status {ifaceName}",
+                                            UseSudo = false,
+                                            TimeoutMs = 2000
+                                        };
+                                        var statusResult = await _commandRunner.RunAsync(statusCommand, cancellationToken);
+                                        if (statusResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(statusResult.StdOut))
+                                        {
+                                            if (statusResult.StdOut.Contains("DHCP", StringComparison.OrdinalIgnoreCase) ||
+                                                statusResult.StdOut.Contains("dhcp", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                dhcpInterfaces.Add(ifaceName);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // Skip if networkctl fails
+                }
+            }
+
+            // Method 3: Check /etc/network/interfaces
+            var interfacesFile = "/etc/network/interfaces";
+            if (File.Exists(interfacesFile))
+            {
+                try
+                {
+                    var content = await File.ReadAllTextAsync(interfacesFile, cancellationToken);
+                    var lines = content.Split('\n');
+                    string? currentInterface = null;
+                    foreach (var line in lines)
+                    {
+                        var trimmed = line.Trim();
+                        if (trimmed.StartsWith("iface ", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var parts = trimmed.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                            if (parts.Length >= 2)
+                            {
+                                currentInterface = parts[1];
+                            }
+                        }
+                        else if (trimmed.StartsWith("dhcp", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(currentInterface))
+                        {
+                            dhcpInterfaces.Add(currentInterface);
+                            currentInterface = null;
+                        }
+                        else if (trimmed.StartsWith("auto ", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("allow-", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Reset current interface when we hit a new section
+                            currentInterface = null;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Skip if file can't be read
+                }
+            }
+        }
+        catch
+        {
+            // If we can't check DHCP configs, continue without this information
+        }
+
+        // Cache the result
+        _cachedDhcpInterfaces = dhcpInterfaces;
+        _dhcpCacheTime = DateTime.UtcNow;
+
+        return dhcpInterfaces;
+    }
+
+    private static GatewayView ToView(GatewayEntity entity, GatewayHealthEntity? health = null)
+    {
+        var view = new GatewayView
         {
             Id = entity.Id,
             Name = entity.Name,
@@ -374,5 +686,16 @@ public sealed class GatewayManager
             LastSeenAt = entity.LastSeenAt,
             Source = entity.IsDynamic ? "dynamic" : "static" // Always "static" or "dynamic", never "kernel"
         };
+
+        // Add health information if available
+        if (health != null)
+        {
+            view.HealthStatus = health.Status.ToString().ToLowerInvariant();
+            view.LatencyMs = health.LatencyMs;
+            view.PacketLossPercent = health.PacketLossPercent;
+            view.LastHealthCheckAt = health.LastCheckAt;
+        }
+
+        return view;
     }
 }

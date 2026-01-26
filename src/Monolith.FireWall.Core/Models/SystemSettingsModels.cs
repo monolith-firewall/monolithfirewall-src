@@ -95,6 +95,18 @@ public sealed class TuneablesStartupResult
 }
 
 /// <summary>
+/// Result of operational state initialization during startup.
+/// </summary>
+public sealed class OperationalStateStartupResult
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public int InitializedCount { get; set; }
+    public int TotalCount { get; set; }
+    public List<string> Errors { get; set; } = new();
+}
+
+/// <summary>
 /// Result of system initialization during startup.
 /// </summary>
 public sealed class StartupResult
@@ -107,6 +119,7 @@ public sealed class StartupResult
     public SystemSettingsResult SystemSettings { get; set; } = new();
     public TuneablesStartupResult Tuneables { get; set; } = new();
     public InterfaceConfigResult Interfaces { get; set; } = new();
+    public OperationalStateStartupResult OperationalState { get; set; } = new();
     public Services.ModuleConfigGenerationSummary Modules { get; set; } = new();
     public Services.ServiceManagementResult Services { get; set; } = new();
     public FirewallStartupResult Firewall { get; set; } = new();

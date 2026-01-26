@@ -7,6 +7,8 @@ public sealed class InterfaceInfo
     public int Mtu { get; set; }
     public string OperState { get; set; } = string.Empty;
     public bool IsUp { get; set; }
+    public int? SpeedMbps { get; set; }
+    public string? Duplex { get; set; }
 }
 
 public sealed class AddressInfo

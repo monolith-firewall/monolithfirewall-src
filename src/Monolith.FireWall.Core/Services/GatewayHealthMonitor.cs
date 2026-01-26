@@ -158,6 +158,69 @@ public sealed class GatewayHealthMonitor : IDisposable
         }).ToList();
     }
 
+    /// <summary>
+    /// Performs health checks for all gateways immediately and returns results.
+    /// Used by GatewaySyncService for on-demand health checks.
+    /// </summary>
+    public async Task<List<GatewayHealthCheckResult>> CheckAllGatewaysAsync(CancellationToken cancellationToken = default)
+    {
+        var results = new List<GatewayHealthCheckResult>();
+        var gateways = await _gatewayStore.GetGatewaysAsync();
+
+        foreach (var gateway in gateways)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+
+            try
+            {
+                var config = await _healthStore.GetOrCreateDefaultConfigAsync(gateway.Id);
+                if (!config.Enabled)
+                {
+                    continue;
+                }
+
+                var (statusChanged, previousStatus) = await PerformHealthCheckAsync(gateway, config, cancellationToken);
+                var health = await _healthStore.GetHealthAsync(gateway.Id);
+
+                results.Add(new GatewayHealthCheckResult
+                {
+                    GatewayId = gateway.Id,
+                    GatewayName = gateway.Name,
+                    StatusChanged = statusChanged,
+                    PreviousStatus = previousStatus,
+                    NewStatus = health?.Status ?? GatewayHealthStatus.Unknown,
+                    LatencyMs = health?.LatencyMs,
+                    PacketLossPercent = health?.PacketLossPercent,
+                    Error = health?.LastError
+                });
+
+                // Notify group manager if status changed
+                if (statusChanged && _groupManager != null && health != null)
+                {
+                    await OnHealthChangedAsync(gateway.Id, previousStatus, health.Status, cancellationToken);
+                    await _groupManager.EvaluateGroupsAsync(cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                results.Add(new GatewayHealthCheckResult
+                {
+                    GatewayId = gateway.Id,
+                    GatewayName = gateway.Name,
+                    StatusChanged = false,
+                    PreviousStatus = GatewayHealthStatus.Unknown,
+                    NewStatus = GatewayHealthStatus.Unknown,
+                    Error = ex.Message
+                });
+            }
+        }
+
+        return results;
+    }
+
     private async Task InitializeHealthAsync(CancellationToken cancellationToken)
     {
         var gateways = await _gatewayStore.GetGatewaysAsync();

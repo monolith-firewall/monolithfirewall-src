@@ -48,6 +48,12 @@ public sealed class GatewayView
     public DateTime UpdatedAt { get; set; }
     public DateTime? LastSeenAt { get; set; }
     public string? Source { get; set; }
+
+    // Health monitoring properties
+    public string HealthStatus { get; set; } = "unknown";
+    public int? LatencyMs { get; set; }
+    public double? PacketLossPercent { get; set; }
+    public DateTime? LastHealthCheckAt { get; set; }
 }
 
 public sealed class GatewayDeleteRequest

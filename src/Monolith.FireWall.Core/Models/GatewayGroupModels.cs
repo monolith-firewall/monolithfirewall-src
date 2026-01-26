@@ -273,6 +273,21 @@ public sealed class GatewayMonitorConfigView
     public bool Enabled { get; set; }
 }
 
+/// <summary>
+/// Result of a single gateway health check, including status change info.
+/// </summary>
+public sealed class GatewayHealthCheckResult
+{
+    public int GatewayId { get; set; }
+    public string GatewayName { get; set; } = string.Empty;
+    public bool StatusChanged { get; set; }
+    public GatewayHealthStatus PreviousStatus { get; set; }
+    public GatewayHealthStatus NewStatus { get; set; }
+    public int? LatencyMs { get; set; }
+    public double? PacketLossPercent { get; set; }
+    public string? Error { get; set; }
+}
+
 // ============================================================================
 // Request Models
 // ============================================================================

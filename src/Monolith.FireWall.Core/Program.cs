@@ -250,10 +250,11 @@ class Program
             settingsService,
             tuneablesManager,
             firewallManager.Nat,
-            firewallManager.ApplyManager);
+            firewallManager.ApplyManager,
+            operationalStateStore);
         var gatewayStore = new GatewayStore();
-        var gatewayManager = new GatewayManager(gatewayStore, commandRunner, interfaceAssignmentStore);
-        var gatewaySyncService = new GatewaySyncService(gatewayManager);
+        var gatewayHealthStore = new GatewayHealthStore();
+        var gatewayManager = new GatewayManager(gatewayStore, commandRunner, interfaceAssignmentStore, gatewayHealthStore);
         var routingManager = new RoutingManager(
             new RoutingStore(),
             gatewayManager,
@@ -287,7 +288,10 @@ class Program
             firewallManager.ApplyManager,
             moduleConfigGenerator,
             moduleServiceManager,
-            gatewayManager);
+            gatewayManager,
+            operationalStateStore,
+            interfaceAssignmentStore,
+            networkInventory);
         
         // Create WebUI services
         var webUiSettingsManager = new WebUiSettingsManager(logger);
@@ -296,10 +300,9 @@ class Program
         // Create Backup manager
         var backupManager = new Services.BackupManager(logger, commandRunner);
 
-        // Create remaining network operational state stores (operationalStateStore and dynamicAliasStore created earlier)
+        // Create remaining network operational state stores (operationalStateStore, dynamicAliasStore, and gatewayHealthStore created earlier)
         var networkStateChangeStore = new NetworkStateChangeStore();
         var gatewayGroupStore = new GatewayGroupStore();
-        var gatewayHealthStore = new GatewayHealthStore();
 
         // Create gateway group and health services
         var gatewayGroupManager = new GatewayGroupManager(
@@ -315,11 +318,21 @@ class Program
             commandRunner,
             gatewayGroupManager);
 
+        // Create gateway sync service (coordinates sync and health monitoring)
+        var gatewaySyncService = new GatewaySyncService(gatewayManager, gatewayHealthMonitor);
+
         // Create network state monitor (background service for link/IP changes)
         var networkStateMonitor = new NetworkStateMonitorService(
             operationalStateStore,
             networkStateChangeStore,
             commandRunner);
+
+        // Create network state provider for packages to access operational state
+        var networkStateProvider = new NetworkStateProvider(
+            operationalStateStore,
+            gatewayHealthStore,
+            gatewayStore,
+            networkStateMonitor);
 
         // Create reconciliation engine (handles state drift)
         var reconciliationEngine = new ReconciliationEngine(
@@ -437,7 +450,9 @@ class Program
                                 moduleInfo.Module.Id,
                                 platformExecutor,
                                 defaultCapabilities,
-                                serviceManager);
+                                serviceManager,
+                                settingsService,
+                                networkStateProvider);
                             await lifecycle.OnStartAsync(moduleContext);
                         }
                     }
