@@ -193,6 +193,29 @@ public sealed class InitialNetworkCaptureService
     }
 
     /// <summary>
+    /// Gets suggested interface assignments based on current network state.
+    /// This can be called by the setup wizard to show recommendations.
+    /// </summary>
+    public async Task<List<SuggestedInterfaceAssignment>> GetNetworkSuggestionsAsync(CancellationToken cancellationToken = default)
+    {
+        // Step 1: Enumerate all network interfaces
+        var interfaces = await EnumerateInterfacesAsync(cancellationToken);
+
+        // Step 2: Get IP addresses for all interfaces
+        var addresses = await GetAllAddressesAsync(cancellationToken);
+
+        // Step 3: Get routing information
+        var routes = await GetRoutesAsync(cancellationToken);
+        var defaultGateways = routes.Where(r =>
+            r.Destination == "default" ||
+            r.Destination == "0.0.0.0/0" ||
+            r.Destination == "::/0").ToList();
+
+        // Step 4: Run heuristics to suggest assignments
+        return await SuggestInterfaceAssignmentsAsync(interfaces, addresses, defaultGateways);
+    }
+
+    /// <summary>
     /// Creates interface assignments from suggested roles.
     /// Called by the setup wizard when user confirms assignments.
     /// </summary>

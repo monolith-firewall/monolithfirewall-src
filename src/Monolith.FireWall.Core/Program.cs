@@ -362,6 +362,7 @@ class Program
             backupManager,
             commandRunner,
             settingsService,
+            initialNetworkCapture,
             config.SocketPath,
             config.MaxConcurrentConnections
         );

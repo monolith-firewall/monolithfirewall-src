@@ -6,6 +6,7 @@ using Monolith.FireWall.Common.Models;
 using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services;
 using Monolith.FireWall.Core.Services.Firewall;
+using Monolith.FireWall.Core.Services.Settings;
 using Monolith.FireWall.Core.Transport.Handlers;
 
 namespace Monolith.FireWall.Core.Transport;
@@ -22,13 +23,14 @@ public class UnixSocketListener
     private readonly RoutingManager _routingManager;
     private readonly SystemTuneablesManager _tuneablesManager;
     private readonly MonitoringManager _monitoringManager;
-    private readonly SystemSettingsManager _settingsManager;
     private readonly FirewallManager _firewallManager;
     private readonly StartupManager _startupManager;
     private readonly WebUiSettingsManager _webUiSettingsManager;
     private readonly WebUiServiceManager _webUiServiceManager;
     private readonly Services.BackupManager _backupManager;
     private readonly Services.Platform.PlatformCommandRunner _commandRunner;
+    private readonly ISettingsService _configService;
+    private readonly InitialNetworkCaptureService? _networkCaptureService;
     private readonly List<ICoreRequestHandler> _coreHandlers;
     private readonly string _socketPath;
     private readonly int _maxConcurrentConnections;
@@ -46,7 +48,6 @@ public class UnixSocketListener
         RoutingManager routingManager,
         SystemTuneablesManager tuneablesManager,
         MonitoringManager monitoringManager,
-        SystemSettingsManager settingsManager,
         FirewallManager firewallManager,
         SetupManager setupManager,
         StartupManager startupManager,
@@ -54,6 +55,8 @@ public class UnixSocketListener
         WebUiServiceManager webUiServiceManager,
         Services.BackupManager backupManager,
         Services.Platform.PlatformCommandRunner commandRunner,
+        ISettingsService configService,
+        InitialNetworkCaptureService? networkCaptureService = null,
         string socketPath = "/var/lib/monolith-firewall/run/monolith-core.sock",
         int maxConcurrentConnections = 20)
     {
@@ -67,16 +70,21 @@ public class UnixSocketListener
         _routingManager = routingManager;
         _tuneablesManager = tuneablesManager;
         _monitoringManager = monitoringManager;
-        _settingsManager = settingsManager;
         _firewallManager = firewallManager;
         _startupManager = startupManager;
         _webUiSettingsManager = webUiSettingsManager;
         _webUiServiceManager = webUiServiceManager;
         _backupManager = backupManager;
         _commandRunner = commandRunner;
+        _configService = configService;
+        _networkCaptureService = networkCaptureService;
         _socketPath = socketPath;
         _maxConcurrentConnections = maxConcurrentConnections;
         _cts = new CancellationTokenSource();
+
+        // Register system config appliers
+        RegisterConfigAppliers(logger, commandRunner);
+
         _coreHandlers = new List<ICoreRequestHandler>
         {
             new SystemMetadataHandler(),
@@ -88,12 +96,13 @@ public class UnixSocketListener
             new PackagesHandler(),
             new ModulesHandler(),
             new FirewallHandler(),
-            new SetupHandler(_setupManager, _logger),
+            new SetupHandler(_setupManager, _logger, _networkCaptureService),
             new StartupHandler(),
             new WebUiSettingsHandler(),
             new BackupHandler(),
             new SystemCommandHandler(),
-            new NetworkCardHandler()
+            new NetworkCardHandler(),
+            new ConfigHandler()
         };
     }
 
@@ -202,14 +211,29 @@ public class UnixSocketListener
                 UnixFileMode.UserRead | UnixFileMode.UserWrite |
                 UnixFileMode.GroupRead | UnixFileMode.GroupWrite |
                 UnixFileMode.OtherRead | UnixFileMode.OtherWrite);
-            Console.WriteLine($"[SOCKET] ✓ Set permissions 666 on {_socketPath}");
+            Console.WriteLine($"[SOCKET] Set permissions 666 on {_socketPath}");
             _logger.LogInformation($"Set socket permissions to 666 for {_socketPath}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SOCKET] ✗ Failed to set permissions on {_socketPath}: {ex.Message}");
+            Console.WriteLine($"[SOCKET] Failed to set permissions on {_socketPath}: {ex.Message}");
             _logger.LogError($"Failed to set socket permissions: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Register config appliers for system settings.
+    /// </summary>
+    private void RegisterConfigAppliers(ILogger logger, Services.Platform.PlatformCommandRunner commandRunner)
+    {
+        // Register system config appliers
+        _configService.RegisterApplier(Models.SystemConfigKeys.Hostname, new HostnameApplier(logger, commandRunner));
+        _configService.RegisterApplier(Models.SystemConfigKeys.Timezone, new TimezoneApplier(logger, commandRunner));
+        _configService.RegisterApplier(Models.SystemConfigKeys.Dns, new DnsApplier(logger, commandRunner));
+        _configService.RegisterApplier(Models.SystemConfigKeys.Ntp, new NtpApplier(logger, commandRunner));
+        _configService.RegisterApplier(Models.SystemConfigKeys.IpForwarding, new IpForwardingApplier(logger, commandRunner));
+
+        _logger.LogInformation("Registered system config appliers: hostname, timezone, dns, ntp, ip_forwarding");
     }
 
     private async Task HandleClientAsync(Socket client, CancellationToken cancellationToken)
@@ -296,13 +320,13 @@ public class UnixSocketListener
                                 _routingManager,
                                 _tuneablesManager,
                                 _monitoringManager,
-                                _settingsManager,
                                 _firewallManager,
                                 _startupManager,
                                 _webUiSettingsManager,
                                 _webUiServiceManager,
                                 _backupManager,
-                                _commandRunner);
+                                _commandRunner,
+                                _configService);
                             response = await handler.HandleAsync(context, request, cancellationToken);
                         }
                         else

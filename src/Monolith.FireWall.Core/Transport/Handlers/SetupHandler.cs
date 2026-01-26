@@ -17,16 +17,22 @@ public class SetupHandler : ICoreRequestHandler
         "setup.packages",
         "setup.finish",
         "setup.skip",
-        "setup.skip-step"
+        "setup.skip-step",
+        "setup.network-suggestions"
     };
 
     private readonly SetupManager _setupManager;
+    private readonly InitialNetworkCaptureService? _networkCaptureService;
     private readonly ILogger _logger;
 
-    public SetupHandler(SetupManager setupManager, ILogger logger)
+    public SetupHandler(
+        SetupManager setupManager,
+        ILogger logger,
+        InitialNetworkCaptureService? networkCaptureService = null)
     {
         _setupManager = setupManager;
         _logger = logger;
+        _networkCaptureService = networkCaptureService;
     }
 
     public bool CanHandle(string action) => Actions.Contains(action);
@@ -45,6 +51,7 @@ public class SetupHandler : ICoreRequestHandler
                 "setup.finish" => await HandleFinishAsync(request),
                 "setup.skip" => await HandleSkipAsync(),
                 "setup.skip-step" => HandleSkipStep(request),
+                "setup.network-suggestions" => await HandleNetworkSuggestionsAsync(cancellationToken),
                 _ => new ApiResponse(false, null, $"Unknown setup action: {action}")
             };
         }
@@ -136,8 +143,8 @@ public class SetupHandler : ICoreRequestHandler
     {
         try
         {
-            var stepId = request.TryGetProperty("stepId", out var stepIdEl) 
-                ? stepIdEl.GetString() 
+            var stepId = request.TryGetProperty("stepId", out var stepIdEl)
+                ? stepIdEl.GetString()
                 : null;
 
             if (string.IsNullOrEmpty(stepId))
@@ -153,6 +160,46 @@ public class SetupHandler : ICoreRequestHandler
         {
             _logger.LogError(ex, "Error skipping setup step");
             return new ApiResponse(false, null, $"Error skipping step: {ex.Message}");
+        }
+    }
+
+    private async Task<ApiResponse> HandleNetworkSuggestionsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_networkCaptureService == null)
+            {
+                return new ApiResponse(false, null, "Network capture service not available");
+            }
+
+            var suggestions = await _networkCaptureService.GetNetworkSuggestionsAsync(cancellationToken);
+
+            // Convert to JSON-friendly format
+            var result = new
+            {
+                interfaces = suggestions.Select(s => new
+                {
+                    interfaceName = s.InterfaceName,
+                    suggestedRole = s.Role.ToString().ToLowerInvariant(),
+                    suggestedName = s.SuggestedName,
+                    suggestedIpMode = s.SuggestedIpMode.ToString().ToLowerInvariant(),
+                    reason = s.Reason,
+                    currentIp = s.CurrentIpAddress,
+                    currentPrefix = s.CurrentPrefix,
+                    currentGateway = s.CurrentGateway,
+                    hasDefaultGateway = !string.IsNullOrEmpty(s.CurrentGateway),
+                    linkUp = s.LinkUp,
+                    macAddress = s.MacAddress,
+                    confidence = s.Confidence
+                }).ToList()
+            };
+
+            return new ApiResponse(true, result, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting network suggestions");
+            return new ApiResponse(false, null, $"Error getting network suggestions: {ex.Message}");
         }
     }
 }
