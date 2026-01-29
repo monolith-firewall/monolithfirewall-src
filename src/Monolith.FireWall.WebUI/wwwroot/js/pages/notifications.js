@@ -129,30 +129,31 @@ Monolith.Pages.Notifications = {
     },
 
     attachEventHandlers: function() {
+        // Use .off() first to prevent duplicate handlers on re-init
         // Filter controls
-        $('#filter-status, #filter-severity, #filter-limit').on('change', () => {
+        $('#filter-status, #filter-severity, #filter-limit').off('change').on('change', () => {
             this.filters.status = $('#filter-status').val();
             this.filters.severity = $('#filter-severity').val();
             this.filters.limit = parseInt($('#filter-limit').val());
         });
 
-        $('#btn-apply-filters').on('click', async () => {
+        $('#btn-apply-filters').off('click').on('click', async () => {
             await this.loadNotifications();
         });
 
         // Select all checkbox
-        $('#select-all').on('change', function() {
+        $('#select-all').off('change').on('change', function() {
             $('.notification-checkbox').prop('checked', $(this).prop('checked'));
         });
 
         // Mark as read (individual)
-        $(document).on('click', '.btn-mark-read', async (e) => {
+        $(document).off('click', '.btn-mark-read').on('click', '.btn-mark-read', async (e) => {
             const id = $(e.currentTarget).data('id');
             await this.markAsRead([id]);
         });
 
         // Delete (individual)
-        $(document).on('click', '.btn-delete', async (e) => {
+        $(document).off('click', '.btn-delete').on('click', '.btn-delete', async (e) => {
             const id = $(e.currentTarget).data('id');
             if (confirm('Are you sure you want to delete this notification?')) {
                 await this.deleteNotifications([id]);
@@ -160,19 +161,19 @@ Monolith.Pages.Notifications = {
         });
 
         // Mark all read
-        $('#btn-mark-all-read').on('click', async () => {
+        $('#btn-mark-all-read').off('click').on('click', async () => {
             await this.markAllAsRead();
         });
 
         // Delete all read
-        $('#btn-delete-all-read').on('click', async () => {
+        $('#btn-delete-all-read').off('click').on('click', async () => {
             if (confirm('Are you sure you want to delete all read notifications? This action cannot be undone.')) {
                 await this.deleteAllRead();
             }
         });
 
         // Delete all
-        $('#btn-delete-all').on('click', async () => {
+        $('#btn-delete-all').off('click').on('click', async () => {
             if (confirm('Are you sure you want to delete ALL notifications? This action cannot be undone.')) {
                 await this.deleteAll();
             }

@@ -147,12 +147,12 @@
 
             $('#setup-welcome-content').html(html);
 
-            // Setup event handlers
-            $('#btn-start-setup').on('click', function() {
+            // Setup event handlers - use .off() first to prevent duplicate handlers
+            $('#btn-start-setup').off('click').on('click', function() {
                 window.location.href = '/setup/router';
             });
 
-            $('#btn-skip-setup').on('click', function() {
+            $('#btn-skip-setup').off('click').on('click', function() {
                 if (confirm('Skip the entire setup wizard? You can configure these settings later in the dashboard.')) {
                     skipSetup();
                 }

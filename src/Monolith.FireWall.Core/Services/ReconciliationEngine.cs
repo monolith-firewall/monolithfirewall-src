@@ -1,3 +1,4 @@
+using Monolith.FireWall.Common.Interfaces;
 using Monolith.FireWall.Common.Services;
 using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Platform;
@@ -54,38 +55,73 @@ public sealed class ReconciliationEngine : INetworkStateListener
     }
 
     // ========================================================================
-    // INetworkStateListener Implementation
+    // INetworkStateListener Implementation (Common interface)
     // ========================================================================
 
-    public async Task OnInterfaceStateChangedAsync(InterfaceStateChange change, CancellationToken cancellationToken)
+    public async Task OnInterfaceStateChangedAsync(NetworkInterfaceChange change, CancellationToken cancellationToken)
     {
         switch (change.ChangeType)
         {
-            case NetworkChangeType.LinkUp:
-                await HandleLinkUpAsync(change, cancellationToken);
+            case InterfaceChangeType.LinkUp:
+                await HandleLinkUpAsync(change.InterfaceName, cancellationToken);
                 break;
 
-            case NetworkChangeType.LinkDown:
-                await HandleLinkDownAsync(change, cancellationToken);
+            case InterfaceChangeType.LinkDown:
+                await HandleLinkDownAsync(change.InterfaceName, cancellationToken);
                 break;
 
-            case NetworkChangeType.IpChanged:
-            case NetworkChangeType.IpAdded:
-            case NetworkChangeType.IpRemoved:
+            case InterfaceChangeType.IpChanged:
+            case InterfaceChangeType.IpAdded:
+            case InterfaceChangeType.IpRemoved:
                 await HandleIpChangeAsync(change, cancellationToken);
                 break;
 
-            case NetworkChangeType.GatewayChanged:
+            case InterfaceChangeType.GatewayChanged:
                 await HandleGatewayChangeAsync(change, cancellationToken);
                 break;
 
-            case NetworkChangeType.InterfaceAdded:
-                await HandleInterfaceAddedAsync(change, cancellationToken);
+            case InterfaceChangeType.InterfaceAdded:
+                await HandleInterfaceAddedAsync(change.InterfaceName, cancellationToken);
                 break;
 
-            case NetworkChangeType.InterfaceRemoved:
-                await HandleInterfaceRemovedAsync(change, cancellationToken);
+            case InterfaceChangeType.InterfaceRemoved:
+                await HandleInterfaceRemovedAsync(change.InterfaceName, cancellationToken);
                 break;
+        }
+    }
+
+    public async Task OnGatewayHealthChangedAsync(NetworkGatewayChange change, CancellationToken cancellationToken)
+    {
+        await _loggingManager.LogSystemAsync(
+            "Network",
+            change.NewStatus == "offline" ? "warning" : "info",
+            "ReconciliationEngine",
+            $"Gateway '{change.GatewayName}' health changed: {change.PreviousStatus} -> {change.NewStatus}",
+            new Dictionary<string, object>
+            {
+                ["gatewayId"] = change.GatewayId,
+                ["address"] = change.GatewayAddress,
+                ["latencyMs"] = change.LatencyMs ?? 0,
+                ["packetLoss"] = change.PacketLossPercent ?? 0
+            });
+
+        // Re-evaluate gateway groups when health changes
+        if (_gatewayGroupManager != null)
+        {
+            await _gatewayGroupManager.EvaluateGroupsAsync(cancellationToken);
+        }
+    }
+
+    public async Task OnLinkStateChangedAsync(NetworkLinkChange change, CancellationToken cancellationToken)
+    {
+        // Delegate to the appropriate handler
+        if (change.IsUp)
+        {
+            await HandleLinkUpAsync(change.InterfaceName, cancellationToken);
+        }
+        else
+        {
+            await HandleLinkDownAsync(change.InterfaceName, cancellationToken);
         }
     }
 
@@ -93,16 +129,16 @@ public sealed class ReconciliationEngine : INetworkStateListener
     // Event Handlers
     // ========================================================================
 
-    private async Task HandleLinkUpAsync(InterfaceStateChange change, CancellationToken cancellationToken)
+    private async Task HandleLinkUpAsync(string interfaceName, CancellationToken cancellationToken)
     {
-        var assignment = await _assignmentStore.GetAssignmentAsync(change.InterfaceName);
+        var assignment = await _assignmentStore.GetAssignmentAsync(interfaceName);
         if (assignment == null)
         {
             // Unmanaged interface - just notify
             await NotifyAsync(
-                $"Unmanaged interface '{change.InterfaceName}' link restored",
+                $"Unmanaged interface '{interfaceName}' link restored",
                 "info",
-                change.InterfaceName);
+                interfaceName);
             return;
         }
 
@@ -112,14 +148,14 @@ public sealed class ReconciliationEngine : INetworkStateListener
             await NotifyAsync(
                 $"DHCP interface '{assignment.Name}' link restored - waiting for IP",
                 "info",
-                change.InterfaceName);
+                interfaceName);
             return;
         }
 
         // Static interface - verify IP is still configured
         if (assignment.IpMode == InterfaceIpMode.Static)
         {
-            var opState = await _operationalStateStore.GetAsync(change.InterfaceName);
+            var opState = await _operationalStateStore.GetAsync(interfaceName);
             if (opState?.CurrentIpv4Address != assignment.IpAddress)
             {
                 // Static IP missing after link restore - auto-repair if configured
@@ -132,7 +168,7 @@ public sealed class ReconciliationEngine : INetworkStateListener
                     await NotifyAsync(
                         $"Static interface '{assignment.Name}' link restored but IP mismatch - manual intervention required",
                         "warning",
-                        change.InterfaceName);
+                        interfaceName);
                 }
             }
             else
@@ -140,7 +176,7 @@ public sealed class ReconciliationEngine : INetworkStateListener
                 await NotifyAsync(
                     $"Interface '{assignment.Name}' link restored with correct IP",
                     "info",
-                    change.InterfaceName);
+                    interfaceName);
             }
         }
 
@@ -151,9 +187,9 @@ public sealed class ReconciliationEngine : INetworkStateListener
         }
     }
 
-    private async Task HandleLinkDownAsync(InterfaceStateChange change, CancellationToken cancellationToken)
+    private async Task HandleLinkDownAsync(string interfaceName, CancellationToken cancellationToken)
     {
-        var assignment = await _assignmentStore.GetAssignmentAsync(change.InterfaceName);
+        var assignment = await _assignmentStore.GetAssignmentAsync(interfaceName);
 
         // Determine criticality
         var isCritical = assignment?.Role == InterfaceRole.Wan ||
@@ -162,9 +198,9 @@ public sealed class ReconciliationEngine : INetworkStateListener
         var severity = isCritical ? "error" : "warning";
         var message = assignment != null
             ? $"Interface '{assignment.Name}' ({assignment.Role}) link down"
-            : $"Interface '{change.InterfaceName}' link down";
+            : $"Interface '{interfaceName}' link down";
 
-        await NotifyAsync(message, severity, change.InterfaceName);
+        await NotifyAsync(message, severity, interfaceName);
 
         // Update change log with appropriate resolution
         var resolution = isCritical
@@ -173,7 +209,7 @@ public sealed class ReconciliationEngine : INetworkStateListener
 
         await _changeStore.LogChangeAsync(
             NetworkChangeType.LinkDown,
-            interfaceName: change.InterfaceName,
+            interfaceName: interfaceName,
             previousValue: new { LinkState = "up" },
             newValue: new { LinkState = "down" },
             resolution: resolution,
@@ -186,15 +222,24 @@ public sealed class ReconciliationEngine : INetworkStateListener
         }
     }
 
-    private async Task HandleIpChangeAsync(InterfaceStateChange change, CancellationToken cancellationToken)
+    private async Task HandleIpChangeAsync(NetworkInterfaceChange change, CancellationToken cancellationToken)
     {
         var assignment = await _assignmentStore.GetAssignmentAsync(change.InterfaceName);
+
+        // Map Common enum to Core enum for change logging
+        var coreChangeType = change.ChangeType switch
+        {
+            InterfaceChangeType.IpAdded => NetworkChangeType.IpAdded,
+            InterfaceChangeType.IpRemoved => NetworkChangeType.IpRemoved,
+            InterfaceChangeType.IpChanged => NetworkChangeType.IpChanged,
+            _ => NetworkChangeType.IpChanged
+        };
 
         // DHCP interface - IP changes are expected, auto-repair by updating operational state
         if (assignment?.IpMode == InterfaceIpMode.Dhcp)
         {
             await _changeStore.LogChangeAsync(
-                change.ChangeType,
+                coreChangeType,
                 interfaceName: change.InterfaceName,
                 previousValue: new { Address = change.PreviousIpAddress },
                 newValue: new { Address = change.NewIpAddress },
@@ -212,7 +257,7 @@ public sealed class ReconciliationEngine : INetworkStateListener
         // Static interface - unexpected IP change
         if (assignment?.IpMode == InterfaceIpMode.Static)
         {
-            if (change.ChangeType == NetworkChangeType.IpRemoved ||
+            if (change.ChangeType == InterfaceChangeType.IpRemoved ||
                 change.NewIpAddress != assignment.IpAddress)
             {
                 if (_config.AutoRepairStaticIp)
@@ -227,7 +272,7 @@ public sealed class ReconciliationEngine : INetworkStateListener
                         change.InterfaceName);
 
                     await _changeStore.LogChangeAsync(
-                        change.ChangeType,
+                        coreChangeType,
                         interfaceName: change.InterfaceName,
                         previousValue: new { Address = change.PreviousIpAddress },
                         newValue: new { Address = change.NewIpAddress },
@@ -238,7 +283,7 @@ public sealed class ReconciliationEngine : INetworkStateListener
         }
     }
 
-    private async Task HandleGatewayChangeAsync(InterfaceStateChange change, CancellationToken cancellationToken)
+    private async Task HandleGatewayChangeAsync(NetworkInterfaceChange change, CancellationToken cancellationToken)
     {
         var assignment = await _assignmentStore.GetAssignmentAsync(change.InterfaceName);
 
@@ -274,29 +319,29 @@ public sealed class ReconciliationEngine : INetworkStateListener
             change.InterfaceName);
     }
 
-    private async Task HandleInterfaceAddedAsync(InterfaceStateChange change, CancellationToken cancellationToken)
+    private async Task HandleInterfaceAddedAsync(string interfaceName, CancellationToken cancellationToken)
     {
         // Check if we have an assignment waiting for this interface
-        var assignment = await _assignmentStore.GetAssignmentAsync(change.InterfaceName);
+        var assignment = await _assignmentStore.GetAssignmentAsync(interfaceName);
         if (assignment != null)
         {
             await NotifyAsync(
                 $"Configured interface '{assignment.Name}' appeared - may need to apply configuration",
                 "info",
-                change.InterfaceName);
+                interfaceName);
         }
         else
         {
             await NotifyAsync(
-                $"New unassigned interface detected: '{change.InterfaceName}'",
+                $"New unassigned interface detected: '{interfaceName}'",
                 "info",
-                change.InterfaceName);
+                interfaceName);
         }
     }
 
-    private async Task HandleInterfaceRemovedAsync(InterfaceStateChange change, CancellationToken cancellationToken)
+    private async Task HandleInterfaceRemovedAsync(string interfaceName, CancellationToken cancellationToken)
     {
-        var assignment = await _assignmentStore.GetAssignmentAsync(change.InterfaceName);
+        var assignment = await _assignmentStore.GetAssignmentAsync(interfaceName);
 
         if (assignment != null)
         {
@@ -308,11 +353,11 @@ public sealed class ReconciliationEngine : INetworkStateListener
             await NotifyAsync(
                 $"Configured interface '{assignment.Name}' ({assignment.Role}) disappeared",
                 severity,
-                change.InterfaceName);
+                interfaceName);
 
             await _changeStore.LogChangeAsync(
                 NetworkChangeType.InterfaceRemoved,
-                interfaceName: change.InterfaceName,
+                interfaceName: interfaceName,
                 previousValue: new { Name = assignment.Name, Role = assignment.Role.ToString() },
                 resolution: ResolutionAction.ManualRequired,
                 resolutionDetails: "Configured interface removed - check hardware");
@@ -320,9 +365,9 @@ public sealed class ReconciliationEngine : INetworkStateListener
         else
         {
             await NotifyAsync(
-                $"Unassigned interface '{change.InterfaceName}' removed",
+                $"Unassigned interface '{interfaceName}' removed",
                 "info",
-                change.InterfaceName);
+                interfaceName);
         }
 
         // Re-evaluate gateway groups

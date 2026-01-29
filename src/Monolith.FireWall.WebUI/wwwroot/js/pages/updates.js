@@ -35,10 +35,20 @@ var Updates = {
 
     render: function() {
         const container = $('#updates-container');
-        container.html(`
-            <div class="container-fluid">
-                <h1 class="mb-4">Update Manager</h1>
+        
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "Update Manager",
+                icon: "fa-arrows-rotate",
+                description: "Check for system and package updates",
+                container: container,
+                prepend: true
+            });
+        }
 
+        container.append(`
+            <div class="container-fluid p-4">
                 <div class="row mb-4">
                     <div class="col-md-12">
                         <button class="btn btn-primary" id="check-updates-btn">
@@ -100,7 +110,8 @@ var Updates = {
             </div>
         `);
 
-        $('#check-updates-btn').on('click', () => this.checkUpdates());
+        // Use .off() first to prevent duplicate handlers on re-init
+        $('#check-updates-btn').off('click').on('click', () => this.checkUpdates());
     },
 
     checkUpdates: async function() {

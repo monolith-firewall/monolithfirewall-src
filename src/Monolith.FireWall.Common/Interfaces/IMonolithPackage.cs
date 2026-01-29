@@ -15,4 +15,7 @@ public interface IMonolithPackage
 
     /// <summary>Called when package is unloaded</summary>
     Task OnUnloadAsync(IPackageContext context);
+
+    /// <summary>Called when package is installed (first time or update). Can check existing config and initialize database.</summary>
+    Task OnInstallAsync(IPackageContext context, bool isUpdate, CancellationToken cancellationToken);
 }

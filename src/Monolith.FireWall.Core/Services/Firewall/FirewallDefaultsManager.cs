@@ -31,7 +31,7 @@ public sealed class FirewallDefaultsManager
             OptDefaultAction = entity.OptDefaultAction,
             BlockReservedOnWan = entity.BlockReservedOnWan,
             AllowManagementWebUi = entity.AllowManagementWebUi,
-            AllowDeveloperSystemAccess = entity.AllowDeveloperSystemAccess
+            AllowSshAccess = entity.AllowSshAccess
         };
     }
 
@@ -57,7 +57,7 @@ public sealed class FirewallDefaultsManager
         entity.OptDefaultAction = optAction;
         entity.BlockReservedOnWan = request.BlockReservedOnWan;
         entity.AllowManagementWebUi = request.AllowManagementWebUi;
-        entity.AllowDeveloperSystemAccess = request.AllowDeveloperSystemAccess;
+        entity.AllowSshAccess = request.AllowSshAccess;
         entity.UpdatedAt = DateTime.UtcNow;
 
         if (entity.Id == 0)
@@ -98,7 +98,7 @@ public sealed class FirewallDefaultsManager
             OptDefaultAction = entity.OptDefaultAction,
             BlockReservedOnWan = entity.BlockReservedOnWan,
             AllowManagementWebUi = entity.AllowManagementWebUi,
-            AllowDeveloperSystemAccess = entity.AllowDeveloperSystemAccess
+            AllowSshAccess = entity.AllowSshAccess
         });
     }
 

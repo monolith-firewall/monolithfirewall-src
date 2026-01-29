@@ -149,6 +149,13 @@
                             <li><span class="dropdown-item-text text-muted small">Loading notifications...</span></li>
                         </ul>
                     </li>
+                    <!-- Pending Configuration Changes -->
+                    <li class="nav-item d-none" id="pending-changes-container">
+                        <a href="#" class="nav-link nav-icon-button position-relative" id="pending-changes-button" aria-label="Pending configuration changes" title="Settings waiting to be applied">
+                            <i class="fa-solid fa-clock-rotate-left fa-lg" id="pending-changes-icon"></i>
+                            <span class="badge bg-warning text-dark nav-badge d-none" id="pending-changes-badge">0</span>
+                        </a>
+                    </li>
                 </ul>
                 <!-- User Menu (all the way to the right) -->
                 <div class="user-menu d-flex align-items-center gap-2">
@@ -191,9 +198,14 @@
     
     <!-- Bootstrap 5.3.8 JS -->
     <script src="/js/bootstrap.bundle.min.js?v=20260103"></script>
-    
+
+    <!-- SignalR Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@@8.0.0/dist/browser/signalr.min.js"></script>
+    <script src="/js/core/signalr-manager.js?v=20260125"></script>
+
     <!-- Monolith Core -->
     <script src="/js/core/monolith.api.js?v=20260104"></script>
+    <script src="/js/core/monolith.core.js?v=20260126"></script>
     <script src="/js/core/monolith.ui.js?v=20260104"></script>
     <script src="/js/core/monolith.auth.js?v=20260104"></script>
     <script src="/js/core/package-discovery.js?v=20260122"></script>
@@ -201,8 +213,10 @@
     <script src="/js/core/cms-client.js?v=20260115090000"></script>
     <script src="/js/core/cms-router.js?v=20260115090000"></script>
     <script src="/js/core/page-header.js?v=20260123"></script>
+    <script src="/js/core/page-base.js?v=20260125"></script>
     <script src="/js/core/page-loader.js?v=20260115090000"></script>
-    
+    <script src="/js/core/pending-changes.js?v=20260125"></script>
+
     <!-- Main App (Razor Pages - no SPA router) -->
     <script src="/js/app.js?v=20260115"></script>
     

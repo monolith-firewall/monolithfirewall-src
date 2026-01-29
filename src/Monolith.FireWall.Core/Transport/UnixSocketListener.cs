@@ -31,6 +31,10 @@ public class UnixSocketListener
     private readonly Services.Platform.PlatformCommandRunner _commandRunner;
     private readonly ISettingsService _configService;
     private readonly InitialNetworkCaptureService? _networkCaptureService;
+    private readonly GatewayGroupManager? _gatewayGroupManager;
+    private readonly GatewayHealthMonitor? _gatewayHealthMonitor;
+    private readonly InterfaceOperationalStateStore? _operationalStateStore;
+    private readonly GatewayHealthStore? _gatewayHealthStore;
     private readonly List<ICoreRequestHandler> _coreHandlers;
     private readonly string _socketPath;
     private readonly int _maxConcurrentConnections;
@@ -57,6 +61,10 @@ public class UnixSocketListener
         Services.Platform.PlatformCommandRunner commandRunner,
         ISettingsService configService,
         InitialNetworkCaptureService? networkCaptureService = null,
+        GatewayGroupManager? gatewayGroupManager = null,
+        GatewayHealthMonitor? gatewayHealthMonitor = null,
+        InterfaceOperationalStateStore? operationalStateStore = null,
+        GatewayHealthStore? gatewayHealthStore = null,
         string socketPath = "/var/lib/monolith-firewall/run/monolith-core.sock",
         int maxConcurrentConnections = 20)
     {
@@ -78,6 +86,10 @@ public class UnixSocketListener
         _commandRunner = commandRunner;
         _configService = configService;
         _networkCaptureService = networkCaptureService;
+        _gatewayGroupManager = gatewayGroupManager;
+        _gatewayHealthMonitor = gatewayHealthMonitor;
+        _operationalStateStore = operationalStateStore;
+        _gatewayHealthStore = gatewayHealthStore;
         _socketPath = socketPath;
         _maxConcurrentConnections = maxConcurrentConnections;
         _cts = new CancellationTokenSource();
@@ -102,7 +114,11 @@ public class UnixSocketListener
             new BackupHandler(),
             new SystemCommandHandler(),
             new NetworkCardHandler(),
-            new ConfigHandler()
+            new ConfigHandler(),
+            new GatewayGroupHandler(),
+            new GatewayHealthHandler(),
+            new OperationalStateHandler(),
+            new ModuleServicesHandler()
         };
     }
 
@@ -326,7 +342,11 @@ public class UnixSocketListener
                                 _webUiServiceManager,
                                 _backupManager,
                                 _commandRunner,
-                                _configService);
+                                _configService,
+                                _gatewayGroupManager,
+                                _gatewayHealthMonitor,
+                                _operationalStateStore,
+                                _gatewayHealthStore);
                             response = await handler.HandleAsync(context, request, cancellationToken);
                         }
                         else

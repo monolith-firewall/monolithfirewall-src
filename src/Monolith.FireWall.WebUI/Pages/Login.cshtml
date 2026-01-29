@@ -53,7 +53,8 @@
     <script src="/js/core/monolith.auth.js?v=20260104"></script>
     <script>
         $(document).ready(function() {
-            $('#login-form').on('submit', async function(e) {
+            // Use .off() first to prevent duplicate handlers
+            $('#login-form').off('submit').on('submit', async function(e) {
                 e.preventDefault();
                 const username = $('#username').val();
                 const password = $('#password').val();

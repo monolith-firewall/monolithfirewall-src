@@ -1,5 +1,6 @@
 using Monolith.FireWall.Common.Interfaces;
 using Monolith.FireWall.Core.Models;
+using Monolith.FireWall.Core.Services.Settings;
 
 namespace Monolith.FireWall.Core.Services;
 
@@ -11,18 +12,18 @@ public sealed class InterfaceConfigApplier
     private readonly ILogger _logger;
     private readonly InterfaceAssignmentStore _assignmentStore;
     private readonly InterfaceConfigManager _configManager;
-    private readonly SystemSettingsManager _systemSettingsManager;
+    private readonly ISettingsService _settingsService;
 
     public InterfaceConfigApplier(
         ILogger logger,
         InterfaceAssignmentStore assignmentStore,
         InterfaceConfigManager configManager,
-        SystemSettingsManager systemSettingsManager)
+        ISettingsService settingsService)
     {
         _logger = logger;
         _assignmentStore = assignmentStore;
         _configManager = configManager;
-        _systemSettingsManager = systemSettingsManager;
+        _settingsService = settingsService;
     }
 
     /// <summary>
@@ -45,8 +46,9 @@ public sealed class InterfaceConfigApplier
                 return result;
             }
 
-            // Get DNS servers from system settings
-            var dnsServers = await _systemSettingsManager.GetDnsServersAsync();
+            // Get DNS servers from system configs
+            var dnsConfig = await _settingsService.GetSystemConfigAsync<DnsConfig>(SystemConfigKeys.Dns);
+            var dnsServers = dnsConfig?.Servers ?? new List<string>();
 
             // Ensure include line exists in main interfaces file
             var (includeChanged, _) = await _configManager.EnsureIncludeAsync(cancellationToken);
@@ -60,13 +62,13 @@ public sealed class InterfaceConfigApplier
 
             // Generate and apply interface configuration
             var applyResult = await _configManager.ApplyAsync(assignments, dnsServers, cancellationToken);
-            
+
             result.Success = true;
             result.GeneratedCount = assignments.Count;
             result.Applied = true;
 
             _logger.LogInformation($"Generated interface configuration for {assignments.Count} interface(s)");
-            
+
             if (!string.IsNullOrWhiteSpace(applyResult.BackupFile))
             {
                 _logger.LogInformation($"Backed up previous config to: {applyResult.BackupFile}");
@@ -88,7 +90,7 @@ public sealed class InterfaceConfigApplier
     private async Task CleanOldInterfaceConfigAsync(CancellationToken cancellationToken)
     {
         const string managedFilePath = "/etc/network/interfaces.d/monolith";
-        
+
         if (!File.Exists(managedFilePath))
         {
             return;
@@ -108,10 +110,10 @@ public sealed class InterfaceConfigApplier
                 Directory.CreateDirectory(backupDir);
                 var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
                 var backupPath = Path.Combine(backupDir, $"monolith.bak-{timestamp}");
-                
+
                 File.Copy(managedFilePath, backupPath, overwrite: true);
                 File.Delete(managedFilePath);
-                
+
                 _logger.LogInformation($"Cleaned old managed interface config: {managedFilePath} -> {backupPath}");
             }
             else
@@ -121,10 +123,10 @@ public sealed class InterfaceConfigApplier
                 Directory.CreateDirectory(backupDir);
                 var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
                 var backupPath = Path.Combine(backupDir, $"monolith-unmanaged.bak-{timestamp}");
-                
+
                 File.Copy(managedFilePath, backupPath, overwrite: true);
                 File.Delete(managedFilePath);
-                
+
                 _logger.LogWarning($"Found unmanaged interface config file, backed up and will overwrite: {managedFilePath} -> {backupPath}");
             }
         }

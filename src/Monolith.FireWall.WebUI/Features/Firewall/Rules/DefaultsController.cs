@@ -55,5 +55,5 @@ public sealed class DefaultsRequest
     public string? OptDefaultAction { get; set; }
     public bool BlockReservedOnWan { get; set; }
     public bool AllowManagementWebUi { get; set; }
-    public bool AllowDeveloperSystemAccess { get; set; }
+    public bool AllowSshAccess { get; set; }
 }

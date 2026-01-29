@@ -7,6 +7,7 @@ using Monolith.FireWall.Common.Services;
 using Monolith.FireWall.Core.Configuration;
 using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Platform;
+using Monolith.FireWall.Core.Services.Settings;
 using Monolith.FireWall.Platform.Models;
 using CodeLogic;
 using CL.SQLite.Services;
@@ -24,6 +25,7 @@ public sealed class PackageInstaller
     private readonly LoggingManager _loggingManager;
     private readonly CoreConfiguration _config;
     private readonly PlatformCommandRunner _commandRunner;
+    private readonly ISettingsService? _settingsService;
 
     private static readonly string[] RestartUnits =
     {
@@ -38,7 +40,8 @@ public sealed class PackageInstaller
         ModuleRegistry registry,
         PackageStateStore stateStore,
         PlatformCommandRunner commandRunner,
-        CoreConfiguration config)
+        CoreConfiguration config,
+        ISettingsService? settingsService = null)
     {
         _logger = logger;
         _scanner = scanner;
@@ -47,6 +50,7 @@ public sealed class PackageInstaller
         _stateStore = stateStore;
         _config = config;
         _commandRunner = commandRunner;
+        _settingsService = settingsService;
         _loggingManager = LoggingManager.Instance;
     }
 
@@ -146,7 +150,7 @@ public sealed class PackageInstaller
                     ["update"] = isUpdate
                 });
 
-            var packageInfo = await TryReloadPackageAsync(manifest.Id, cancellationToken);
+            var packageInfo = await TryReloadPackageAsync(manifest.Id, isUpdate, cancellationToken);
             return PackageInstallResult.Ok(manifest, manifest.RequiresRestart, isUpdate);
         }
         catch (Exception ex)
@@ -312,7 +316,7 @@ public sealed class PackageInstaller
         }
     }
 
-    private async Task<PackageInfo?> TryReloadPackageAsync(string packageId, CancellationToken cancellationToken)
+    private async Task<PackageInfo?> TryReloadPackageAsync(string packageId, bool isUpdate, CancellationToken cancellationToken)
     {
         try
         {
@@ -329,6 +333,23 @@ public sealed class PackageInstaller
 
                 // Enable all modules in the package by default (if not already set)
                 await EnablePackageModulesAsync(packageInfo, cancellationToken);
+
+                // Call OnInstallAsync to allow package to initialize from existing config
+                if (packageInfo.Package is IMonolithPackage package)
+                {
+                    try
+                    {
+                        // Create a simple package context adapter
+                        var packageContext = new SimplePackageContext(_logger, packageInfo.Definition.Id);
+                        await package.OnInstallAsync(packageContext, isUpdate, cancellationToken);
+                        _logger.LogInformation($"Called OnInstallAsync for package {packageInfo.Definition.Id} (update: {isUpdate})");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning($"OnInstallAsync failed for package {packageInfo.Definition.Id}, continuing... Exception: {ex.Message}");
+                        // Don't fail installation if OnInstallAsync fails
+                    }
+                }
 
                 // Start lifecycle modules so they receive a context immediately after install/update.
                 // This is important for packages that trigger config generation on writes.
@@ -362,7 +383,15 @@ public sealed class PackageInstaller
             try
             {
                 // Minimal context: modules can still access SQLite via CodeLogic.Libs.
-                var context = new ModuleContextAdapter(_logger, packageInfo.Definition.Id, moduleInfo.Module.Id);
+                var serviceManager = new SystemdServiceManager(_commandRunner);
+                var context = new ModuleContextAdapter(
+                    _logger,
+                    packageInfo.Definition.Id,
+                    moduleInfo.Module.Id,
+                    null,
+                    PlatformCapability.None,
+                    serviceManager,
+                    _settingsService);
                 await lifecycle.OnStartAsync(context);
                 _logger.LogInformation($"Started module lifecycle: {packageInfo.Definition.Id}/{moduleInfo.Module.Id}");
             }
@@ -868,6 +897,28 @@ public sealed class PackageInstaller
         {
             _logger.LogError(ex, $"Failed to install bundled deb packages for {manifest.Id}");
             return PackageInstallResult.Fail($"Failed to install bundled deb packages: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Simple package context adapter for install-time initialization
+    /// </summary>
+    private class SimplePackageContext : IPackageContext
+    {
+        public ILogger Logger { get; }
+        public string PackageId { get; }
+        public CodeLogic.Localization.ILocalizationManager Localization { get; }
+
+        public SimplePackageContext(ILogger logger, string packageId)
+        {
+            Logger = logger;
+            PackageId = packageId;
+            // Create a localization manager for this package
+            var codeLogicConfig = CodeLogic.CodeLogic.GetConfiguration();
+            var packageLocDir = Path.Combine("/var/lib/monolith-firewall/codelogic/localization", packageId);
+            Localization = new CodeLogic.Localization.LocalizationManager(
+                packageLocDir,
+                codeLogicConfig?.Localization?.DefaultCulture ?? "en-US");
         }
     }
 }

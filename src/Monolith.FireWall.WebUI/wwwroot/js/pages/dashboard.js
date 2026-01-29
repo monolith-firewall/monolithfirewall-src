@@ -24,10 +24,11 @@ Monolith.Pages.Dashboard = {
         maxPoints: 30
     },
     trafficLast: null,
+    _signalRHandler: null,
 
     init: function() {
         console.log('Initializing Dashboard...');
-        
+
         // Ensure container exists
         const container = $('#dashboard-container');
         if (container.length === 0 && window.location.pathname === '/dashboard') {
@@ -35,10 +36,126 @@ Monolith.Pages.Dashboard = {
             setTimeout(() => this.init(), 100);
             return;
         }
-        
+
         // Clear any existing state
         this.widgets = [];
         this.layout = null;
+
+        // Subscribe to SignalR for real-time updates
+        this._subscribeToSignalR();
+    },
+
+    destroy: function() {
+        // Unsubscribe from SignalR when leaving dashboard
+        this._unsubscribeFromSignalR();
+        // Clear refresh timers
+        Object.values(this.refreshTimers).forEach(timer => clearInterval(timer));
+        this.refreshTimers = {};
+    },
+
+    _subscribeToSignalR: function() {
+        if (!Monolith.SignalR) {
+            console.log('[Dashboard] SignalR not available');
+            return;
+        }
+
+        this._signalRHandler = (eventName, data) => {
+            switch (eventName) {
+                case 'SystemMetricsUpdated':
+                    this._handleSystemMetrics(data);
+                    break;
+                case 'InterfaceStatusChanged':
+                case 'InterfaceStatusBatch':
+                    this._handleInterfaceStatus(data);
+                    break;
+                case 'GatewayStatusChanged':
+                case 'GatewayStatusBatch':
+                    this._handleGatewayStatus(data);
+                    break;
+                case 'ServiceStatusChanged':
+                case 'ServiceStatusBatch':
+                    this._handleServiceStatus(data);
+                    break;
+            }
+        };
+
+        // Subscribe to multiple channels
+        Monolith.SignalR.subscribe('system', this._signalRHandler);
+        Monolith.SignalR.subscribe('interfaces', this._signalRHandler);
+        Monolith.SignalR.subscribe('gateways', this._signalRHandler);
+        Monolith.SignalR.subscribe('services', this._signalRHandler);
+        console.log('[Dashboard] Subscribed to SignalR channels');
+    },
+
+    _unsubscribeFromSignalR: function() {
+        if (Monolith.SignalR && this._signalRHandler) {
+            Monolith.SignalR.unsubscribe('system', this._signalRHandler);
+            Monolith.SignalR.unsubscribe('interfaces', this._signalRHandler);
+            Monolith.SignalR.unsubscribe('gateways', this._signalRHandler);
+            Monolith.SignalR.unsubscribe('services', this._signalRHandler);
+            this._signalRHandler = null;
+            console.log('[Dashboard] Unsubscribed from SignalR');
+        }
+    },
+
+    /**
+     * Handle real-time system metrics from SignalR
+     */
+    _handleSystemMetrics: function(data) {
+        // Only update if system.info widget is visible
+        const layoutWidget = this.layout?.widgets?.find(w => w.id === 'system.info' && w.visible);
+        if (!layoutWidget) return;
+
+        // Transform SignalR event to widget data format
+        const widgetData = {
+            cpu: { usage: data.cpuPercent || 0 },
+            memory: {
+                percent: data.memoryPercent || 0,
+                used: data.memoryUsedBytes || 0,
+                total: data.memoryTotalBytes || 0
+            },
+            disk: {
+                percent: data.diskPercent || 0,
+                used: data.diskUsedBytes || 0,
+                total: data.diskTotalBytes || 0
+            },
+            uptime: data.uptimeSeconds || 0,
+            load: [data.loadAverage1 || 0, data.loadAverage5 || 0, data.loadAverage15 || 0]
+        };
+
+        this.renderWidgetData('system.info', widgetData);
+        console.log('[Dashboard] Real-time system metrics updated');
+    },
+
+    /**
+     * Handle real-time interface status from SignalR
+     */
+    _handleInterfaceStatus: function(data) {
+        // Update interface status widget if visible
+        const layoutWidget = this.layout?.widgets?.find(w => w.id === 'interface.status' && w.visible);
+        if (layoutWidget) {
+            // Refresh the widget data
+            this.loadWidgetData('interface.status');
+        }
+    },
+
+    /**
+     * Handle real-time gateway status from SignalR
+     */
+    _handleGatewayStatus: function(data) {
+        // Update gateway health widget if visible
+        const layoutWidget = this.layout?.widgets?.find(w => w.id === 'gateway.health' && w.visible);
+        if (layoutWidget) {
+            // Refresh the widget data
+            this.loadWidgetData('gateway.health');
+        }
+    },
+
+    /**
+     * Handle real-time service status from SignalR
+     */
+    _handleServiceStatus: function(data) {
+        // Could update service status widgets here
     },
 
     renderPage: function() {
@@ -281,20 +398,21 @@ Monolith.Pages.Dashboard = {
             return new bootstrap.Tooltip(tooltipTriggerEl);
         });
 
-        $('#reset-layout-btn').on('click', () => this.resetLayout());
-        $('#edit-layout-btn').on('click', () => this.toggleEditMode());
-        $('#add-widget-btn').on('click', () => this.showAddWidgetModal());
-        $('#grid-settings-btn').on('click', () => this.showGridSettingsModal());
-        $('#widget-search').on('input', () => this.filterAvailableWidgets());
-        
+        // Use .off() first to prevent duplicate handlers on re-init
+        $('#reset-layout-btn').off('click').on('click', () => this.resetLayout());
+        $('#edit-layout-btn').off('click').on('click', () => this.toggleEditMode());
+        $('#add-widget-btn').off('click').on('click', () => this.showAddWidgetModal());
+        $('#grid-settings-btn').off('click').on('click', () => this.showGridSettingsModal());
+        $('#widget-search').off('input').on('input', () => this.filterAvailableWidgets());
+
         // Grid settings modal - column selection (use event delegation since modal is created dynamically)
-        $(document).on('click', '.grid-option-card', function() {
+        $(document).off('click', '.grid-option-card').on('click', '.grid-option-card', function() {
             const columns = parseInt($(this).data('columns'));
             Dashboard.setGridColumns(columns);
             const modal = bootstrap.Modal.getInstance(document.getElementById('grid-settings-modal'));
             if (modal) modal.hide();
         });
-        
+
         // Initialize edit mode state
         this.editMode = false;
     },
@@ -388,14 +506,14 @@ Monolith.Pages.Dashboard = {
             grid.html('<div class="alert alert-warning">No widgets could be rendered. Check console for details.</div>');
         }
 
-        // Attach refresh button handlers
-        $('.btn-widget-refresh').on('click', function() {
+        // Attach refresh button handlers - use .off() first to prevent duplicate handlers
+        $('.btn-widget-refresh').off('click').on('click', function() {
             const widgetId = $(this).data('widget-id');
             Dashboard.loadWidgetData(widgetId);
         });
 
-        // Attach remove button handlers
-        $('.btn-widget-remove').on('click', function() {
+        // Attach remove button handlers - use .off() first to prevent duplicate handlers
+        $('.btn-widget-remove').off('click').on('click', function() {
             const widgetId = $(this).data('widget-id');
             Dashboard.removeWidget(widgetId);
         });
@@ -478,6 +596,12 @@ Monolith.Pages.Dashboard = {
                     break;
                 case 'network.dhcp.status':
                     container.html(this.renderDhcpStatus(data));
+                    break;
+                case 'gateway.health':
+                    container.html(this.renderGatewayHealth(data));
+                    break;
+                case 'interface.status':
+                    container.html(this.renderInterfaceStatus(data));
                     break;
                 default:
                     console.warn(`Widget renderer not implemented for: ${widgetId}`);
@@ -767,6 +891,127 @@ Monolith.Pages.Dashboard = {
         }
         
         html += '</div></div>';
+        return html;
+    },
+
+    renderGatewayHealth: function(data) {
+        if (!data || !data.gateways || data.gateways.length === 0) {
+            return '<div class="text-muted text-center p-3">No gateways configured</div>';
+        }
+
+        const summary = data.summary || {};
+        const gateways = data.gateways || [];
+
+        let html = `
+            <div class="gateway-health-widget">
+                <div class="d-flex justify-content-between mb-3">
+                    <div class="text-center flex-fill">
+                        <span class="badge bg-success fs-6">${summary.online || 0}</span>
+                        <div class="small text-muted">Online</div>
+                    </div>
+                    <div class="text-center flex-fill">
+                        <span class="badge bg-warning text-dark fs-6">${summary.degraded || 0}</span>
+                        <div class="small text-muted">Degraded</div>
+                    </div>
+                    <div class="text-center flex-fill">
+                        <span class="badge bg-danger fs-6">${summary.offline || 0}</span>
+                        <div class="small text-muted">Offline</div>
+                    </div>
+                </div>
+                <div class="gateway-list" style="max-height: 200px; overflow-y: auto;">
+        `;
+
+        gateways.forEach(gw => {
+            const statusClass = gw.status === 'online' ? 'success' : gw.status === 'degraded' ? 'warning' : gw.status === 'offline' ? 'danger' : 'secondary';
+            const latencyClass = gw.latencyMs > 200 ? 'text-danger' : gw.latencyMs > 100 ? 'text-warning' : 'text-success';
+            const lossClass = gw.packetLossPercent > 10 ? 'text-danger' : gw.packetLossPercent > 5 ? 'text-warning' : 'text-success';
+
+            html += `
+                <div class="gateway-item d-flex justify-content-between align-items-center py-2 border-bottom">
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-${statusClass} me-2">&nbsp;</span>
+                        <div>
+                            <strong>${gw.name}</strong>
+                            <div class="small text-muted">${gw.interface || ''}</div>
+                        </div>
+                    </div>
+                    <div class="text-end">
+                        <span class="${latencyClass}">${gw.latencyMs != null ? gw.latencyMs + ' ms' : '-'}</span>
+                        <div class="small ${lossClass}">${gw.packetLossPercent != null ? gw.packetLossPercent.toFixed(1) + '% loss' : ''}</div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+                <div class="text-center mt-2">
+                    <a href="#/status/gateway-health" class="btn btn-sm btn-outline-primary">View Details</a>
+                </div>
+            </div>
+        `;
+
+        return html;
+    },
+
+    renderInterfaceStatus: function(data) {
+        if (!data || !data.interfaces || data.interfaces.length === 0) {
+            return '<div class="text-muted text-center p-3">No interfaces configured</div>';
+        }
+
+        const summary = data.summary || {};
+        const interfaces = data.interfaces || [];
+
+        let html = `
+            <div class="interface-status-widget">
+                <div class="d-flex justify-content-between mb-3">
+                    <div class="text-center flex-fill">
+                        <span class="badge bg-success fs-6">${summary.up || 0}</span>
+                        <div class="small text-muted">Up</div>
+                    </div>
+                    <div class="text-center flex-fill">
+                        <span class="badge bg-danger fs-6">${summary.down || 0}</span>
+                        <div class="small text-muted">Down</div>
+                    </div>
+                    <div class="text-center flex-fill">
+                        <span class="badge bg-info fs-6">${summary.dhcp || 0}</span>
+                        <div class="small text-muted">DHCP</div>
+                    </div>
+                </div>
+                <div class="interface-list" style="max-height: 200px; overflow-y: auto;">
+        `;
+
+        interfaces.forEach(iface => {
+            const linkClass = iface.linkState === 'up' ? 'success' : iface.linkState === 'down' ? 'danger' : 'secondary';
+            const roleClass = iface.role === 'WAN' ? 'primary' : iface.role === 'LAN' ? 'success' : 'secondary';
+
+            html += `
+                <div class="interface-item d-flex justify-content-between align-items-center py-2 border-bottom">
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-${linkClass} me-2">&nbsp;</span>
+                        <div>
+                            <strong>${iface.friendlyName || iface.name}</strong>
+                            <div class="small">
+                                <span class="badge bg-${roleClass} badge-sm">${iface.role || 'Unassigned'}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-end">
+                        <div class="small">${iface.ipv4Address || '-'}</div>
+                        <div class="small text-muted">${iface.addressMode || ''}</div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+                <div class="text-center mt-2">
+                    <a href="#/status/interface-status" class="btn btn-sm btn-outline-primary">View Details</a>
+                </div>
+            </div>
+        `;
+
         return html;
     },
 
@@ -1407,8 +1652,8 @@ Monolith.Pages.Dashboard = {
             `);
         });
 
-        // Attach click handlers
-        $('.add-widget-item').on('click', (e) => {
+        // Attach click handlers - use .off() first to prevent duplicate handlers
+        $('.add-widget-item').off('click').on('click', (e) => {
             const widgetId = $(e.currentTarget).data('widget-id');
             this.addWidget(widgetId);
         });

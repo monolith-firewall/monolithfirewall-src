@@ -7,21 +7,48 @@ Monolith.Pages.Users = {
     currentUser: null,
 
     init: function() {
+        this.renderHeader();
         this.loadUsers();
         this.setupEventHandlers();
     },
 
+    renderHeader: function() {
+        const container = $('#users-container, #page-content').first();
+        if (!container.length) return;
+
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "User Manager",
+                icon: "fa-users",
+                description: "Manage system users and their roles",
+                container: container,
+                prepend: true
+            });
+        }
+
+        // Add action button under header
+        container.append(`
+            <div class="container-fluid p-4">
+                <div class="d-flex justify-content-end align-items-center mb-4">
+                    <button class="btn btn-primary" id="btn-add-user">Add User</button>
+                </div>
+            </div>
+        `);
+    },
+
     setupEventHandlers: function() {
-        $(document).on('click', '#btn-add-user', () => this.showAddModal());
-        $(document).on('click', '.btn-edit-user', (e) => {
+        // Use .off() first to prevent duplicate handlers on re-init
+        $(document).off('click', '#btn-add-user').on('click', '#btn-add-user', () => this.showAddModal());
+        $(document).off('click', '.btn-edit-user').on('click', '.btn-edit-user', (e) => {
             const id = $(e.currentTarget).data('id');
             this.showEditModal(id);
         });
-        $(document).on('click', '.btn-delete-user', (e) => {
+        $(document).off('click', '.btn-delete-user').on('click', '.btn-delete-user', (e) => {
             const id = $(e.currentTarget).data('id');
             this.deleteUser(id);
         });
-        $(document).on('submit', '#user-form', (e) => {
+        $(document).off('submit', '#user-form').on('submit', '#user-form', (e) => {
             e.preventDefault();
             this.saveUser();
         });

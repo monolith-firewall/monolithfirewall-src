@@ -54,11 +54,18 @@ var SettingsWebUI = {
 
         container.html(`
             <form id="webui-settings-form">
+                <!-- Immediate Apply Notice -->
+                <div class="alert alert-info mb-4">
+                    <i class="fa-solid fa-circle-info me-2"></i>
+                    <strong>Note:</strong> WebUI settings are applied immediately when saved and may require a service restart.
+                </div>
+
                 <div class="row">
                     <div class="col-md-8">
                         <div class="card mb-4">
-                            <div class="card-header">
+                            <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0">Web UI Configuration</h5>
+                                <span class="badge bg-success" id="webui-status-badge">Applied</span>
                             </div>
                             <div class="card-body">
                                 <div class="mb-3">
@@ -93,20 +100,25 @@ var SettingsWebUI = {
                                 </div>
 
                                 <div class="alert alert-warning" id="port-change-warning" style="display: none;">
-                                    <strong>Warning:</strong> Changing the port may cause you to lose connection. 
+                                    <i class="fa-solid fa-triangle-exclamation me-2"></i>
+                                    <strong>Warning:</strong> Changing the port may cause you to lose connection.
                                     Make sure you can access the new port before applying.
                                 </div>
                             </div>
                         </div>
 
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-primary">Save & Apply</button>
-                            <button type="button" class="btn btn-outline-secondary" id="reset-webui-btn">Reset to Defaults</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fa-solid fa-save me-1"></i>Save & Apply
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="reset-webui-btn">
+                                <i class="fa-solid fa-undo me-1"></i>Reset
+                            </button>
                         </div>
                     </div>
 
                     <div class="col-md-4">
-                        <div class="card">
+                        <div class="card mb-3">
                             <div class="card-header">
                                 <h5 class="mb-0">Current Status</h5>
                             </div>
@@ -114,13 +126,28 @@ var SettingsWebUI = {
                                 <dl class="row mb-0">
                                     <dt class="col-sm-6">HTTP Port:</dt>
                                     <dd class="col-sm-6" id="current-http-port">-</dd>
-                                    
+
                                     <dt class="col-sm-6">HTTPS Port:</dt>
                                     <dd class="col-sm-6" id="current-https-port">-</dd>
-                                    
+
                                     <dt class="col-sm-6">Binding:</dt>
                                     <dd class="col-sm-6" id="current-binding">-</dd>
                                 </dl>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions Card -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Quick Actions</h5>
+                            </div>
+                            <div class="card-body">
+                                <button type="button" class="btn btn-outline-warning btn-sm w-100 mb-2" id="restart-webui-btn">
+                                    <i class="fa-solid fa-sync me-1"></i>Restart WebUI Service
+                                </button>
+                                <a href="/system/settings" class="btn btn-outline-secondary btn-sm w-100">
+                                    <i class="fa-solid fa-arrow-left me-1"></i>Back to System Settings
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -128,24 +155,29 @@ var SettingsWebUI = {
             </form>
         `);
 
-        $('#webui-settings-form').on('submit', (e) => {
+        // Use .off() first to prevent duplicate handlers on re-init
+        $('#webui-settings-form').off('submit').on('submit', (e) => {
             e.preventDefault();
             this.saveSettings();
         });
 
-        $('#reset-webui-btn').on('click', () => this.resetSettings());
+        $('#reset-webui-btn').off('click').on('click', () => this.resetSettings());
 
-        $('#bind-all-interfaces').on('change', () => {
+        $('#bind-all-interfaces').off('change').on('change', () => {
             const bindAll = $('#bind-all-interfaces').is(':checked');
             $('#binding-addresses-section').toggle(!bindAll);
         });
 
-        $('#http-port, #https-port').on('change', () => {
+        $('#http-port, #https-port').off('change').on('change', () => {
             $('#port-change-warning').show();
         });
-        
-        $('#add-binding-address').on('click', () => {
+
+        $('#add-binding-address').off('click').on('click', () => {
             this.addBindingAddress('');
+        });
+
+        $('#restart-webui-btn').off('click').on('click', () => {
+            this.restartWebUI();
         });
     },
 
@@ -255,6 +287,35 @@ var SettingsWebUI = {
     resetSettings: function() {
         if (confirm('Reset WebUI settings to defaults?')) {
             this.loadSettings();
+        }
+    },
+
+    restartWebUI: async function() {
+        if (!confirm('Are you sure you want to restart the WebUI service? You may temporarily lose connection.')) {
+            return;
+        }
+
+        try {
+            const btn = $('#restart-webui-btn');
+            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Restarting...');
+
+            const response = await Monolith.API.post('/api/core', {
+                action: 'webui.restart'
+            });
+
+            if (response.Success || response.success) {
+                Monolith.UI.toast('WebUI service restart initiated. Page will reload shortly...', 'info');
+                // Wait and reload after service restarts
+                setTimeout(() => {
+                    window.location.reload();
+                }, 5000);
+            } else {
+                throw new Error(response.Error || response.error || 'Failed to restart WebUI');
+            }
+        } catch (error) {
+            console.error('Failed to restart WebUI:', error);
+            Monolith.UI.toast('Failed to restart WebUI service', 'error');
+            $('#restart-webui-btn').prop('disabled', false).html('<i class="fa-solid fa-sync me-1"></i>Restart WebUI Service');
         }
     }
 };

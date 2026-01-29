@@ -221,25 +221,25 @@ var Status = {
             </div>
         `);
 
-        // Attach event handlers
-        $('#btn-refresh').on('click', () => self.loadStates());
-        $('#auto-refresh-interval').on('change', function() {
+        // Attach event handlers - use .off() first to prevent duplicate handlers
+        $('#btn-refresh').off('click').on('click', () => self.loadStates());
+        $('#auto-refresh-interval').off('change').on('change', function() {
             const interval = parseInt($(this).val()) || 0;
             self.setAutoRefresh(interval);
         });
-        $('#btn-clear-filters').on('click', () => self.clearFilters());
-        $('#page-size').on('change', function() {
+        $('#btn-clear-filters').off('click').on('click', () => self.clearFilters());
+        $('#page-size').off('change').on('change', function() {
             self.statesData.pageSize = parseInt($(this).val()) || 50;
             self.statesData.page = 1;
             self.loadStates();
         });
-        $('#btn-prev').on('click', () => {
+        $('#btn-prev').off('click').on('click', () => {
             if (self.statesData.page > 1) {
                 self.statesData.page--;
                 self.loadStates();
             }
         });
-        $('#btn-next').on('click', () => {
+        $('#btn-next').off('click').on('click', () => {
             if (self.statesData.page < self.statesData.totalPages) {
                 self.statesData.page++;
                 self.loadStates();
@@ -248,7 +248,7 @@ var Status = {
 
         // Filter inputs - debounced
         let filterTimeout;
-        $('#filter-protocol, #filter-source-ip, #filter-dest-ip, #filter-source-port, #filter-dest-port, #filter-state, #filter-interface, #filter-direction, #filter-search, #filter-min-age').on('input', function() {
+        $('#filter-protocol, #filter-source-ip, #filter-dest-ip, #filter-source-port, #filter-dest-port, #filter-state, #filter-interface, #filter-direction, #filter-search, #filter-min-age').off('input').on('input', function() {
             clearTimeout(filterTimeout);
             filterTimeout = setTimeout(() => {
                 self.updateFilters();

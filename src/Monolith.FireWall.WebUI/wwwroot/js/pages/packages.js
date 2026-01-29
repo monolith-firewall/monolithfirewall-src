@@ -51,8 +51,21 @@ var Packages = {
 
     render: function() {
         const container = $('#packages-container');
-        container.html(`
-            <div class="container-fluid packages-shell">
+        
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "Package Manager",
+                icon: "fa-box-open",
+                description: "Install, update, and manage Monolith packages",
+                container: container,
+                prepend: true
+            });
+        }
+
+        // Add toolbar with search and refresh under header
+        container.append(`
+            <div class="container-fluid p-4 packages-shell">
                 <div class="packages-toolbar d-flex justify-content-between align-items-center mb-3">
                     <div class="packages-actions">
                         <button class="btn btn-outline-primary" id="packages-refresh">
@@ -132,12 +145,13 @@ var Packages = {
             </div>
         `);
 
-        $('#packages-refresh').on('click', () => {
+        // Use .off() first to prevent duplicate handlers on re-init
+        $('#packages-refresh').off('click').on('click', () => {
             this.loadInstalled();
             this.loadAvailable();
             this.loadActivity();
         });
-        $('#packages-search').on('input', () => this.renderInstalled());
+        $('#packages-search').off('input').on('input', () => this.renderInstalled());
     },
 
     loadInstalled: async function() {

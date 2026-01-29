@@ -421,17 +421,21 @@ Monolith.CmsRouter = {
         $scope.find('.nav-tabs').each(function() {
             const $nav = $(this);
             let $active = $nav.find('[data-bs-toggle="tab"].active').first();
+            const wasAlreadyActive = $active.length > 0;
             if (!$active.length) {
                 $active = $nav.find('[data-bs-toggle="tab"]').first();
             }
             if ($active.length) {
                 const tab = bootstrap.Tab.getOrCreateInstance($active[0]);
                 tab.show();
-                // Manually trigger shown event if it was already active (bootstrap won't trigger it)
-                $active.trigger('shown.bs.tab', {
-                    target: $active[0],
-                    relatedTarget: null
-                });
+                // Only manually trigger shown event if tab was already active
+                // (bootstrap won't trigger shown.bs.tab if tab is already showing)
+                if (wasAlreadyActive) {
+                    $active.trigger('shown.bs.tab', {
+                        target: $active[0],
+                        relatedTarget: null
+                    });
+                }
             }
         });
     },

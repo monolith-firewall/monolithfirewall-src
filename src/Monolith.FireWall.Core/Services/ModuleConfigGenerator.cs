@@ -13,6 +13,7 @@ public sealed class ModuleConfigGenerator
     private readonly ILogger _logger;
     private readonly ModuleRegistry _moduleRegistry;
     private readonly Services.Platform.PlatformExecutor _platformExecutor;
+    private readonly SystemdServiceManager _serviceManager;
 
     public ModuleConfigGenerator(
         ILogger logger,
@@ -22,6 +23,7 @@ public sealed class ModuleConfigGenerator
         _logger = logger;
         _moduleRegistry = moduleRegistry;
         _platformExecutor = platformExecutor;
+        _serviceManager = new SystemdServiceManager();
     }
 
     /// <summary>
@@ -76,7 +78,8 @@ public sealed class ModuleConfigGenerator
                     moduleInfo.Package.Definition.Id,
                     moduleInfo.Module.Id,
                     _platformExecutor,
-                    defaultCapabilities);
+                    defaultCapabilities,
+                    _serviceManager);
 
                 // Generate config
                 var result = await generator.GenerateConfigAsync(moduleContext, cancellationToken);

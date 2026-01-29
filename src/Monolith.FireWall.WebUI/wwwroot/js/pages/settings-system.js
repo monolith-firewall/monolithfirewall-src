@@ -1,6 +1,7 @@
 // System Settings Tab
 var SettingsSystem = {
     settings: {},
+    hasPendingChanges: false,
 
     init: function() {
         console.log('Initializing System Settings tab...');
@@ -20,11 +21,30 @@ var SettingsSystem = {
 
         container.html(`
             <form id="system-settings-form">
+                <!-- Staged Changes Alert -->
+                <div id="staged-changes-alert" class="alert alert-warning d-none mb-4">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <i class="fa-solid fa-clock me-2"></i>
+                            <strong>Changes Staged:</strong> Settings have been saved but not yet applied.
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="/system/pending-changes" class="btn btn-warning btn-sm">
+                                <i class="fa-solid fa-list me-1"></i>View Changes
+                            </a>
+                            <button type="button" class="btn btn-success btn-sm" id="apply-staged-btn">
+                                <i class="fa-solid fa-check me-1"></i>Apply Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row">
                     <div class="col-md-8">
                         <div class="card mb-4">
-                            <div class="card-header">
+                            <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0">System Information</h5>
+                                <span id="settings-status-badge" class="badge bg-success d-none">Applied</span>
                             </div>
                             <div class="card-body">
                                 <div class="mb-3">
@@ -59,13 +79,17 @@ var SettingsSystem = {
                         </div>
 
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-primary">Save Settings</button>
-                            <button type="button" class="btn btn-outline-secondary" id="reset-settings-btn">Reset to Defaults</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fa-solid fa-save me-1"></i>Save Settings
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="reset-settings-btn">
+                                <i class="fa-solid fa-undo me-1"></i>Reset
+                            </button>
                         </div>
                     </div>
 
                     <div class="col-md-4">
-                        <div class="card">
+                        <div class="card mb-3">
                             <div class="card-header">
                                 <h5 class="mb-0">System Info</h5>
                             </div>
@@ -73,13 +97,28 @@ var SettingsSystem = {
                                 <dl class="row mb-0">
                                     <dt class="col-sm-6">Version:</dt>
                                     <dd class="col-sm-6">1.0.0</dd>
-                                    
+
                                     <dt class="col-sm-6">Build:</dt>
                                     <dd class="col-sm-6">2026.01.01</dd>
-                                    
+
                                     <dt class="col-sm-6">Platform:</dt>
                                     <dd class="col-sm-6">Linux x64</dd>
                                 </dl>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions Card -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Quick Actions</h5>
+                            </div>
+                            <div class="card-body">
+                                <a href="/system/pending-changes" class="btn btn-outline-primary btn-sm w-100 mb-2">
+                                    <i class="fa-solid fa-clock-rotate-left me-1"></i>View Pending Changes
+                                </a>
+                                <a href="/system/advanced" class="btn btn-outline-secondary btn-sm w-100">
+                                    <i class="fa-solid fa-sliders me-1"></i>Advanced Settings
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -87,12 +126,14 @@ var SettingsSystem = {
             </form>
         `);
 
-        $('#system-settings-form').on('submit', (e) => {
+        // Use .off() first to prevent duplicate handlers on re-init
+        $('#system-settings-form').off('submit').on('submit', (e) => {
             e.preventDefault();
             this.saveSettings();
         });
 
-        $('#reset-settings-btn').on('click', () => this.resetSettings());
+        $('#reset-settings-btn').off('click').on('click', () => this.resetSettings());
+        $('#apply-staged-btn').off('click').on('click', () => this.applyStagedChanges());
 
         $(document).off('click', '#add-dns-server');
         $(document).on('click', '#add-dns-server', () => this.addDnsServer());
@@ -189,11 +230,78 @@ var SettingsSystem = {
                 throw new Error(response.Error || response.error || 'Failed to save settings');
             }
 
-            Monolith.UI.toast('System settings saved successfully', 'success');
+            const data = response.Data || response.data || {};
+
+            // Check if changes were staged
+            if (data.staged) {
+                this.hasPendingChanges = true;
+                this.showStagedAlert(true);
+                Monolith.UI.toast('Settings saved and staged. Apply from Pending Changes to activate.', 'info');
+
+                // Notify the pending changes indicator in navbar
+                if (window.Monolith && Monolith.PendingChanges && Monolith.PendingChanges.notifyChange) {
+                    Monolith.PendingChanges.notifyChange();
+                }
+            } else {
+                this.hasPendingChanges = false;
+                this.showStagedAlert(false);
+                Monolith.UI.toast('System settings saved successfully', 'success');
+            }
+
             await this.loadSettings();
         } catch (error) {
             console.error('Failed to save system settings:', error);
             Monolith.UI.toast('Failed to save system settings', 'error');
+        }
+    },
+
+    applyStagedChanges: async function() {
+        try {
+            const response = await Monolith.API.post('/api/core', {
+                action: 'config.apply-all',
+                appliedBy: Monolith.Auth ? Monolith.Auth.getUsername() : 'admin'
+            });
+
+            if (response.Success && response.Data) {
+                const data = response.Data;
+                const appliedCount = data.AppliedCount || data.appliedCount || 0;
+                const failedCount = data.FailedCount || data.failedCount || 0;
+
+                if (failedCount > 0) {
+                    Monolith.UI.toast(`Applied ${appliedCount} changes, ${failedCount} failed`, 'warning');
+                } else {
+                    Monolith.UI.toast(`Applied ${appliedCount} changes successfully`, 'success');
+                }
+
+                this.hasPendingChanges = false;
+                this.showStagedAlert(false);
+
+                // Notify the pending changes indicator
+                if (window.Monolith && Monolith.PendingChanges && Monolith.PendingChanges.notifyChange) {
+                    Monolith.PendingChanges.notifyChange();
+                }
+
+                // Refresh settings to show applied state
+                await this.loadSettings();
+            } else {
+                Monolith.UI.toast(response.Error || 'Failed to apply changes', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to apply staged changes:', error);
+            Monolith.UI.toast('Failed to apply staged changes', 'error');
+        }
+    },
+
+    showStagedAlert: function(show) {
+        const alert = $('#staged-changes-alert');
+        const badge = $('#settings-status-badge');
+
+        if (show) {
+            alert.removeClass('d-none');
+            badge.removeClass('bg-success').addClass('bg-warning').text('Staged').removeClass('d-none');
+        } else {
+            alert.addClass('d-none');
+            badge.removeClass('bg-warning').addClass('bg-success').text('Applied').addClass('d-none');
         }
     },
 

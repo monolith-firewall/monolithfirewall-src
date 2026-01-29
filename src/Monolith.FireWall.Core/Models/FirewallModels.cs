@@ -325,7 +325,7 @@ public sealed class FirewallDefaultsEntity
     public bool AllowManagementWebUi { get; set; } = true;
 
     [SQLiteColumn(DataType = SQLiteDataType.BOOLEAN, DefaultValue = "1")]
-    public bool AllowDeveloperSystemAccess { get; set; } = true;
+    public bool AllowSshAccess { get; set; } = true;
 
     [SQLiteColumn(DataType = SQLiteDataType.DATETIME)]
     public DateTime UpdatedAt { get; set; }
@@ -422,7 +422,7 @@ public sealed class FirewallDefaultsView
     public string OptDefaultAction { get; set; } = "block";
     public bool BlockReservedOnWan { get; set; } = true;
     public bool AllowManagementWebUi { get; set; } = true;
-    public bool AllowDeveloperSystemAccess { get; set; } = true;
+    public bool AllowSshAccess { get; set; } = true;
 }
 
 public sealed class FirewallDefaultsRequest
@@ -432,7 +432,7 @@ public sealed class FirewallDefaultsRequest
     public string? OptDefaultAction { get; set; }
     public bool BlockReservedOnWan { get; set; }
     public bool AllowManagementWebUi { get; set; }
-    public bool AllowDeveloperSystemAccess { get; set; }
+    public bool AllowSshAccess { get; set; }
 }
 
 public sealed class FirewallInterfaceSettingsRequest
@@ -507,4 +507,106 @@ public sealed class FirewallStatesListResponse
 public sealed class FirewallStateKillRequest
 {
     public string Id { get; set; } = string.Empty;
+}
+
+// Rule Query Models
+public sealed class FirewallRuleQueryRequest
+{
+    public string? Interface { get; set; }
+    public string? RuleType { get; set; }       // "system", "user", "managed", or null for all
+    public string? ManagedBy { get; set; }       // Filter managed rules by package
+    public bool? Enabled { get; set; }
+    public string? Protocol { get; set; }
+    public string? Action { get; set; }
+}
+
+public sealed class FirewallRuleQueryResponse
+{
+    public List<FirewallRuleViewExtended> Rules { get; set; } = new();
+    public FirewallRuleQuerySummary Summary { get; set; } = new();
+}
+
+public sealed class FirewallRuleQuerySummary
+{
+    public int Total { get; set; }
+    public int System { get; set; }
+    public int User { get; set; }
+    public int Managed { get; set; }
+}
+
+public sealed class FirewallRuleViewExtended
+{
+    public int Id { get; set; }
+    public int RuleNumber { get; set; }
+    public string Interface { get; set; } = string.Empty;
+    public string Direction { get; set; } = string.Empty;
+    public string Action { get; set; } = string.Empty;
+    public string AddressFamily { get; set; } = string.Empty;
+    public string Protocol { get; set; } = string.Empty;
+    public string SourceType { get; set; } = string.Empty;
+    public string? SourceValue { get; set; }
+    public string? SourcePort { get; set; }
+    public string DestinationType { get; set; } = string.Empty;
+    public string? DestinationValue { get; set; }
+    public string? DestinationPort { get; set; }
+    public string? Gateway { get; set; }
+    public bool LogEnabled { get; set; }
+    public bool Enabled { get; set; }
+    public int? ScheduleId { get; set; }
+    public string? Description { get; set; }
+    public string RuleType { get; set; } = "user";    // "system", "user", "managed"
+    public string? ManagedByPackage { get; set; }
+    public string? ManagedByModule { get; set; }
+    public bool IsEditable { get; set; }
+    public bool IsDeletable { get; set; }
+    public List<string> ConflictWarnings { get; set; } = new();
+}
+
+public sealed class FirewallRuleTypesResponse
+{
+    public List<FirewallRuleTypeInfo> Types { get; set; } = new();
+}
+
+public sealed class FirewallRuleTypeInfo
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public int Count { get; set; }
+}
+
+// Rule Validation Models
+public sealed class FirewallRuleValidateRequest
+{
+    public string? Interface { get; set; }
+    public string? Direction { get; set; }
+    public string? Action { get; set; }
+    public string? AddressFamily { get; set; }
+    public string? Protocol { get; set; }
+    public string? SourceType { get; set; }
+    public string? SourceValue { get; set; }
+    public string? SourcePort { get; set; }
+    public string? DestinationType { get; set; }
+    public string? DestinationValue { get; set; }
+    public string? DestinationPort { get; set; }
+    public int? ExcludeRuleId { get; set; }  // For edit validation - exclude the rule being edited
+}
+
+public sealed class FirewallRuleValidateResponse
+{
+    public bool IsValid { get; set; }
+    public bool HasConflicts { get; set; }
+    public bool CanProceed { get; set; } = true;
+    public List<RuleConflict> Conflicts { get; set; } = new();
+    public string? Suggestion { get; set; }
+}
+
+public sealed class RuleConflict
+{
+    public string Type { get; set; } = string.Empty;      // "duplicate", "overlap", "action_conflict", etc.
+    public string Severity { get; set; } = "warning";     // "error", "warning", "info"
+    public int? ConflictingRuleId { get; set; }
+    public string ConflictingRuleDescription { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string? Resolution { get; set; }
 }

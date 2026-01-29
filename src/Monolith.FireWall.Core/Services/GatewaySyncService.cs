@@ -1,3 +1,4 @@
+using Monolith.FireWall.Common.Interfaces;
 using Monolith.FireWall.Common.Services;
 using System.Threading;
 
@@ -11,6 +12,7 @@ public sealed class GatewaySyncService
 {
     private readonly GatewayManager _gatewayManager;
     private readonly GatewayHealthMonitor? _healthMonitor;
+    private readonly NetworkStateMonitorService? _networkStateMonitor;
     private readonly LoggingManager _loggingManager;
     private Task? _loopTask;
     private readonly TimeSpan _syncInterval = TimeSpan.FromSeconds(60);
@@ -19,10 +21,12 @@ public sealed class GatewaySyncService
 
     public GatewaySyncService(
         GatewayManager gatewayManager,
-        GatewayHealthMonitor? healthMonitor = null)
+        GatewayHealthMonitor? healthMonitor = null,
+        NetworkStateMonitorService? networkStateMonitor = null)
     {
         _gatewayManager = gatewayManager;
         _healthMonitor = healthMonitor;
+        _networkStateMonitor = networkStateMonitor;
         _loggingManager = LoggingManager.Instance;
     }
 
@@ -112,9 +116,10 @@ public sealed class GatewaySyncService
         {
             var results = await _healthMonitor.CheckAllGatewaysAsync(cancellationToken);
 
-            // Log any state changes
+            // Process any state changes
             foreach (var result in results.Where(r => r.StatusChanged))
             {
+                // Log the change
                 await _loggingManager.LogSystemAsync(
                     "Routing",
                     result.NewStatus == Models.GatewayHealthStatus.Online ? "info" : "warning",
@@ -128,6 +133,24 @@ public sealed class GatewaySyncService
                         ["latencyMs"] = result.LatencyMs ?? 0,
                         ["packetLoss"] = result.PacketLossPercent ?? 0
                     });
+
+                // Notify listeners via the network state monitor
+                if (_networkStateMonitor != null)
+                {
+                    var change = new NetworkGatewayChange
+                    {
+                        GatewayId = result.GatewayId,
+                        GatewayName = result.GatewayName,
+                        GatewayAddress = string.Empty, // Would need gateway store lookup for address
+                        PreviousStatus = result.PreviousStatus.ToString().ToLowerInvariant(),
+                        NewStatus = result.NewStatus.ToString().ToLowerInvariant(),
+                        LatencyMs = result.LatencyMs,
+                        PacketLossPercent = result.PacketLossPercent,
+                        OccurredAt = DateTime.UtcNow
+                    };
+
+                    await _networkStateMonitor.NotifyGatewayHealthChangedAsync(change, cancellationToken);
+                }
             }
         }
         catch (Exception ex)

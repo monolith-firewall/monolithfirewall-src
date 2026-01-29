@@ -119,6 +119,30 @@ public class DashboardController : ControllerBase
                             defaultHeight = 3,
                             refreshInterval = 30,
                             requiredPermissions = new[] { "system.dashboard.read" }
+                        },
+                        new {
+                            id = "gateway.health",
+                            title = "Gateway Health",
+                            package = "system",
+                            module = "dashboard",
+                            description = "Gateway status and health monitoring",
+                            icon = "heart-pulse",
+                            defaultWidth = 4,
+                            defaultHeight = 3,
+                            refreshInterval = 10,
+                            requiredPermissions = new[] { "system.dashboard.read" }
+                        },
+                        new {
+                            id = "interface.status",
+                            title = "Interface Status",
+                            package = "system",
+                            module = "dashboard",
+                            description = "Interface operational state overview",
+                            icon = "ethernet",
+                            defaultWidth = 4,
+                            defaultHeight = 3,
+                            refreshInterval = 10,
+                            requiredPermissions = new[] { "system.dashboard.read" }
                         }
                     };
 
@@ -200,6 +224,30 @@ public class DashboardController : ControllerBase
                     defaultHeight = 3,
                     refreshInterval = 30,
                     requiredPermissions = new[] { "system.dashboard.read" }
+                },
+                new {
+                    id = "gateway.health",
+                    title = "Gateway Health",
+                    package = "system",
+                    module = "dashboard",
+                    description = "Gateway status and health monitoring",
+                    icon = "heart-pulse",
+                    defaultWidth = 4,
+                    defaultHeight = 3,
+                    refreshInterval = 10,
+                    requiredPermissions = new[] { "system.dashboard.read" }
+                },
+                new {
+                    id = "interface.status",
+                    title = "Interface Status",
+                    package = "system",
+                    module = "dashboard",
+                    description = "Interface operational state overview",
+                    icon = "ethernet",
+                    defaultWidth = 4,
+                    defaultHeight = 3,
+                    refreshInterval = 10,
+                    requiredPermissions = new[] { "system.dashboard.read" }
                 }
             };
 
@@ -269,6 +317,30 @@ public class DashboardController : ControllerBase
                     defaultWidth = 4,
                     defaultHeight = 3,
                     refreshInterval = 30,
+                    requiredPermissions = new[] { "system.dashboard.read" }
+                },
+                new {
+                    id = "gateway.health",
+                    title = "Gateway Health",
+                    package = "system",
+                    module = "dashboard",
+                    description = "Gateway status and health monitoring",
+                    icon = "heart-pulse",
+                    defaultWidth = 4,
+                    defaultHeight = 3,
+                    refreshInterval = 10,
+                    requiredPermissions = new[] { "system.dashboard.read" }
+                },
+                new {
+                    id = "interface.status",
+                    title = "Interface Status",
+                    package = "system",
+                    module = "dashboard",
+                    description = "Interface operational state overview",
+                    icon = "ethernet",
+                    defaultWidth = 4,
+                    defaultHeight = 3,
+                    refreshInterval = 10,
                     requiredPermissions = new[] { "system.dashboard.read" }
                 }
             };
@@ -361,6 +433,17 @@ public class DashboardController : ControllerBase
                     "system.activity" => Ok(new { success = true, data = await GetActivity() }),
                     _ => NotFound(new { success = false, error = "Widget not found" })
                 };
+            }
+
+            // Handle gateway and interface widgets
+            if (id == "gateway.health")
+            {
+                return Ok(new { success = true, data = await GetGatewayHealthWidget() });
+            }
+
+            if (id == "interface.status")
+            {
+                return Ok(new { success = true, data = await GetInterfaceStatusWidget() });
             }
 
             // Handle package widgets (e.g., "network.dhcp.status")
@@ -705,6 +788,174 @@ public class DashboardController : ControllerBase
                     new { ip = "192.168.1.100", mac = "aa:bb:cc:dd:ee:ff", hostname = "laptop", expires = "2h 30m" },
                     new { ip = "192.168.1.101", mac = "11:22:33:44:55:66", hostname = "phone", expires = "1h 15m" }
                 }
+            };
+        }
+    }
+
+    private async Task<object> GetGatewayHealthWidget()
+    {
+        try
+        {
+            // Get gateways from Core
+            var gatewaysData = await GetCoreDataAsync(new { action = "routing.gateways.list" });
+            var healthData = await GetCoreDataAsync(new { action = "gateway.health.list" });
+
+            var gateways = new List<object>();
+            var summary = new { online = 0, degraded = 0, offline = 0, unknown = 0 };
+            int online = 0, degraded = 0, offline = 0, unknown = 0;
+
+            if (gatewaysData != null && gatewaysData.Value.ValueKind == JsonValueKind.Array)
+            {
+                // Build health lookup
+                var healthLookup = new Dictionary<int, JsonElement>();
+                if (healthData != null && healthData.Value.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var h in healthData.Value.EnumerateArray())
+                    {
+                        if (TryGetPropertyIgnoreCase(h, "gatewayId", out var idProp) && idProp.TryGetInt32(out var gwId))
+                        {
+                            healthLookup[gwId] = h;
+                        }
+                    }
+                }
+
+                foreach (var gw in gatewaysData.Value.EnumerateArray())
+                {
+                    var gwId = TryGetPropertyIgnoreCase(gw, "id", out var idP) && idP.TryGetInt32(out var gId) ? gId : 0;
+                    var name = GetStringProperty(gw, "name") ?? $"Gateway #{gwId}";
+                    var iface = GetStringProperty(gw, "interface") ?? "";
+
+                    var status = "unknown";
+                    double? latencyMs = null;
+                    double? packetLossPercent = null;
+
+                    if (healthLookup.TryGetValue(gwId, out var health))
+                    {
+                        status = GetStringProperty(health, "status") ?? "unknown";
+                        if (TryGetPropertyIgnoreCase(health, "latencyMs", out var latP))
+                            latencyMs = latP.TryGetDouble(out var lat) ? lat : null;
+                        if (TryGetPropertyIgnoreCase(health, "packetLossPercent", out var lossP))
+                            packetLossPercent = lossP.TryGetDouble(out var loss) ? loss : null;
+                    }
+
+                    switch (status.ToLowerInvariant())
+                    {
+                        case "online": online++; break;
+                        case "degraded": degraded++; break;
+                        case "offline": offline++; break;
+                        default: unknown++; break;
+                    }
+
+                    gateways.Add(new
+                    {
+                        id = gwId,
+                        name = name,
+                        @interface = iface,
+                        status = status,
+                        latencyMs = latencyMs,
+                        packetLossPercent = packetLossPercent
+                    });
+                }
+            }
+
+            return new
+            {
+                gateways = gateways,
+                summary = new { online, degraded, offline, unknown }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get gateway health widget data");
+            return new
+            {
+                gateways = Array.Empty<object>(),
+                summary = new { online = 0, degraded = 0, offline = 0, unknown = 0 }
+            };
+        }
+    }
+
+    private async Task<object> GetInterfaceStatusWidget()
+    {
+        try
+        {
+            // Get interface assignments and operational state from Core
+            var assignmentsData = await GetCoreDataAsync(new { action = "interfaces.list" });
+            var operationalData = await GetCoreDataAsync(new { action = "operational.interfaces.list" });
+
+            var interfaces = new List<object>();
+            int up = 0, down = 0, dhcp = 0;
+
+            // Build operational state lookup
+            var operationalLookup = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+            if (operationalData != null && operationalData.Value.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var op in operationalData.Value.EnumerateArray())
+                {
+                    var ifName = GetStringProperty(op, "interfaceName");
+                    if (!string.IsNullOrEmpty(ifName))
+                    {
+                        operationalLookup[ifName] = op;
+                    }
+                }
+            }
+
+            if (assignmentsData != null && assignmentsData.Value.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var iface in assignmentsData.Value.EnumerateArray())
+                {
+                    var ifName = GetStringProperty(iface, "interfaceName") ?? "";
+                    var friendlyName = GetStringProperty(iface, "friendlyName") ?? ifName;
+                    var role = GetStringProperty(iface, "role") ?? "Unassigned";
+                    var addressMode = GetStringProperty(iface, "addressMode") ?? "";
+                    var ipv4Address = GetStringProperty(iface, "ipv4Address") ?? "";
+
+                    var linkState = "unknown";
+                    if (operationalLookup.TryGetValue(ifName, out var opState))
+                    {
+                        linkState = GetStringProperty(opState, "linkState") ?? "unknown";
+                        if (string.IsNullOrEmpty(ipv4Address))
+                        {
+                            ipv4Address = GetStringProperty(opState, "currentIpv4Address") ?? "";
+                        }
+                    }
+
+                    switch (linkState.ToLowerInvariant())
+                    {
+                        case "up": up++; break;
+                        case "down": down++; break;
+                    }
+
+                    if (addressMode.Equals("dhcp", StringComparison.OrdinalIgnoreCase))
+                    {
+                        dhcp++;
+                    }
+
+                    interfaces.Add(new
+                    {
+                        name = ifName,
+                        friendlyName = friendlyName,
+                        role = role,
+                        linkState = linkState,
+                        addressMode = addressMode,
+                        ipv4Address = ipv4Address
+                    });
+                }
+            }
+
+            return new
+            {
+                interfaces = interfaces,
+                summary = new { up, down, dhcp }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get interface status widget data");
+            return new
+            {
+                interfaces = Array.Empty<object>(),
+                summary = new { up = 0, down = 0, dhcp = 0 }
             };
         }
     }

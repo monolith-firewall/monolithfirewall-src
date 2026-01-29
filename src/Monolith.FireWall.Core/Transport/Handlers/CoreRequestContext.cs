@@ -1,6 +1,7 @@
 using Monolith.FireWall.Common.Interfaces;
 using Monolith.FireWall.Core.Services;
 using Monolith.FireWall.Core.Services.Firewall;
+using Monolith.FireWall.Core.Services.Settings;
 
 namespace Monolith.FireWall.Core.Transport.Handlers;
 
@@ -15,13 +16,17 @@ public sealed class CoreRequestContext
         RoutingManager routingManager,
         SystemTuneablesManager tuneablesManager,
         MonitoringManager monitoringManager,
-        SystemSettingsManager settingsManager,
         FirewallManager firewallManager,
         StartupManager startupManager,
         WebUiSettingsManager webUiSettingsManager,
         WebUiServiceManager webUiServiceManager,
         BackupManager backupManager,
-        Services.Platform.PlatformCommandRunner commandRunner)
+        Services.Platform.PlatformCommandRunner commandRunner,
+        ISettingsService configService,
+        GatewayGroupManager? gatewayGroupManager = null,
+        GatewayHealthMonitor? gatewayHealthMonitor = null,
+        InterfaceOperationalStateStore? operationalStateStore = null,
+        GatewayHealthStore? gatewayHealthStore = null)
     {
         Logger = logger;
         ModuleRegistry = moduleRegistry;
@@ -31,13 +36,17 @@ public sealed class CoreRequestContext
         RoutingManager = routingManager;
         TuneablesManager = tuneablesManager;
         MonitoringManager = monitoringManager;
-        SettingsManager = settingsManager;
         FirewallManager = firewallManager;
         StartupManager = startupManager;
         WebUiSettingsManager = webUiSettingsManager;
         WebUiServiceManager = webUiServiceManager;
         BackupManager = backupManager;
         CommandRunner = commandRunner;
+        ConfigService = configService;
+        GatewayGroupManager = gatewayGroupManager;
+        GatewayHealthMonitor = gatewayHealthMonitor;
+        OperationalStateStore = operationalStateStore;
+        GatewayHealthStore = gatewayHealthStore;
     }
 
     public ILogger Logger { get; }
@@ -48,11 +57,35 @@ public sealed class CoreRequestContext
     public RoutingManager RoutingManager { get; }
     public SystemTuneablesManager TuneablesManager { get; }
     public MonitoringManager MonitoringManager { get; }
-    public SystemSettingsManager SettingsManager { get; }
     public FirewallManager FirewallManager { get; }
     public StartupManager StartupManager { get; }
     public WebUiSettingsManager WebUiSettingsManager { get; }
     public WebUiServiceManager WebUiServiceManager { get; }
     public BackupManager BackupManager { get; }
     public Services.Platform.PlatformCommandRunner CommandRunner { get; }
+
+    /// <summary>
+    /// Central configuration service for staged changes workflow.
+    /// </summary>
+    public ISettingsService ConfigService { get; }
+
+    /// <summary>
+    /// Gateway group manager for multi-WAN failover/load balancing.
+    /// </summary>
+    public GatewayGroupManager? GatewayGroupManager { get; }
+
+    /// <summary>
+    /// Gateway health monitor for health checks.
+    /// </summary>
+    public GatewayHealthMonitor? GatewayHealthMonitor { get; }
+
+    /// <summary>
+    /// Interface operational state store for real-time network state.
+    /// </summary>
+    public InterfaceOperationalStateStore? OperationalStateStore { get; }
+
+    /// <summary>
+    /// Gateway health store for health status data.
+    /// </summary>
+    public GatewayHealthStore? GatewayHealthStore { get; }
 }

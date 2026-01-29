@@ -13,16 +13,23 @@ var AdvancedSettings = {
 
     render: function() {
         const container = $('#advanced-settings-container');
-        container.html(`
-            <div class="container-fluid advanced-settings">
-                <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
-                    <div>
-                        <h1 class="mb-1">Advanced Settings</h1>
-                        <div class="text-muted small">Save settings to apply at next boot, or Save and Apply Now to apply immediately.</div>
-                    </div>
-                    <div class="mt-2 mt-md-0">
-                        <button class="btn btn-outline-secondary btn-sm" id="advanced-refresh-btn">Refresh</button>
-                    </div>
+        
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "Advanced Settings",
+                icon: "fa-sliders",
+                description: "Save settings to apply at next boot, or Save and Apply Now to apply immediately",
+                container: container,
+                prepend: true
+            });
+        }
+
+        // Add toolbar with refresh button under header
+        container.append(`
+            <div class="container-fluid p-4">
+                <div class="d-flex justify-content-end mb-3">
+                    <button class="btn btn-outline-secondary btn-sm" id="advanced-refresh-btn">Refresh</button>
                 </div>
 
                 <ul class="nav nav-tabs" id="advanced-tabs" role="tablist">

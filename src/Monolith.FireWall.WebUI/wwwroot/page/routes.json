@@ -173,6 +173,45 @@
       }
     },
     {
+      "id": "system.gateway-groups",
+      "path": "/system/gateway-groups",
+      "title": "Gateway Groups",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"gateway-groups-container\"></div>",
+      "assets": {
+        "js": [
+          "gateway-groups"
+        ]
+      }
+    },
+    {
+      "id": "status.gateway-health",
+      "path": "/status/gateway-health",
+      "title": "Gateway Health",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"gateway-health-container\"></div>",
+      "assets": {
+        "js": [
+          "gateway-health"
+        ]
+      }
+    },
+    {
+      "id": "status.interface-status",
+      "path": "/status/interface-status",
+      "title": "Interface Status",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"interface-status-container\"></div>",
+      "assets": {
+        "js": [
+          "interface-status"
+        ]
+      }
+    },
+    {
       "id": "system.logs",
       "path": "/system/logs",
       "title": "System Logs",
@@ -198,6 +237,25 @@
       "assets": {
         "js": [
           "backup"
+        ]
+      }
+    },
+    {
+      "id": "system.pending-changes",
+      "path": "/system/pending-changes",
+      "title": "Pending Changes",
+      "kind": "internal",
+      "requiresAuth": true,
+      "shell": "<div id=\"pending-changes-container\"></div>",
+      "meta": {
+        "module": "pending-changes"
+      },
+      "assets": {
+        "js": [
+          "/js/pages/pending-changes.js"
+        ],
+        "css": [
+          "/css/pending-changes.css"
         ]
       }
     },
@@ -330,6 +388,16 @@
           "label": "Routing Status",
           "routeId": "status.routing-status",
           "icon": "fa-solid fa-route"
+        },
+        {
+          "label": "Gateway Health",
+          "routeId": "status.gateway-health",
+          "icon": "fa-solid fa-heart-pulse"
+        },
+        {
+          "label": "Interface Status",
+          "routeId": "status.interface-status",
+          "icon": "fa-solid fa-ethernet"
         }
       ]
     },
@@ -402,6 +470,11 @@
           "icon": "fa-solid fa-route"
         },
         {
+          "label": "Gateway Groups",
+          "routeId": "system.gateway-groups",
+          "icon": "fa-solid fa-diagram-project"
+        },
+        {
           "label": "divider"
         },
         {
@@ -449,6 +522,14 @@
           "label": "Backup",
           "routeId": "system.backup",
           "icon": "fa-solid fa-cloud-arrow-up"
+        },
+        {
+          "label": "divider"
+        },
+        {
+          "label": "Pending Changes",
+          "routeId": "system.pending-changes",
+          "icon": "fa-solid fa-clock-rotate-left"
         }
       ]
     }

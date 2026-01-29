@@ -75,6 +75,14 @@ builder.Services.AddSingleton<RazorPartialRenderer>();
 builder.Services.AddSingleton<PageContentRenderer>();
 builder.Services.AddSingleton<UiManifestBuilder>();
 
+// SignalR for real-time updates
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<Monolith.FireWall.WebUI.Hubs.PendingChangesNotifier>();
+builder.Services.AddSingleton<Monolith.FireWall.WebUI.Hubs.SystemEventsNotifier>();
+
+// Background services for real-time status monitoring
+builder.Services.AddHostedService<Monolith.FireWall.WebUI.BackgroundServices.SystemStatusMonitorService>();
+
 // Frontend expects camelCase JSON for WebUI endpoints
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -690,6 +698,10 @@ app.MapControllers();
 
 // Razor Pages (login, setup, package pages, app shell)
 app.MapRazorPages();
+
+// SignalR hubs for real-time updates
+app.MapHub<Monolith.FireWall.WebUI.Hubs.PendingChangesHub>("/hubs/pending-changes");
+app.MapHub<Monolith.FireWall.WebUI.Hubs.SystemEventsHub>("/hubs/system-events");
 
 // Login endpoint
 app.MapPost("/api/auth/login", async (HttpContext context, UserService userService, UserGroupService userGroupService) =>

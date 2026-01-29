@@ -6,6 +6,14 @@ public record ServiceDefinition(
     string[] RequiredCapabilities
 );
 
+public record ServiceBindingDefinition(
+    int Port,
+    string Protocol,
+    string InterfaceRole,
+    string AddressFamily,
+    string? Description = null
+);
+
 public record AptDependency(
     string PackageName,
     string? MinVersion = null

@@ -1,9 +1,9 @@
-monolith-firewall (1.0.0-20260124-163659) unstable; urgency=medium
+monolith-firewall (1.0.0-20260129-102848) unstable; urgency=medium
 
   * Automated build with timestamp versioning
-  * Build timestamp: 2026-01-24 16:36:59 UTC
+  * Build timestamp: 2026-01-29 10:28:48 UTC
 
- -- Monolith FireWall Team <dev@monolithfirewall.org>  Sat, 24 Jan 2026 16:36:59 +0000
+ -- Monolith FireWall Team <dev@monolithfirewall.org>  Thu, 29 Jan 2026 10:28:48 +0000
 
 monolith-firewall (1.0.0-12) unstable; urgency=medium
 

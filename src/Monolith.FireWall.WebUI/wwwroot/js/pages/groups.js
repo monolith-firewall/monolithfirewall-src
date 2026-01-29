@@ -9,27 +9,54 @@ Monolith.Pages.Groups = {
     currentGroup: null,
 
     init: async function() {
+        this.renderHeader();
         await this.loadPermissionCategories();
         this.loadGroups();
         this.loadAllPermissions();
         this.setupEventHandlers();
     },
 
+    renderHeader: function() {
+        const container = $('#groups-container, #page-content').first();
+        if (!container.length) return;
+
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "User Groups",
+                icon: "fa-user-group",
+                description: "Manage user groups and their permissions",
+                container: container,
+                prepend: true
+            });
+        }
+
+        // Add action button under header
+        container.append(`
+            <div class="container-fluid p-4">
+                <div class="d-flex justify-content-end align-items-center mb-4">
+                    <button class="btn btn-primary" id="btn-add-group">Add Group</button>
+                </div>
+            </div>
+        `);
+    },
+
     setupEventHandlers: function() {
-        $(document).on('click', '#btn-add-group', () => this.showAddModal());
-        $(document).on('click', '.btn-edit-group', (e) => {
+        // Use .off() first to prevent duplicate handlers on re-init
+        $(document).off('click', '#btn-add-group').on('click', '#btn-add-group', () => this.showAddModal());
+        $(document).off('click', '.btn-edit-group').on('click', '.btn-edit-group', (e) => {
             const id = $(e.currentTarget).data('id');
             this.showEditModal(id);
         });
-        $(document).on('click', '.btn-delete-group', (e) => {
+        $(document).off('click', '.btn-delete-group').on('click', '.btn-delete-group', (e) => {
             const id = $(e.currentTarget).data('id');
             this.deleteGroup(id);
         });
-        $(document).on('submit', '#group-form', (e) => {
+        $(document).off('submit', '#group-form').on('submit', '#group-form', (e) => {
             e.preventDefault();
             this.saveGroup();
         });
-        $(document).on('click', '.permission-category-toggle', function() {
+        $(document).off('click', '.permission-category-toggle').on('click', '.permission-category-toggle', function() {
             const category = $(this).data('category');
             $(`.permission-item[data-category="${category}"]`).toggle();
         });
@@ -275,13 +302,13 @@ Monolith.Pages.Groups = {
         const modalEl = new bootstrap.Modal(document.getElementById('groupModal'));
         modalEl.show();
         
-        // Handle "All Permissions" checkbox
-        $('#perm-all').on('change', function() {
+        // Handle "All Permissions" checkbox - use .off() first to prevent duplicate handlers
+        $('#perm-all').off('change').on('change', function() {
             const checked = $(this).is(':checked');
             $('#permissions-list input[type="checkbox"]').prop('checked', checked);
         });
-        
-        $('#groupModal').on('hidden.bs.modal', function() {
+
+        $('#groupModal').off('hidden.bs.modal').on('hidden.bs.modal', function() {
             $(this).remove();
         });
     },

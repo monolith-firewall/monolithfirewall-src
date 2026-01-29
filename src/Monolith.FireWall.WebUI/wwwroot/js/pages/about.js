@@ -43,26 +43,28 @@ Monolith.Pages.About = {
     },
 
     render: function() {
+        const container = $('#page-content');
+        if (!container.length) return;
+
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "About",
+                icon: "fa-circle-info",
+                description: "Monolith Firewall system information",
+                container: container,
+                prepend: true
+            });
+        }
+
         const html = `
-            <div class="container-fluid content-container p-4">
+            <div class="container-fluid p-4">
                 <div class="row justify-content-center">
                     <div class="col-lg-10 col-xl-8">
                         <div class="card shadow-sm">
-                            <div class="card-header bg-primary text-white">
-                                <h3 class="mb-0">
-                                    <svg width="24" height="24" fill="currentColor" viewBox="0 0 16 16" class="me-2">
-                                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
-                                        <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
-                                    </svg>
-                                    About Monolith Firewall
-                                </h3>
-                            </div>
                             <div class="card-body">
                                 <div class="text-center mb-4">
-                                    <h1 class="display-4 mb-3">
-                                        <img src="/img/logo.svg" alt="Monolith Firewall" style="width: 48px; height: 48px; vertical-align: middle; margin-right: 0.5rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));" />
-                                        Monolith Firewall
-                                    </h1>
+                                    <img src="/img/logo.svg" alt="Monolith Firewall" style="width: 64px; height: 64px; margin-bottom: 1rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));" />
                                     <p class="lead text-muted">Enterprise-grade firewall management system</p>
                                 </div>
 
@@ -175,6 +177,6 @@ Monolith.Pages.About = {
             </div>
         `;
 
-        $('#page-content').html(html);
+        container.append(html);
     }
 };

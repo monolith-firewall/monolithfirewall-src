@@ -1,0 +1,140 @@
+/* Pending Changes Page Styles */
+
+.pending-changes-full-list {
+    max-height: none;
+}
+
+.pending-change-detail {
+    flex: 1;
+    min-width: 0;
+}
+
+.pending-change-detail small {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+/* Accordion styling */
+#pending-accordion .accordion-button {
+    font-weight: 500;
+}
+
+#pending-accordion .accordion-button:not(.collapsed) {
+    background-color: var(--bs-light);
+    color: var(--bs-body-color);
+}
+
+#pending-accordion .list-group-item {
+    border-left: 3px solid var(--bs-warning);
+    transition: border-left-color 0.15s ease;
+}
+
+#pending-accordion .list-group-item:hover {
+    border-left-color: var(--bs-primary);
+    background-color: var(--bs-tertiary-bg);
+}
+
+/* Stats cards */
+.card h3 {
+    font-size: 2rem;
+    font-weight: 600;
+}
+
+/* History table */
+#history-table {
+    font-size: 0.9rem;
+}
+
+#history-table code {
+    font-size: 0.8rem;
+    padding: 0.15rem 0.4rem;
+}
+
+/* Badge for outline style */
+.bg-outline-secondary {
+    background-color: transparent !important;
+    color: var(--bs-secondary);
+}
+
+/* Animation for new items */
+@keyframes highlight-new {
+    0% {
+        background-color: var(--bs-warning-bg-subtle);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+.list-group-item.new-item {
+    animation: highlight-new 2s ease-out;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .pending-change-detail small {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .pending-change-detail small span {
+        margin-right: 0 !important;
+    }
+
+    .list-group-item {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 0.75rem;
+    }
+
+    .list-group-item .btn-group {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    #pending-accordion .accordion-button:not(.collapsed) {
+        background-color: var(--bs-dark);
+    }
+
+    #pending-accordion .list-group-item:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+}
+
+/* Page header consistency */
+.page-header {
+    background: linear-gradient(135deg, var(--bs-primary) 0%, var(--bs-primary-dark, #0056b3) 100%);
+    color: white;
+    padding: 1.5rem 0;
+    margin-bottom: 1.5rem;
+}
+
+.page-header .breadcrumb {
+    background: transparent;
+    padding: 0;
+    margin-bottom: 0.5rem;
+}
+
+.page-header .breadcrumb-item a {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.page-header .breadcrumb-item.active {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.page-header .page-title {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 600;
+}
+
+.page-header-content {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 0 1rem;
+}

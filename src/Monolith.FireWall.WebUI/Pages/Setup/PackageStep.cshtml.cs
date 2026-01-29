@@ -1,7 +1,10 @@
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Monolith.FireWall.WebUI.Services;
+using JsonSerializer = global::System.Text.Json.JsonSerializer;
+using JsonDocument = global::System.Text.Json.JsonDocument;
+using JsonElement = global::System.Text.Json.JsonElement;
+using JsonValueKind = global::System.Text.Json.JsonValueKind;
 
 namespace Monolith.FireWall.WebUI.Pages.Setup;
 
@@ -33,10 +36,10 @@ public class PackageStepModel : PageModel
         {
             // Load package setup pages to get this page's details
             var request = new { action = "setup.packages" };
-            var requestJson = System.Text.Json.JsonSerializer.Serialize(request);
+            var requestJson = JsonSerializer.Serialize(request);
             var responseJson = await _coreClient.SendRequestAsync(requestJson);
             
-            using var doc = System.Text.Json.JsonDocument.Parse(responseJson);
+            using var doc = JsonDocument.Parse(responseJson);
             var root = doc.RootElement;
             
             if (root.TryGetProperty("Success", out var successEl) && successEl.GetBoolean() ||
@@ -54,7 +57,7 @@ public class PackageStepModel : PageModel
                 {
                     // Use Packages property
                 }
-                else if (data.ValueKind == System.Text.Json.JsonValueKind.Array)
+                else if (data.ValueKind == JsonValueKind.Array)
                 {
                     packagesEl = data;
                 }
@@ -77,7 +80,7 @@ public class PackageStepModel : PageModel
                         package.TryGetProperty("SetupPages", out setupPages);
                     }
 
-                    if (setupPages.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    if (setupPages.ValueKind == JsonValueKind.Array)
                     {
                         foreach (var page in setupPages.EnumerateArray())
                         {

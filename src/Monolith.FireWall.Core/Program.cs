@@ -318,14 +318,14 @@ class Program
             commandRunner,
             gatewayGroupManager);
 
-        // Create gateway sync service (coordinates sync and health monitoring)
-        var gatewaySyncService = new GatewaySyncService(gatewayManager, gatewayHealthMonitor);
-
         // Create network state monitor (background service for link/IP changes)
         var networkStateMonitor = new NetworkStateMonitorService(
             operationalStateStore,
             networkStateChangeStore,
             commandRunner);
+
+        // Create gateway sync service (coordinates sync and health monitoring)
+        var gatewaySyncService = new GatewaySyncService(gatewayManager, gatewayHealthMonitor, networkStateMonitor);
 
         // Create network state provider for packages to access operational state
         var networkStateProvider = new NetworkStateProvider(
@@ -376,6 +376,10 @@ class Program
             commandRunner,
             settingsService,
             initialNetworkCapture,
+            gatewayGroupManager,
+            gatewayHealthMonitor,
+            operationalStateStore,
+            gatewayHealthStore,
             config.SocketPath,
             config.MaxConcurrentConnections
         );
@@ -540,7 +544,7 @@ class Program
                         OptDefaultAction = "block",
                         BlockReservedOnWan = true,
                         AllowManagementWebUi = true,
-                        AllowDeveloperSystemAccess = false
+                        AllowSshAccess = true
                     };
                     var defaultsResult = await firewallDefaults.UpdateAsync(defaultRequest);
                     if (defaultsResult.Success)

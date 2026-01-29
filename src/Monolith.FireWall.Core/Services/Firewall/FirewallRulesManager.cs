@@ -366,6 +366,168 @@ public sealed class FirewallRulesManager
         return (true, null, BuildView(entity, isSystem: false, systemTag: null));
     }
 
+    public async Task<FirewallRuleQueryResponse> QueryRulesAsync(FirewallRuleQueryRequest request, FirewallDefaultsView defaults)
+    {
+        var allRules = await GetAllRulesExtendedAsync(defaults);
+        var filtered = allRules.AsEnumerable();
+
+        // Apply filters
+        if (!string.IsNullOrWhiteSpace(request.Interface))
+        {
+            filtered = filtered.Where(r => r.Interface.Equals(request.Interface, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.RuleType))
+        {
+            filtered = filtered.Where(r => r.RuleType.Equals(request.RuleType, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ManagedBy))
+        {
+            filtered = filtered.Where(r =>
+                r.RuleType == "managed" &&
+                (r.ManagedByPackage?.Equals(request.ManagedBy, StringComparison.OrdinalIgnoreCase) == true ||
+                 r.ManagedByModule?.Contains(request.ManagedBy, StringComparison.OrdinalIgnoreCase) == true));
+        }
+
+        if (request.Enabled.HasValue)
+        {
+            filtered = filtered.Where(r => r.Enabled == request.Enabled.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Protocol))
+        {
+            filtered = filtered.Where(r => r.Protocol.Equals(request.Protocol, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Action))
+        {
+            filtered = filtered.Where(r => r.Action.Equals(request.Action, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var rules = filtered.ToList();
+
+        // Calculate summary from ALL rules (before filtering)
+        var summary = new FirewallRuleQuerySummary
+        {
+            Total = allRules.Count,
+            System = allRules.Count(r => r.RuleType == "system"),
+            User = allRules.Count(r => r.RuleType == "user"),
+            Managed = allRules.Count(r => r.RuleType == "managed")
+        };
+
+        return new FirewallRuleQueryResponse
+        {
+            Rules = rules,
+            Summary = summary
+        };
+    }
+
+    public async Task<FirewallRuleTypesResponse> GetRuleTypesAsync(FirewallDefaultsView defaults)
+    {
+        var allRules = await GetAllRulesExtendedAsync(defaults);
+
+        return new FirewallRuleTypesResponse
+        {
+            Types = new List<FirewallRuleTypeInfo>
+            {
+                new()
+                {
+                    Id = "system",
+                    Name = "System Rules",
+                    Description = "Auto-generated security rules based on firewall defaults",
+                    Count = allRules.Count(r => r.RuleType == "system")
+                },
+                new()
+                {
+                    Id = "user",
+                    Name = "User Rules",
+                    Description = "Manually created rules via WebUI",
+                    Count = allRules.Count(r => r.RuleType == "user")
+                },
+                new()
+                {
+                    Id = "managed",
+                    Name = "Package Rules",
+                    Description = "Rules managed by installed packages",
+                    Count = allRules.Count(r => r.RuleType == "managed")
+                }
+            }
+        };
+    }
+
+    public async Task<List<FirewallRuleViewExtended>> GetAllRulesExtendedAsync(FirewallDefaultsView defaults)
+    {
+        var assignments = await _interfaceStore.GetAssignmentsAsync();
+        var userRules = await ListUserRulesAsync();
+
+        var grouped = userRules
+            .GroupBy(r => r.Interface, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.OrderBy(r => r.RuleNumber).ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var result = new List<FirewallRuleViewExtended>();
+
+        foreach (var assignment in assignments)
+        {
+            var systemRules = BuildSystemRules(assignment, defaults);
+            foreach (var sysRule in systemRules)
+            {
+                result.Add(ToExtendedView(sysRule, "system"));
+            }
+
+            if (grouped.TryGetValue(assignment.InterfaceName, out var rules))
+            {
+                foreach (var rule in rules)
+                {
+                    var ruleType = rule.IsManaged ? "managed" : "user";
+                    result.Add(ToExtendedView(rule, ruleType));
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private static FirewallRuleViewExtended ToExtendedView(FirewallRuleView rule, string ruleType)
+    {
+        string? packageId = null;
+        string? moduleId = null;
+
+        if (!string.IsNullOrWhiteSpace(rule.ManagedBy))
+        {
+            var parts = rule.ManagedBy.Split(':');
+            packageId = parts.Length > 0 ? parts[0] : null;
+            moduleId = parts.Length > 1 ? parts[1] : null;
+        }
+
+        return new FirewallRuleViewExtended
+        {
+            Id = rule.Id,
+            RuleNumber = rule.RuleNumber,
+            Interface = rule.Interface,
+            Direction = rule.Direction,
+            Action = rule.Action,
+            AddressFamily = rule.AddressFamily,
+            Protocol = rule.Protocol,
+            SourceType = rule.SourceType,
+            SourceValue = rule.SourceValue,
+            SourcePort = rule.SourcePort,
+            DestinationType = rule.DestinationType,
+            DestinationValue = rule.DestinationValue,
+            DestinationPort = rule.DestinationPort,
+            Gateway = rule.Gateway,
+            LogEnabled = rule.LogEnabled,
+            Enabled = rule.Enabled,
+            ScheduleId = rule.ScheduleId,
+            Description = rule.Description,
+            RuleType = ruleType,
+            ManagedByPackage = packageId,
+            ManagedByModule = moduleId,
+            IsEditable = ruleType == "user",
+            IsDeletable = ruleType == "user"
+        };
+    }
+
     private async Task<List<FirewallRuleView>> ListUserRulesAsync()
     {
         if (_repository == null)
@@ -534,9 +696,9 @@ public sealed class FirewallRulesManager
                 "webui"));
         }
 
-        if (defaults.AllowDeveloperSystemAccess)
+        if (defaults.AllowSshAccess)
         {
-            // Allow SSH on all interfaces
+            // Allow SSH on all interfaces for system management
             rules.Add(BuildSystemRule(
                 interfaceName,
                 "in",
@@ -549,40 +711,8 @@ public sealed class FirewallRulesManager
                 "any",
                 null,
                 "22",
-                "Developer system: Allow SSH",
-                "dev_ssh"));
-
-            // Allow HTTP on all interfaces
-            rules.Add(BuildSystemRule(
-                interfaceName,
-                "in",
-                "pass",
-                "dual",
-                "tcp",
-                "any",
-                null,
-                null,
-                "any",
-                null,
-                "80",
-                "Developer system: Allow HTTP",
-                "dev_http"));
-
-            // Allow HTTPS on all interfaces
-            rules.Add(BuildSystemRule(
-                interfaceName,
-                "in",
-                "pass",
-                "dual",
-                "tcp",
-                "any",
-                null,
-                null,
-                "any",
-                null,
-                "443",
-                "Developer system: Allow HTTPS",
-                "dev_https"));
+                "System: Allow SSH access",
+                "system_ssh"));
         }
 
         return rules;

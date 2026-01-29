@@ -132,7 +132,8 @@
         }
 
         function setupNtpServers() {
-            $('#add-ntp-server').on('click', function() {
+            // Use .off() first to prevent duplicate handlers
+            $('#add-ntp-server').off('click').on('click', function() {
                 addNtpServer('');
             });
         }

@@ -38,21 +38,19 @@ var SystemLogs = {
         const container = $('#page-content');
         if (!container.length) return;
 
-        container.html(`
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "System Logs",
+                icon: "fa-clipboard-list",
+                description: "View and filter system logs, Monolith events, and security logs",
+                container: container,
+                prepend: true
+            });
+        }
+
+        container.append(`
             <div class="container-fluid p-4">
-                <!-- Page Header -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h2 class="page-title">
-                            <svg width="24" height="24" fill="currentColor" viewBox="0 0 16 16" class="me-2">
-                                <path d="M14 0H2a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2zM1 3.857C1 3.384 1.448 3 2 3h12c.552 0 1 .384 1 .857v10.286c0 .473-.448.857-1 .857H2c-.552 0-1-.384-1-.857V3.857z"/>
-                                <path d="M6.5 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-9 3a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-9 3a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
-                            </svg>
-                            System Logs
-                        </h2>
-                        <p class="text-muted">View and filter system logs, Monolith events, and security logs</p>
-                    </div>
-                </div>
 
                 <!-- Status Messages -->
                 <div id="logsStatusMessage" class="alert d-none"></div>
@@ -604,8 +602,8 @@ var SystemLogs = {
      * Attach event handlers
      */
     attachEventHandlers: function() {
-        // Main tab switching
-        $('#logsMainTabs button[data-bs-toggle="tab"]').on('shown.bs.tab', (e) => {
+        // Main tab switching - use .off() first to prevent duplicate handlers
+        $('#logsMainTabs button[data-bs-toggle="tab"]').off('shown.bs.tab').on('shown.bs.tab', (e) => {
             const target = $(e.target).data('bs-target');
             if (target === '#monolith-logs') {
                 this.currentTab = 'monolith';
@@ -619,8 +617,8 @@ var SystemLogs = {
             }
         });
 
-        // Monolith category filter
-        $('#monolithCategoryMenu a').on('click', (e) => {
+        // Monolith category filter - use .off() first to prevent duplicate handlers
+        $('#monolithCategoryMenu a').off('click').on('click', (e) => {
             e.preventDefault();
             $('#monolithCategoryMenu a').removeClass('active');
             $(e.currentTarget).addClass('active');
@@ -629,8 +627,8 @@ var SystemLogs = {
             this.loadMonolithLogs();
         });
 
-        // Security sub-tabs
-        $('#securitySubTabs button').on('click', (e) => {
+        // Security sub-tabs - use .off() first to prevent duplicate handlers
+        $('#securitySubTabs button').off('click').on('click', (e) => {
             e.preventDefault();
             $('#securitySubTabs button').removeClass('active');
             $(e.currentTarget).addClass('active');
@@ -639,8 +637,8 @@ var SystemLogs = {
             this.loadSecurityLogs();
         });
 
-        // Filter buttons
-        $('#btnApplyMonolithFilters').on('click', () => {
+        // Filter buttons - use .off() first to prevent duplicate handlers
+        $('#btnApplyMonolithFilters').off('click').on('click', () => {
             this.filters.monolith.level = $('#monolithLevelFilter').val();
             this.filters.monolith.source = $('#monolithSourceFilter').val();
             this.filters.monolith.startDate = $('#monolithStartDate').val();
@@ -649,7 +647,7 @@ var SystemLogs = {
             this.loadMonolithLogs();
         });
 
-        $('#btnApplySystemFilters').on('click', () => {
+        $('#btnApplySystemFilters').off('click').on('click', () => {
             this.filters.system.category = $('#systemCategoryFilter').val();
             this.filters.system.level = $('#systemLevelFilter').val();
             this.filters.system.startDate = $('#systemStartDate').val();
@@ -658,7 +656,7 @@ var SystemLogs = {
             this.loadSystemLogs();
         });
 
-        $('#btnApplySecurityFilters').on('click', () => {
+        $('#btnApplySecurityFilters').off('click').on('click', () => {
             this.filters.security.level = $('#securityLevelFilter').val();
             this.filters.security.source = $('#securitySourceFilter').val();
             this.filters.security.startDate = $('#securityStartDate').val();
@@ -667,33 +665,33 @@ var SystemLogs = {
             this.loadSecurityLogs();
         });
 
-        // Pagination
-        $('#btnMonolithPrev').on('click', () => {
+        // Pagination - use .off() first to prevent duplicate handlers
+        $('#btnMonolithPrev').off('click').on('click', () => {
             this.pagination.monolith.offset = Math.max(0, this.pagination.monolith.offset - this.pagination.monolith.limit);
             this.loadMonolithLogs();
         });
 
-        $('#btnMonolithNext').on('click', () => {
+        $('#btnMonolithNext').off('click').on('click', () => {
             this.pagination.monolith.offset += this.pagination.monolith.limit;
             this.loadMonolithLogs();
         });
 
-        $('#btnSystemPrev').on('click', () => {
+        $('#btnSystemPrev').off('click').on('click', () => {
             this.pagination.system.offset = Math.max(0, this.pagination.system.offset - this.pagination.system.limit);
             this.loadSystemLogs();
         });
 
-        $('#btnSystemNext').on('click', () => {
+        $('#btnSystemNext').off('click').on('click', () => {
             this.pagination.system.offset += this.pagination.system.limit;
             this.loadSystemLogs();
         });
 
-        $('#btnSecurityPrev').on('click', () => {
+        $('#btnSecurityPrev').off('click').on('click', () => {
             this.pagination.security.offset = Math.max(0, this.pagination.security.offset - this.pagination.security.limit);
             this.loadSecurityLogs();
         });
 
-        $('#btnSecurityNext').on('click', () => {
+        $('#btnSecurityNext').off('click').on('click', () => {
             this.pagination.security.offset += this.pagination.security.limit;
             this.loadSecurityLogs();
         });

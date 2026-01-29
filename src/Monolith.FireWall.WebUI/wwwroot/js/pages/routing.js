@@ -1,28 +1,122 @@
-// Routing Page - Gateways + Static Routes
+// Routing Page - Gateways + Static Routes with real-time SignalR updates
 var Routing = {
     gateways: [],
     routes: [],
     interfaces: [],
+    _signalRHandler: null,
 
     init: function() {
         console.log('Initializing Routing page...');
         this.render();
         this.loadData();
         this.attachHandlers();
+        this._subscribeToSignalR();
+    },
+
+    destroy: function() {
+        this._unsubscribeFromSignalR();
+    },
+
+    _subscribeToSignalR: function() {
+        if (!Monolith.SignalR) {
+            console.log('[Routing] SignalR not available');
+            return;
+        }
+
+        this._signalRHandler = (eventName, data) => {
+            switch (eventName) {
+                case 'GatewayStatusChanged':
+                    this.updateGatewayRow(data.gatewayId, data);
+                    break;
+                case 'GatewayStatusBatch':
+                    if (Array.isArray(data)) {
+                        data.forEach(item => this.updateGatewayRow(item.gatewayId, item));
+                    }
+                    break;
+                case 'RoutingTableChanged':
+                    // Reload routes when routing table changes
+                    this.loadRoutes();
+                    break;
+            }
+        };
+
+        Monolith.SignalR.subscribe('gateways', this._signalRHandler);
+        Monolith.SignalR.subscribe('routing', this._signalRHandler);
+        console.log('[Routing] Subscribed to SignalR gateways/routing channels');
+    },
+
+    _unsubscribeFromSignalR: function() {
+        if (Monolith.SignalR && this._signalRHandler) {
+            Monolith.SignalR.unsubscribe('gateways', this._signalRHandler);
+            Monolith.SignalR.unsubscribe('routing', this._signalRHandler);
+            this._signalRHandler = null;
+            console.log('[Routing] Unsubscribed from SignalR');
+        }
+    },
+
+    /**
+     * Update a single gateway row in real-time
+     */
+    updateGatewayRow: function(gatewayId, status) {
+        const row = $(`#gateways-body tr[data-gateway-id="${gatewayId}"]`);
+        if (!row.length) return;
+
+        // Update status indicator if there is one
+        const statusCell = row.find('.gateway-status');
+        if (statusCell.length && status.status) {
+            let statusClass = 'bg-secondary';
+            let statusText = status.status;
+            if (status.status === 'online') {
+                statusClass = 'bg-success';
+            } else if (status.status === 'offline') {
+                statusClass = 'bg-danger';
+            } else if (status.status === 'degraded') {
+                statusClass = 'bg-warning';
+            }
+            statusCell.removeClass('bg-success bg-danger bg-warning bg-secondary')
+                      .addClass(statusClass)
+                      .text(statusText.toUpperCase());
+        }
+
+        // Update latency if shown
+        const latencyCell = row.find('.gateway-latency');
+        if (latencyCell.length && status.latencyMs !== undefined) {
+            latencyCell.text(status.latencyMs !== null ? `${status.latencyMs}ms` : '-');
+        }
+
+        // Flash highlight
+        row.addClass('table-info');
+        setTimeout(() => row.removeClass('table-info'), 1500);
+
+        // Update local state
+        const gateway = this.gateways.find(g => g.id === gatewayId);
+        if (gateway) {
+            gateway.status = status.status;
+            gateway.latencyMs = status.latencyMs;
+        }
+
+        console.log(`[Routing] Real-time update: Gateway ${gatewayId} = ${status.status}`);
     },
 
     render: function() {
         const container = $('#page-content');
-        container.html(`
+        
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "Routing",
+                icon: "fa-route",
+                description: "Gateways and static route management",
+                container: container,
+                prepend: true
+            });
+        }
+
+        // Add toolbar with refresh button under header
+        container.append(`
             <div class="container-fluid p-4 routing-shell">
-                <div class="routing-hero">
-                    <div>
-                        <h2 class="page-title mb-1">Routing</h2>
-                        <p class="text-muted mb-0">Gateways and static route management</p>
-                    </div>
-                    <div class="routing-actions">
-                        <button class="btn btn-outline-primary" id="routing-refresh">Refresh</button>
-                    </div>
+                <div class="d-flex justify-content-end mb-3">
+                    <button class="btn btn-outline-primary" id="routing-refresh">Refresh</button>
                 </div>
 
                 <ul class="nav nav-tabs routing-tabs" role="tablist">
@@ -141,10 +235,11 @@ var Routing = {
     },
 
     attachHandlers: function() {
-        $('#routing-refresh').on('click', () => this.loadData());
-        $('#routing-add-route').on('click', () => this.showRouteModal());
-        $('#routing-add-gateway').on('click', () => this.showGatewayModal());
-        
+        // Use .off() first to prevent duplicate handlers on re-init
+        $('#routing-refresh').off('click').on('click', () => this.loadData());
+        $('#routing-add-route').off('click').on('click', () => this.showRouteModal());
+        $('#routing-add-gateway').off('click').on('click', () => this.showGatewayModal());
+
         // IP forwarding toggle
         $(document).off('click', '#routing-apply-ip-forwarding');
         $(document).on('click', '#routing-apply-ip-forwarding', () => {

@@ -1,11 +1,88 @@
 // Routing Status Page - Self-contained (no dependency on Status module)
 var RoutingStatus = {
+    _signalRSubscribed: false,
+    _gatewayStatusCache: {},
+
     init: function() {
         console.log('Initializing Routing Status module...');
         // Auto-render if we're on the routing-status page
         if (window.location.pathname.startsWith('/status/routing-status')) {
             this.renderPage();
+            this._subscribeToSignalR();
         }
+    },
+
+    destroy: function() {
+        this._unsubscribeFromSignalR();
+    },
+
+    _subscribeToSignalR: function() {
+        if (this._signalRSubscribed || !Monolith.SignalR) return;
+
+        const self = this;
+
+        // Subscribe to gateways and routing channels
+        Monolith.SignalR.subscribe('gateways', function(event, data) {
+            if (event === 'GatewayStatusChanged') {
+                self._handleGatewayStatusChanged(data);
+            }
+        });
+
+        Monolith.SignalR.subscribe('routing', function(event, data) {
+            if (event === 'RoutingStatusChanged') {
+                // Reload full routing status when routes change
+                self.loadRoutingStatus();
+            }
+        });
+
+        this._signalRSubscribed = true;
+        console.log('Routing Status: SignalR subscribed');
+    },
+
+    _unsubscribeFromSignalR: function() {
+        if (!this._signalRSubscribed || !Monolith.SignalR) return;
+
+        Monolith.SignalR.unsubscribe('gateways');
+        Monolith.SignalR.unsubscribe('routing');
+
+        this._signalRSubscribed = false;
+        console.log('Routing Status: SignalR unsubscribed');
+    },
+
+    _handleGatewayStatusChanged: function(data) {
+        // Update gateway status cache
+        this._gatewayStatusCache[data.gatewayId] = data;
+
+        // Update any gateway status display in the UI
+        this._updateGatewayStatusDisplay(data);
+    },
+
+    _updateGatewayStatusDisplay: function(data) {
+        // Find gateway elements by ID or name and update their status
+        const gatewayName = data.name || data.gatewayId;
+        const statusBadge = data.status === 'online'
+            ? '<span class="badge bg-success">Online</span>'
+            : data.status === 'degraded'
+            ? '<span class="badge bg-warning">Degraded</span>'
+            : '<span class="badge bg-danger">Offline</span>';
+
+        // Update latency display if present
+        const latencyText = data.latencyMs !== null && data.latencyMs !== undefined
+            ? `${data.latencyMs}ms`
+            : '-';
+
+        // Find and update gateway row if it exists in the table
+        const gatewayRow = $(`tr[data-gateway-id="${data.gatewayId}"], tr[data-gateway="${gatewayName}"]`);
+        if (gatewayRow.length) {
+            gatewayRow.find('.gateway-status').html(statusBadge);
+            gatewayRow.find('.gateway-latency').text(latencyText);
+
+            // Visual feedback for update
+            gatewayRow.addClass('table-active');
+            setTimeout(() => gatewayRow.removeClass('table-active'), 1000);
+        }
+
+        console.log(`Gateway status updated: ${gatewayName} - ${data.status} (${latencyText})`);
     },
 
     renderPage: function() {
@@ -32,10 +109,6 @@ var RoutingStatus = {
         container.append(`
             <div class="container-fluid p-4">
                 <div class="d-flex justify-content-between align-items-center mb-4">
-                    <div>
-                        <h4 class="mb-0">Routing Status</h4>
-                        <p class="text-muted mb-0 small">View current routing configuration and status</p>
-                    </div>
                     <div>
                         <button type="button" class="btn btn-outline-primary" id="routing-status-refresh">
                             <i class="bi bi-arrow-clockwise me-1"></i> Refresh
@@ -87,11 +160,93 @@ var RoutingStatus = {
         const defaultGateway = data.DefaultGateway || data.defaultGateway || null;
         const routes = data.Routes || data.routes || [];
         const natMasquerade = data.NatMasqueradeEnabled || data.natMasqueradeEnabled || false;
+        const gateways = data.Gateways || data.gateways || [];
 
-        const gatewayInfo = defaultGateway 
-            ? `<strong>${defaultGateway.Address || defaultGateway.address || 'N/A'}</strong> via <code>${defaultGateway.Interface || defaultGateway.interface || 'N/A'}</code>`
-            : '<span class="text-muted">No default gateway configured</span>';
+        // Default gateway info with status
+        let gatewayInfo;
+        if (defaultGateway) {
+            const gwAddress = defaultGateway.Address || defaultGateway.address || 'N/A';
+            const gwInterface = defaultGateway.Interface || defaultGateway.interface || 'N/A';
+            const gwStatus = defaultGateway.Status || defaultGateway.status || 'unknown';
+            const gwLatency = defaultGateway.LatencyMs || defaultGateway.latencyMs;
+            const statusBadge = gwStatus === 'online'
+                ? '<span class="badge bg-success gateway-status">Online</span>'
+                : gwStatus === 'degraded'
+                ? '<span class="badge bg-warning gateway-status">Degraded</span>'
+                : '<span class="badge bg-danger gateway-status">Offline</span>';
+            const latencyText = gwLatency !== null && gwLatency !== undefined
+                ? `<span class="gateway-latency">${gwLatency}ms</span>`
+                : '';
 
+            gatewayInfo = `
+                <div class="d-flex align-items-center gap-2" data-gateway="${gwAddress}">
+                    <strong>${gwAddress}</strong> via <code>${gwInterface}</code>
+                    ${statusBadge}
+                    ${latencyText}
+                </div>
+            `;
+        } else {
+            gatewayInfo = '<span class="text-muted">No default gateway configured</span>';
+        }
+
+        // Gateways table (if multiple gateways configured)
+        let gatewaysHtml = '';
+        if (gateways.length > 0) {
+            const gwRows = gateways.map(gw => {
+                const id = gw.Id || gw.id || '';
+                const name = gw.Name || gw.name || id;
+                const address = gw.Address || gw.address || '-';
+                const iface = gw.Interface || gw.interface || '-';
+                const status = gw.Status || gw.status || 'unknown';
+                const latency = gw.LatencyMs || gw.latencyMs;
+                const packetLoss = gw.PacketLossPercent || gw.packetLossPercent;
+
+                const statusBadge = status === 'online'
+                    ? '<span class="badge bg-success gateway-status">Online</span>'
+                    : status === 'degraded'
+                    ? '<span class="badge bg-warning gateway-status">Degraded</span>'
+                    : '<span class="badge bg-danger gateway-status">Offline</span>';
+
+                const latencyText = latency !== null && latency !== undefined ? `${latency}ms` : '-';
+                const lossText = packetLoss !== null && packetLoss !== undefined ? `${packetLoss.toFixed(1)}%` : '-';
+
+                return `
+                    <tr data-gateway-id="${id}" data-gateway="${name}">
+                        <td>${name}</td>
+                        <td>${address}</td>
+                        <td>${iface}</td>
+                        <td class="gateway-status-cell">${statusBadge}</td>
+                        <td class="gateway-latency">${latencyText}</td>
+                        <td class="gateway-loss">${lossText}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            gatewaysHtml = `
+                <div class="mb-4">
+                    <h6>Configured Gateways</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Address</th>
+                                    <th>Interface</th>
+                                    <th>Status</th>
+                                    <th>Latency</th>
+                                    <th>Packet Loss</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${gwRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Routes table
         const routesHtml = routes.length > 0
             ? routes.map(route => {
                 const dest = route.Destination || route.destination || 'default';
@@ -110,33 +265,24 @@ var RoutingStatus = {
             }).join('')
             : '<tr><td colspan="4" class="text-center text-muted">No routes found</td></tr>';
 
+        // System status indicators
+        const forwardingBadge = ipForwarding
+            ? '<span class="badge bg-success">Enabled</span>'
+            : '<span class="badge bg-secondary">Disabled</span>';
+        const natBadge = natMasquerade
+            ? '<span class="badge bg-success">Enabled</span>'
+            : '<span class="badge bg-secondary">Disabled</span>';
+
         $('#routing-status-content').html(`
             <div class="row mb-4">
                 <div class="col-md-6">
-                    <div class="card border-0 bg-light">
-                        <div class="card-body">
-                            <h6 class="card-title">IP Forwarding</h6>
-                            <div class="d-flex align-items-center">
-                                <span class="badge ${ipForwarding ? 'bg-success' : 'bg-danger'} me-2">
-                                    ${ipForwarding ? 'Enabled' : 'Disabled'}
-                                </span>
-                                ${!ipForwarding ? '<small class="text-muted">Required for routing between interfaces</small>' : ''}
-                            </div>
-                        </div>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="text-muted">IP Forwarding:</span>
+                        ${forwardingBadge}
                     </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card border-0 bg-light">
-                        <div class="card-body">
-                            <h6 class="card-title">NAT Masquerade</h6>
-                            <div class="d-flex align-items-center">
-                                <span class="badge ${natMasquerade ? 'bg-success' : 'bg-warning'} me-2">
-                                    ${natMasquerade ? 'Enabled' : 'Not Configured'}
-                                </span>
-                                ${!natMasquerade ? '<small class="text-muted">Required for LAN→WAN outbound traffic</small>' : ''}
-                            </div>
-                            ${!natMasquerade ? '<div class="mt-2"><button type="button" class="btn btn-sm btn-primary" id="routing-enable-masquerade">Enable NAT Masquerade</button></div>' : ''}
-                        </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="text-muted">NAT Masquerade:</span>
+                        ${natBadge}
                     </div>
                 </div>
             </div>
@@ -144,6 +290,7 @@ var RoutingStatus = {
                 <h6>Default Gateway</h6>
                 <p class="mb-0">${gatewayInfo}</p>
             </div>
+            ${gatewaysHtml}
             <div class="mb-4">
                 <h6>Routing Table</h6>
                 <div class="table-responsive">
@@ -162,99 +309,11 @@ var RoutingStatus = {
                     </table>
                 </div>
             </div>
-            <div class="mt-4">
-                <h6>Routing Configuration</h6>
-                <div class="card border-0 bg-light">
-                    <div class="card-body">
-                        <div class="form-check form-switch mb-3">
-                            <input class="form-check-input" type="checkbox" id="routing-toggle-ip-forwarding" ${ipForwarding ? 'checked' : ''}>
-                            <label class="form-check-label" for="routing-toggle-ip-forwarding">
-                                <strong>Enable IP Forwarding</strong>
-                                <div class="text-muted small">Allow routing between network interfaces</div>
-                            </label>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-primary" id="routing-apply-ip-forwarding">
-                            Apply IP Forwarding Setting
-                        </button>
-                        <div class="mt-2">
-                            <small class="text-muted">For more advanced routing settings, visit <a href="/system/advanced" data-route="/system/advanced">Advanced Settings</a></small>
-                        </div>
-                    </div>
-                </div>
-            </div>
         `);
-
-        // Attach handlers
-        $('#routing-enable-masquerade').off('click').on('click', async () => {
-            await this.enableMasquerade();
-        });
-        
-        $('#routing-apply-ip-forwarding').off('click').on('click', async () => {
-            await this.applyIpForwarding();
-        });
     },
 
     attachRoutingStatusHandlers: function() {
         $('#routing-status-refresh').off('click').on('click', () => this.loadRoutingStatus());
-    },
-
-
-    applyIpForwarding: async function() {
-        const enabled = $('#routing-toggle-ip-forwarding').is(':checked');
-        const value = enabled ? '1' : '0';
-
-        try {
-            const response = await Monolith.API.post('/api/system/tuneables/apply', {
-                items: [
-                    { key: 'net.ipv4.ip_forward', value: value }
-                ]
-            });
-
-            if (response.Success || response.success) {
-                Monolith.UI.toast(`IP forwarding ${enabled ? 'enabled' : 'disabled'}`, 'success');
-                await this.loadRoutingStatus();
-            } else {
-                Monolith.UI.toast(`Failed to ${enabled ? 'enable' : 'disable'} IP forwarding: ${response.Error || response.error || 'Unknown error'}`, 'error');
-            }
-        } catch (error) {
-            console.error('Failed to apply IP forwarding:', error);
-            Monolith.UI.toast(`Failed to apply IP forwarding: ${error.message || 'Unknown error'}`, 'error');
-        }
-    },
-
-    enableMasquerade: async function() {
-        if (!confirm('Enable NAT Masquerade? This will allow LAN traffic to access the internet through WAN.')) {
-            return;
-        }
-
-        const button = $('#routing-enable-masquerade');
-        const originalText = button.text();
-        
-        try {
-            button.prop('disabled', true).text('Applying...');
-            
-            // Apply firewall rules, which will automatically configure masquerade for WAN interfaces
-            const response = await Monolith.API.post('/api/firewall/apply', {});
-
-            if (response.Success || response.success) {
-                Monolith.UI.toast('NAT Masquerade enabled. Firewall rules have been applied.', 'success');
-                // Reload routing status to show updated masquerade status
-                await this.loadRoutingStatus();
-            } else {
-                const errorMsg = response.Error || response.error || 'Unknown error';
-                Monolith.UI.toast(`Failed to enable NAT Masquerade: ${errorMsg}`, 'error');
-                
-                // Check if the error is about missing WAN interfaces
-                if (errorMsg.toLowerCase().includes('wan') || errorMsg.toLowerCase().includes('interface')) {
-                    Monolith.UI.toast('Note: NAT Masquerade requires at least one WAN interface to be configured. Please configure a WAN interface first.', 'warning');
-                }
-            }
-        } catch (error) {
-            console.error('Failed to enable NAT Masquerade:', error);
-            Monolith.UI.toast(`Failed to enable NAT Masquerade: ${error.message || 'Unknown error'}`, 'error');
-        } finally {
-            button.prop('disabled', false).text(originalText);
-        }
     }
 };
 

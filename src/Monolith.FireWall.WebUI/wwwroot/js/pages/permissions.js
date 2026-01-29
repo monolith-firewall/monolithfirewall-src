@@ -21,7 +21,10 @@ Monolith.Pages.Permissions = {
      */
     loadPermissions: async function() {
         try {
-            Monolith.UI.showLoading('#page-content');
+            const container = $('#permissions-container, #page-content').first();
+            if (container.length) {
+                Monolith.UI.showLoading(container);
+            }
             
             // Load permissions from API
             const response = await Monolith.API.get('/api/permissions');
@@ -75,6 +78,20 @@ Monolith.Pages.Permissions = {
      * Render permissions page
      */
     renderPermissions: function() {
+        const container = $('#permissions-container, #page-content').first();
+        if (!container.length) return;
+
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "Permissions",
+                icon: "fa-key",
+                description: "View all available system and module permissions",
+                container: container,
+                prepend: true
+            });
+        }
+
         // Group by category
         const grouped = {};
         this.allPermissions.forEach(perm => {
@@ -88,16 +105,9 @@ Monolith.Pages.Permissions = {
         });
 
         let html = `
-            <div class="container-fluid">
+            <div class="container-fluid p-4">
                 <div class="row">
                     <div class="col-12">
-                        <div class="page-header">
-                            <h2 class="page-title">
-                                <svg class="page-icon" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
-                                    <path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
-                                </svg>
-                                System Permissions
-                            </h2>
                             <p class="text-muted">View all available permissions in the system</p>
                         </div>
                     </div>

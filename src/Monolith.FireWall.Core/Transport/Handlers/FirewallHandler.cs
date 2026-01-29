@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.IO;
 using Monolith.FireWall.Common.Models;
 using Monolith.FireWall.Core.Models;
+using Monolith.FireWall.Core.Services.Firewall;
 
 namespace Monolith.FireWall.Core.Transport.Handlers;
 
@@ -30,6 +31,9 @@ public sealed class FirewallHandler : ICoreRequestHandler
         "firewall.rules.delete",
         "firewall.rules.reorder",
         "firewall.rules.managed.upsert",
+        "firewall.rules.query",
+        "firewall.rules.types",
+        "firewall.rules.validate",
         "firewall.defaults.get",
         "firewall.defaults.update",
         "firewall.interface_settings.list",
@@ -44,6 +48,8 @@ public sealed class FirewallHandler : ICoreRequestHandler
         "firewall.discard",
         "firewall.preview"
     };
+
+    private readonly RuleConflictChecker _conflictChecker = new();
 
     public bool CanHandle(string action) => Actions.Contains(action);
 
@@ -264,6 +270,40 @@ public sealed class FirewallHandler : ICoreRequestHandler
                 return managedResult.Success
                     ? new ApiResponse(true, managedResult.Rule, null)
                     : new ApiResponse(false, null, managedResult.Error ?? "Failed to update managed rule");
+
+            case "firewall.rules.query":
+                FirewallRuleQueryRequest queryRequest;
+                if (request.TryGetProperty("payload", out var queryPayload))
+                {
+                    if (!CoreRequestParsing.TryGetPayload(request, out queryRequest, out var queryError))
+                    {
+                        queryRequest = new FirewallRuleQueryRequest();
+                    }
+                }
+                else
+                {
+                    queryRequest = new FirewallRuleQueryRequest();
+                }
+
+                var queryDefaults = await context.FirewallManager.Defaults.GetAsync();
+                var queryResponse = await context.FirewallManager.Rules.QueryRulesAsync(queryRequest, queryDefaults);
+                return new ApiResponse(true, queryResponse, null);
+
+            case "firewall.rules.types":
+                var typesDefaults = await context.FirewallManager.Defaults.GetAsync();
+                var typesResponse = await context.FirewallManager.Rules.GetRuleTypesAsync(typesDefaults);
+                return new ApiResponse(true, typesResponse, null);
+
+            case "firewall.rules.validate":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallRuleValidateRequest validateRequest, out var validateError))
+                {
+                    return new ApiResponse(false, null, validateError);
+                }
+
+                var validateDefaults = await context.FirewallManager.Defaults.GetAsync();
+                var allRulesExtended = await context.FirewallManager.Rules.GetAllRulesExtendedAsync(validateDefaults);
+                var validateResponse = _conflictChecker.CheckConflicts(validateRequest, allRulesExtended, validateRequest.ExcludeRuleId);
+                return new ApiResponse(true, validateResponse, null);
 
             case "firewall.defaults.get":
                 var defaultsView = await context.FirewallManager.Defaults.GetAsync();

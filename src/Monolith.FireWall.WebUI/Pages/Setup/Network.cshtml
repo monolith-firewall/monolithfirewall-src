@@ -164,12 +164,12 @@
 
             $('#network-setup-container').html(html);
 
-            // Setup event handlers
-            $('input[name="lan-config"]').on('change', function() {
+            // Setup event handlers - use .off() first to prevent duplicate handlers
+            $('input[name="lan-config"]').off('change').on('change', function() {
                 $('#lan-static-config').toggle($(this).val() === 'static');
             });
 
-            $('#add-dns-server').on('click', function() {
+            $('#add-dns-server').off('click').on('click', function() {
                 addDnsServer('');
             });
 

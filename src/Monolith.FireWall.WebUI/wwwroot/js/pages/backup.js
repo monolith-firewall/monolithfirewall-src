@@ -14,20 +14,25 @@ Monolith.Pages.Backup = {
     },
 
     render: function() {
+        const container = $('#backup-container, #page-content').first();
+        if (!container.length) return;
+
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "Backup & Restore",
+                icon: "fa-cloud-arrow-up",
+                description: "Create and restore system backups",
+                container: container,
+                prepend: true
+            });
+        }
+
         const html = `
-            <div class="container-fluid content-container p-4">
+            <div class="container-fluid p-4">
                 <div class="row">
                     <div class="col-12">
                         <div class="card shadow-sm">
-                            <div class="card-header bg-primary text-white">
-                                <h3 class="mb-0">
-                                    <svg width="24" height="24" fill="currentColor" viewBox="0 0 16 16" class="me-2">
-                                        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
-                                        <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2z"/>
-                                    </svg>
-                                    Backup & Restore
-                                </h3>
-                            </div>
                             <div class="card-body">
                                 <!-- Status Messages -->
                                 <div id="backup-status-message" class="alert d-none"></div>
@@ -314,20 +319,21 @@ Monolith.Pages.Backup = {
             </div>
         `;
 
-        $('#page-content').html(html);
+        container.append(html);
     },
 
     attachEventHandlers: function() {
         const self = this;
 
+        // Use .off() first to prevent duplicate handlers on re-init
         // Create backup button
-        $(document).on('click', '#btn-create-backup', function() {
+        $(document).off('click', '#btn-create-backup').on('click', '#btn-create-backup', function() {
             $('#backup-description').val('');
             new bootstrap.Modal(document.getElementById('createBackupModal')).show();
         });
 
         // Upload backup button
-        $(document).on('click', '#btn-upload-backup', function() {
+        $(document).off('click', '#btn-upload-backup').on('click', '#btn-upload-backup', function() {
             $('#backup-file').val('');
             $('#upload-description').val('');
             $('#upload-progress').addClass('d-none');
@@ -335,35 +341,35 @@ Monolith.Pages.Backup = {
         });
 
         // Confirm create backup
-        $(document).on('click', '#btn-confirm-create-backup', function() {
+        $(document).off('click', '#btn-confirm-create-backup').on('click', '#btn-confirm-create-backup', function() {
             self.createBackup();
         });
 
         // Confirm upload backup
-        $(document).on('click', '#btn-confirm-upload-backup', function() {
+        $(document).off('click', '#btn-confirm-upload-backup').on('click', '#btn-confirm-upload-backup', function() {
             self.uploadBackup();
         });
 
         // Download backup
-        $(document).on('click', '.btn-download-backup', function() {
+        $(document).off('click', '.btn-download-backup').on('click', '.btn-download-backup', function() {
             const fileName = $(this).data('filename');
             self.downloadBackup(fileName);
         });
 
         // Restore backup
-        $(document).on('click', '.btn-restore-backup', function() {
+        $(document).off('click', '.btn-restore-backup').on('click', '.btn-restore-backup', function() {
             const fileName = $(this).data('filename');
             self.restoreBackup(fileName);
         });
 
         // Delete backup
-        $(document).on('click', '.btn-delete-backup', function() {
+        $(document).off('click', '.btn-delete-backup').on('click', '.btn-delete-backup', function() {
             const fileName = $(this).data('filename');
             self.deleteBackup(fileName);
         });
 
         // Auto backup toggle
-        $(document).on('change', '#auto-backup', function() {
+        $(document).off('change', '#auto-backup').on('change', '#auto-backup', function() {
             if ($(this).is(':checked')) {
                 $('#auto-backup-interval-group').show();
             } else {
@@ -372,18 +378,18 @@ Monolith.Pages.Backup = {
         });
 
         // Add location
-        $(document).on('click', '#btn-add-location', function() {
+        $(document).off('click', '#btn-add-location').on('click', '#btn-add-location', function() {
             self.addLocation();
         });
 
         // Remove location
-        $(document).on('click', '.btn-remove-location', function() {
+        $(document).off('click', '.btn-remove-location').on('click', '.btn-remove-location', function() {
             const id = $(this).data('id');
             self.removeLocation(id);
         });
 
         // Save settings
-        $(document).on('click', '#btn-save-settings', function() {
+        $(document).off('click', '#btn-save-settings').on('click', '#btn-save-settings', function() {
             self.saveSettings();
         });
     },

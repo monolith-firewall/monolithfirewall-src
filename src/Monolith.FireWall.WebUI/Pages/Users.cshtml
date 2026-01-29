@@ -4,13 +4,9 @@
     ViewData["Title"] = "User Manager";
 }
 
-<div class="container-fluid p-4">
-    <div class="d-flex justify-content-end align-items-center mb-4">
-        <button class="btn btn-primary" id="btn-add-user">Add User</button>
-    </div>
-    <div id="users-table-container"></div>
-    <div id="user-modal-container"></div>
-</div>
+<div id="users-container"></div>
+<div id="users-table-container"></div>
+<div id="user-modal-container"></div>
 
 @section Scripts {
     <script src="/js/pages/users.js" data-module-js="users"></script>

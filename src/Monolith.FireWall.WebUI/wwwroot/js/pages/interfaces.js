@@ -1,4 +1,4 @@
-// Interfaces Page
+// Interfaces Page - Real-time interface management with SignalR
 var Interfaces = {
     assignments: [],
     vlans: [],
@@ -6,10 +6,96 @@ var Interfaces = {
     unassigned: [],
     availableInterfaces: [],
     issues: [],
+    _signalRHandler: null,
 
     init: function() {
         console.log('Initializing Interfaces page...');
         this.attachEventHandlers();
+        this._subscribeToSignalR();
+    },
+
+    destroy: function() {
+        // Unsubscribe from SignalR when leaving page
+        this._unsubscribeFromSignalR();
+    },
+
+    _subscribeToSignalR: function() {
+        if (!Monolith.SignalR) {
+            console.log('[Interfaces] SignalR not available');
+            return;
+        }
+
+        this._signalRHandler = (eventName, data) => {
+            switch (eventName) {
+                case 'InterfaceStatusChanged':
+                    this.updateInterfaceRow(data.interfaceName, data);
+                    break;
+                case 'InterfaceStatusBatch':
+                    if (Array.isArray(data)) {
+                        data.forEach(item => this.updateInterfaceRow(item.interfaceName, item));
+                    }
+                    break;
+            }
+        };
+
+        Monolith.SignalR.subscribe('interfaces', this._signalRHandler);
+        console.log('[Interfaces] Subscribed to SignalR interfaces channel');
+    },
+
+    _unsubscribeFromSignalR: function() {
+        if (Monolith.SignalR && this._signalRHandler) {
+            Monolith.SignalR.unsubscribe('interfaces', this._signalRHandler);
+            this._signalRHandler = null;
+            console.log('[Interfaces] Unsubscribed from SignalR');
+        }
+    },
+
+    /**
+     * Update a single interface row in real-time (without full reload)
+     */
+    updateInterfaceRow: function(interfaceName, status) {
+        const row = $(`#assignmentsTable tr[data-interface="${interfaceName}"]`);
+        if (!row.length) {
+            return;
+        }
+
+        // Update status badge
+        const statusBadge = row.find('.status-badge');
+        if (statusBadge.length) {
+            statusBadge.removeClass('bg-success bg-secondary')
+                       .addClass(status.status === 'up' ? 'bg-success' : 'bg-secondary')
+                       .text(status.status.toUpperCase());
+        }
+
+        // Update IP address display
+        const ipCell = row.find('.ip-display');
+        if (ipCell.length) {
+            let ipHtml = '';
+            if (status.ipAddress) {
+                ipHtml += `<span class="badge bg-info-subtle text-info border me-1">${status.ipAddress}</span>`;
+            }
+            if (status.ipv6Address) {
+                ipHtml += `<span class="badge bg-primary-subtle text-primary border">${status.ipv6Address}</span>`;
+            }
+            if (!ipHtml) {
+                ipHtml = '<span class="text-muted">-</span>';
+            }
+            ipCell.html(ipHtml);
+        }
+
+        // Flash highlight for visual feedback
+        row.addClass('table-info');
+        setTimeout(() => row.removeClass('table-info'), 1500);
+
+        // Update local state
+        const assignment = this.assignments.find(a => a.interface === interfaceName);
+        if (assignment) {
+            assignment.status = status.status;
+            assignment.ip = status.ipAddress;
+            assignment.ipv6 = status.ipv6Address;
+        }
+
+        console.log(`[Interfaces] Real-time update: ${interfaceName} = ${status.status}`);
     },
 
     renderPage: function() {
@@ -24,7 +110,19 @@ var Interfaces = {
      */
     render: function() {
         const container = $('#page-content');
-        container.html(`
+        
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "Interfaces",
+                icon: "fa-network-wired",
+                description: "Manage network interface assignments, VLANs, and bridges",
+                container: container,
+                prepend: true
+            });
+        }
+
+        container.append(`
             <div class="container-fluid p-4">
                 <!-- Issues Banner -->
                 <div id="interfacesIssuesAlert" class="alert alert-warning d-none"></div>
@@ -70,11 +168,9 @@ var Interfaces = {
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0">Managed Assignments</h5>
                                 <div class="d-flex flex-wrap gap-2">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-check-config">Check</button>
-                                    <button type="button" class="btn btn-sm btn-outline-warning" id="btn-fix-config">Fix</button>
-                                    <div class="vr align-self-stretch d-none d-md-block"></div>
-                                    <button type="button" class="btn btn-sm btn-success" id="btn-save-config">Save</button>
-                                    <button type="button" class="btn btn-sm btn-primary" id="btn-apply-now">Apply Now</button>
+                                    <button type="button" class="btn btn-sm btn-primary" id="btn-save-apply">
+                                        <i class="fa-solid fa-check me-1"></i>Save &amp; Apply
+                                    </button>
                                 </div>
                             </div>
                             <div class="card-body">
@@ -323,10 +419,31 @@ var Interfaces = {
 
         let html = '';
         this.assignments.forEach(assignment => {
-            const statusBadge = assignment.status === 'up' 
-                ? '<span class="badge bg-success">UP</span>'
-                : '<span class="badge bg-secondary">DOWN</span>';
+            const statusBadge = assignment.status === 'up'
+                ? '<span class="badge bg-success status-badge">UP</span>'
+                : '<span class="badge bg-secondary status-badge">DOWN</span>';
             const typeLabel = assignment.type ? assignment.type.toUpperCase() : 'N/A';
+            
+            // Role badge
+            let roleBadge = '';
+            const role = assignment.role || assignment.Role;
+            if (role) {
+                const roleLower = role.toLowerCase();
+                let roleColor = 'bg-secondary';
+                let roleIcon = '';
+                if (roleLower === 'wan') {
+                    roleColor = 'bg-danger';
+                    roleIcon = '<i class="fas fa-globe me-1"></i>';
+                } else if (roleLower === 'lan') {
+                    roleColor = 'bg-success';
+                    roleIcon = '<i class="fas fa-network-wired me-1"></i>';
+                } else if (roleLower === 'opt') {
+                    roleColor = 'bg-info';
+                    roleIcon = '<i class="fas fa-ethernet me-1"></i>';
+                }
+                roleBadge = `<span class="badge ${roleColor} text-white me-1">${roleIcon}${role.toUpperCase()}</span>`;
+            }
+            
             let managedBadge = '';
             if (assignment.isUnmanaged) {
                 managedBadge = '<span class="badge bg-warning text-dark border">Unmanaged</span>';
@@ -363,15 +480,15 @@ var Interfaces = {
             }
             
             html += `
-                <tr>
+                <tr data-interface="${assignment.interface}">
                     <td>
                         <code>${assignment.interface}</code>
-                        <div class="mt-1">${managedBadge}</div>
+                        <div class="mt-1">${roleBadge}${managedBadge}</div>
                     </td>
                     <td><strong>${assignment.name}</strong>${configDetails}</td>
                     <td>${typeLabel}</td>
                     <td>${statusBadge}</td>
-                    <td>${ipDisplay}</td>
+                    <td class="ip-display">${ipDisplay}</td>
                     <td>${assignment.description || '-'}</td>
                     <td>
                         ${assignment.isUnmanaged ? `
@@ -423,26 +540,43 @@ var Interfaces = {
             return;
         }
 
-        const listItems = this.issues.slice(0, 5).map(issue => `
+        // Count fixable issues
+        const fixableIssues = this.issues.filter(i => i.AutoFixable || i.autoFixable);
+        const hasFixable = fixableIssues.length > 0;
+
+        const listItems = this.issues.slice(0, 5).map((issue, index) => {
+            const isFixable = issue.AutoFixable || issue.autoFixable;
+            const issueId = issue.Id || issue.id || index;
+            const fixBtn = isFixable
+                ? `<button class="btn btn-sm btn-link p-0 ms-2 btn-fix-issue" data-issue-id="${issueId}">Fix</button>`
+                : '';
+            return `
             <li class="mb-1">
-                <strong>${issue.Type || issue.type}</strong> — ${issue.Message || issue.message}
+                <strong>${issue.Type || issue.type}</strong> — ${issue.Message || issue.message}${fixBtn}
                 ${issue.File || issue.file ? `<div class="text-muted small">${issue.File || issue.file}</div>` : ''}
                 ${issue.Detail || issue.detail ? `<div class="text-muted small">${issue.Detail || issue.detail}</div>` : ''}
             </li>
-        `).join('');
+        `}).join('');
 
         const more = this.issues.length > 5 ? `<div class="small text-muted mt-1">+${this.issues.length - 5} more...</div>` : '';
+        const fixAllBtn = hasFixable
+            ? `<button class="btn btn-sm btn-outline-warning mt-2" id="btn-fix-all-issues">
+                   <i class="fa-solid fa-wrench me-1"></i>Fix All (${fixableIssues.length})
+               </button>`
+            : '';
 
         alert.removeClass('d-none').html(`
             <div class="d-flex align-items-start">
                 <div class="me-3">
                     <span class="badge bg-warning text-dark">${this.issues.length} issue${this.issues.length === 1 ? '' : 's'}</span>
                 </div>
-                <div>
+                <div class="flex-grow-1">
                     <div class="fw-semibold mb-1">Interface configuration issues detected</div>
                     <ul class="mb-0 ps-3">${listItems}</ul>
                     ${more}
+                    ${fixAllBtn}
                 </div>
+                <button type="button" class="btn-close ms-3" aria-label="Dismiss" onclick="$('#interfacesIssuesAlert').addClass('d-none')"></button>
             </div>
         `);
     },
@@ -654,24 +788,23 @@ var Interfaces = {
      * Attach event handlers
      */
     attachEventHandlers: function() {
-        $(document).off('click', '#btn-check-config');
-        $(document).on('click', '#btn-check-config', () => {
-            this.checkConfig();
+        // Save & Apply button (combined workflow)
+        $(document).off('click', '#btn-save-apply');
+        $(document).on('click', '#btn-save-apply', () => {
+            this.saveAndApply();
         });
 
-        $(document).off('click', '#btn-fix-config');
-        $(document).on('click', '#btn-fix-config', () => {
+        // Fix all issues button (in inline alert)
+        $(document).off('click', '#btn-fix-all-issues');
+        $(document).on('click', '#btn-fix-all-issues', () => {
             this.fixConfig();
         });
 
-        $(document).off('click', '#btn-save-config');
-        $(document).on('click', '#btn-save-config', () => {
-            this.saveConfig();
-        });
-
-        $(document).off('click', '#btn-apply-now');
-        $(document).on('click', '#btn-apply-now', () => {
-            this.applyNow();
+        // Individual fix buttons (in inline alert)
+        $(document).off('click', '.btn-fix-issue');
+        $(document).on('click', '.btn-fix-issue', (e) => {
+            const issueId = $(e.currentTarget).data('issue-id');
+            this.fixSingleIssue(issueId);
         });
 
         // Add VLAN button
@@ -1269,6 +1402,121 @@ var Interfaces = {
                 Monolith.UI.toast('Failed to save bridge', 'error');
             }
         });
+    },
+
+    /**
+     * Combined Save & Apply workflow
+     * 1. Validates configuration
+     * 2. Shows issues inline if any (but allows proceeding)
+     * 3. Saves and applies configuration
+     */
+    saveAndApply: async function() {
+        const btn = $('#btn-save-apply');
+        const originalHtml = btn.html();
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Saving...');
+
+        try {
+            // Step 1: Validate configuration
+            const checkResponse = await Monolith.API.post('/interfaces/config/check', {});
+            if (checkResponse.Success || checkResponse.success) {
+                const checkData = checkResponse.Data || checkResponse.data || {};
+                const issues = checkData.Issues || checkData.issues || [];
+
+                if (issues.length > 0) {
+                    this.issues = issues;
+                    this.renderIssues();
+
+                    // Ask user if they want to proceed despite issues
+                    const proceed = await this.confirmWithIssues(issues);
+                    if (!proceed) {
+                        btn.prop('disabled', false).html(originalHtml);
+                        return;
+                    }
+                }
+            }
+
+            // Step 2: Save configuration
+            btn.html('<span class="spinner-border spinner-border-sm me-1"></span>Applying...');
+            const saveResponse = await Monolith.API.post('/interfaces/config/apply', {});
+            if (!(saveResponse.Success || saveResponse.success)) {
+                throw new Error(saveResponse.Error || saveResponse.error || 'Save failed');
+            }
+
+            // Step 3: Apply immediately
+            const applyResponse = await Monolith.API.post('/interfaces/config/apply-now', {});
+            if (!(applyResponse.Success || applyResponse.success)) {
+                throw new Error(applyResponse.Error || applyResponse.error || 'Apply failed');
+            }
+
+            // Clear issues after successful apply
+            this.issues = [];
+            this.renderIssues();
+
+            Monolith.UI.toast('Configuration saved and applied', 'success');
+            this.loadData(); // Refresh to show updated status
+        } catch (error) {
+            console.error('Save & Apply failed:', error);
+            Monolith.UI.toast(error.message || 'Failed to save and apply', 'error');
+        } finally {
+            btn.prop('disabled', false).html(originalHtml);
+        }
+    },
+
+    /**
+     * Show confirmation dialog when there are issues
+     */
+    confirmWithIssues: function(issues) {
+        return new Promise((resolve) => {
+            const issueCount = issues.length;
+            const fixableCount = issues.filter(i => i.AutoFixable || i.autoFixable).length;
+
+            const body = `
+                <div class="alert alert-warning mb-3">
+                    <strong>${issueCount}</strong> configuration issue${issueCount === 1 ? '' : 's'} detected.
+                    ${fixableCount > 0 ? `<br><strong>${fixableCount}</strong> can be auto-fixed.` : ''}
+                </div>
+                <p>Do you want to proceed with applying the configuration anyway?</p>
+                <p class="text-muted small mb-0">
+                    You can dismiss the issues banner and fix them later, or click "Fix All" to attempt auto-repair.
+                </p>
+            `;
+
+            const modal = Monolith.UI.showModal('Configuration Issues', body, {
+                size: 'md',
+                staticBackdrop: true,
+                footerHtml: `
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" id="btn-confirm-apply">Apply Anyway</button>
+                `
+            });
+
+            modal.element.find('#btn-confirm-apply').on('click', () => {
+                modal.instance.hide();
+                resolve(true);
+            });
+
+            modal.element.on('hidden.bs.modal', () => {
+                resolve(false);
+            });
+        });
+    },
+
+    /**
+     * Fix a single issue by ID
+     */
+    fixSingleIssue: async function(issueId) {
+        try {
+            const response = await Monolith.API.post('/interfaces/config/fix', { issueId: issueId });
+            if (!(response.Success || response.success)) {
+                throw new Error(response.Error || response.error || 'Fix failed');
+            }
+
+            Monolith.UI.toast('Issue fixed', 'success');
+            this.loadData();
+        } catch (error) {
+            console.error('Fix issue failed:', error);
+            Monolith.UI.toast('Failed to fix issue', 'error');
+        }
     },
 
     checkConfig: async function() {

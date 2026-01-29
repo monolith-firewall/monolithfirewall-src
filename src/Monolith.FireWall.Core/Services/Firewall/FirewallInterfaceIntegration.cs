@@ -1,4 +1,5 @@
 using System.Net;
+using Monolith.FireWall.Common.Interfaces;
 using Monolith.FireWall.Common.Services;
 using Monolith.FireWall.Core.Models;
 
@@ -279,15 +280,15 @@ public sealed class FirewallInterfaceIntegration : INetworkStateListener
     }
 
     // ========================================================================
-    // INetworkStateListener Implementation
+    // INetworkStateListener Implementation (Common interface)
     // ========================================================================
 
-    public async Task OnInterfaceStateChangedAsync(InterfaceStateChange change, CancellationToken cancellationToken)
+    public async Task OnInterfaceStateChangedAsync(NetworkInterfaceChange change, CancellationToken cancellationToken)
     {
         switch (change.ChangeType)
         {
-            case NetworkChangeType.IpChanged:
-            case NetworkChangeType.IpAdded:
+            case InterfaceChangeType.IpChanged:
+            case InterfaceChangeType.IpAdded:
                 // Invalidate cache when IP changes
                 InvalidateCache();
 
@@ -299,7 +300,7 @@ public sealed class FirewallInterfaceIntegration : INetworkStateListener
                     $"IP changed on '{change.InterfaceName}' - dynamic aliases will be re-resolved");
                 break;
 
-            case NetworkChangeType.InterfaceRemoved:
+            case InterfaceChangeType.InterfaceRemoved:
                 // Clean up aliases for removed interface
                 await _dynamicAliasStore.DeleteByInterfaceAsync(change.InterfaceName);
 
@@ -310,6 +311,26 @@ public sealed class FirewallInterfaceIntegration : INetworkStateListener
                     $"Interface '{change.InterfaceName}' removed - cleaned up dynamic aliases, check for orphan rules");
                 break;
         }
+    }
+
+    public async Task OnGatewayHealthChangedAsync(NetworkGatewayChange change, CancellationToken cancellationToken)
+    {
+        // Gateway health changes don't affect firewall aliases directly
+        // Log for awareness
+        if (change.NewStatus == "offline")
+        {
+            await _loggingManager.LogSystemAsync(
+                "Firewall",
+                "debug",
+                "InterfaceIntegration",
+                $"Gateway '{change.GatewayName}' went offline - outbound routing may be affected");
+        }
+    }
+
+    public Task OnLinkStateChangedAsync(NetworkLinkChange change, CancellationToken cancellationToken)
+    {
+        // Link state changes handled via the interface state change
+        return Task.CompletedTask;
     }
 
     // ========================================================================

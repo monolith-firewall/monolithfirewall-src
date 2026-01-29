@@ -21,10 +21,19 @@ var Settings = {
         const container = $('#settings-container');
         if (!container.length) return;
 
-        container.html(`
-            <div class="container-fluid">
-                <h1 class="mb-4">Settings</h1>
+        // Render page header
+        if (Monolith.PageHeader && typeof Monolith.PageHeader.render === 'function') {
+            Monolith.PageHeader.render({
+                title: "General Settings",
+                icon: "fa-gear",
+                description: "Configure system and WebUI settings",
+                container: container,
+                prepend: true
+            });
+        }
 
+        container.append(`
+            <div class="container-fluid p-4">
                 <!-- Tab Navigation -->
                 <ul class="nav nav-tabs mb-4" id="settings-tabs" role="tablist">
                     <li class="nav-item" role="presentation">
@@ -60,8 +69,8 @@ var Settings = {
             </div>
         `);
 
-        // Handle tab switching
-        $('#settings-tabs button[data-bs-toggle="tab"]').on('shown.bs.tab', (e) => {
+        // Handle tab switching - use .off() first to prevent duplicate handlers
+        $('#settings-tabs button[data-bs-toggle="tab"]').off('shown.bs.tab').on('shown.bs.tab', (e) => {
             const target = $(e.target).data('bsTarget');
             if (target === '#system-pane') {
                 this.loadTab('system');

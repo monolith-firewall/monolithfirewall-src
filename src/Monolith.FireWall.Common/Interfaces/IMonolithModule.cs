@@ -23,6 +23,7 @@ public interface IMonolithModule
     IEnumerable<WidgetDefinition> GetWidgets();
     IEnumerable<TemplateDefinition> GetTemplates();
     IEnumerable<ServiceDefinition> GetServices();
+    IEnumerable<ServiceBindingDefinition> GetServiceBindings();
     IEnumerable<AptDependency> GetAptDependencies();
     IEnumerable<PermissionDefinition> GetRequiredPermissions();
     IEnumerable<SystemPermissionDefinition> GetSystemPermissions();

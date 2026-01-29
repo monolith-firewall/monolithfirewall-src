@@ -7,6 +7,8 @@ var Rules = {
     addressAliases: [],
     portAliases: [],
     schedules: [],
+    ruleTypeFilter: null,  // null = all, "system", "user", "managed"
+    ruleSummary: { total: 0, system: 0, user: 0, managed: 0 },
     systemSets: [
         { value: 'rfc1918', label: 'RFC1918 (IPv4)' },
         { value: 'iana_reserved', label: 'IANA Reserved (IPv4)' },
@@ -34,6 +36,7 @@ var Rules = {
             this.loadAliases()
         ]);
         this.renderTabs();
+        this.renderDefaults();
     },
 
     loadInterfaces: async function() {
@@ -95,10 +98,29 @@ var Rules = {
 
     loadRules: async function() {
         try {
-            const response = await Monolith.API.get('/firewall/rules');
+            // Use the query API with optional filter
+            var payload = {};
+            if (this.ruleTypeFilter) {
+                payload.ruleType = this.ruleTypeFilter;
+            }
+
+            const response = await Monolith.API.post('/api/core', {
+                action: 'firewall.rules.query',
+                payload: payload
+            });
+
             if (response.Success || response.success) {
-                const data = response.Data || response.data || [];
-                this.rules = Array.isArray(data) ? data.map(r => this.normalizeRule(r)) : [];
+                const data = response.Data || response.data || {};
+                const rules = data.Rules || data.rules || [];
+                const summary = data.Summary || data.summary || {};
+
+                this.rules = Array.isArray(rules) ? rules.map(r => this.normalizeRule(r)) : [];
+                this.ruleSummary = {
+                    total: summary.Total || summary.total || 0,
+                    system: summary.System || summary.system || 0,
+                    user: summary.User || summary.user || 0,
+                    managed: summary.Managed || summary.managed || 0
+                };
             } else {
                 this.rules = [];
             }
@@ -145,6 +167,15 @@ var Rules = {
     },
 
     normalizeRule: function(rule) {
+        // Determine rule type from new extended format or legacy format
+        var ruleType = rule.RuleType || rule.ruleType || null;
+        var isSystem = rule.IsSystem !== undefined ? rule.IsSystem : (rule.isSystem !== undefined ? rule.isSystem : false);
+        var isManaged = rule.IsManaged !== undefined ? rule.IsManaged : (rule.isManaged !== undefined ? rule.isManaged : false);
+
+        if (!ruleType) {
+            ruleType = isSystem ? 'system' : (isManaged ? 'managed' : 'user');
+        }
+
         return {
             id: rule.Id || rule.id,
             ruleNumber: rule.RuleNumber || rule.ruleNumber,
@@ -163,10 +194,16 @@ var Rules = {
             logEnabled: rule.LogEnabled !== undefined ? rule.LogEnabled : (rule.logEnabled !== undefined ? rule.logEnabled : false),
             enabled: rule.Enabled !== undefined ? rule.Enabled : (rule.enabled !== undefined ? rule.enabled : true),
             description: rule.Description || rule.description,
-            isSystem: rule.IsSystem !== undefined ? rule.IsSystem : (rule.isSystem !== undefined ? rule.isSystem : false),
+            ruleType: ruleType,
+            isSystem: ruleType === 'system',
             systemTag: rule.SystemTag || rule.systemTag || null,
-            isManaged: rule.IsManaged !== undefined ? rule.IsManaged : (rule.isManaged !== undefined ? rule.isManaged : false),
-            managedBy: rule.ManagedBy || rule.managedBy || null
+            isManaged: ruleType === 'managed',
+            managedBy: rule.ManagedBy || rule.managedBy || null,
+            managedByPackage: rule.ManagedByPackage || rule.managedByPackage || null,
+            managedByModule: rule.ManagedByModule || rule.managedByModule || null,
+            isEditable: rule.IsEditable !== undefined ? rule.IsEditable : (rule.isEditable !== undefined ? rule.isEditable : (ruleType === 'user')),
+            isDeletable: rule.IsDeletable !== undefined ? rule.IsDeletable : (rule.isDeletable !== undefined ? rule.isDeletable : (ruleType === 'user')),
+            conflictWarnings: rule.ConflictWarnings || rule.conflictWarnings || []
         };
     },
 
@@ -182,13 +219,16 @@ var Rules = {
         const tabs = $('#rulesTabs');
         const content = $('#rulesTabContent');
         if (!tabs.length || !content.length) return;
-        
+
         tabs.empty();
         content.empty();
 
+        // Render rule type filter and summary
+        this.renderRuleTypeFilter();
+
         if (this.interfaces.length === 0) {
-            tabs.append('<li class="nav-item"><span class="nav-link active">No Interfaces</span></li>');
-            content.append('<div class="alert alert-info">Assign an interface to configure firewall rules.</div>');
+            tabs.append('<li class="nav-item flex-fill"><span class="nav-link active text-center">No Interfaces</span></li>');
+            content.append('<div class="alert alert-info m-3"><i class="bi bi-info-circle me-2"></i>Assign an interface to configure firewall rules.</div>');
             return;
         }
 
@@ -196,74 +236,71 @@ var Rules = {
             const tabId = `rules-${iface.interface}`;
             const activeClass = index === 0 ? 'active' : '';
             const roleLabel = this.roleLabel(iface.role);
-            
+            const roleBadgeClass = iface.role === 1 ? 'bg-success' : (iface.role === 2 ? 'bg-danger' : 'bg-secondary');
+
             // Get per-interface settings
             const settings = this.interfaceSettings.find(s => s.InterfaceName === iface.interface || s.interfaceName === iface.interface) || {};
             const defaultAction = settings.DefaultAction || settings.defaultAction || this.defaultActionLabel(iface.role);
             const blockReserved = settings.BlockReserved !== undefined ? settings.BlockReserved : (settings.blockReserved !== undefined ? settings.blockReserved : (iface.role === 2 && this.defaults?.BlockReservedOnWan));
             const blockBogon = settings.BlockBogon !== undefined ? settings.BlockBogon : (settings.blockBogon !== undefined ? settings.blockBogon : false);
 
+            // Count rules for this interface
+            const ruleCount = this.rules.filter(r => r.interface && r.interface.toLowerCase() === iface.interface.toLowerCase()).length;
+
             tabs.append(`
                 <li class="nav-item" role="presentation">
                     <button class="nav-link ${activeClass}" id="${tabId}-tab" data-bs-toggle="tab" data-bs-target="#${tabId}" type="button" role="tab">
-                        ${iface.name} <span class="badge bg-secondary ms-2">${roleLabel}</span>
+                        <span class="badge ${roleBadgeClass} me-2">${roleLabel}</span>
+                        ${iface.name}
+                        <span class="badge bg-light text-dark ms-2">${ruleCount}</span>
                     </button>
                 </li>
             `);
 
             content.append(`
                 <div class="tab-pane fade ${activeClass ? 'show active' : ''}" id="${tabId}" role="tabpanel">
-                    <div class="card mb-3">
-                        <div class="card-body py-2">
-                            <div class="row align-items-center">
-                                <div class="col-auto">
-                                    <label class="fw-bold me-2">Default Action:</label>
-                                    <select class="form-select form-select-sm d-inline-block w-auto" 
-                                            onchange="Rules.saveInterfaceSettings('${iface.interface}', this, 'action')">
-                                        <option value="pass" ${defaultAction === 'pass' ? 'selected' : ''}>Pass</option>
-                                        <option value="block" ${defaultAction === 'block' ? 'selected' : ''}>Block</option>
-                                        <option value="reject" ${defaultAction === 'reject' ? 'selected' : ''}>Reject</option>
-                                    </select>
-                                </div>
-                                <div class="col-auto">
-                                    <div class="form-check form-switch d-inline-block align-middle mb-0">
-                                        <input class="form-check-input" type="checkbox" id="blockReserved-${iface.interface}" 
-                                               ${blockReserved ? 'checked' : ''}
-                                               onchange="Rules.saveInterfaceSettings('${iface.interface}', this, 'reserved')">
-                                        <label class="form-check-label" for="blockReserved-${iface.interface}">Block Reserved</label>
-                                    </div>
-                                </div>
-                                <div class="col-auto">
-                                    <div class="form-check form-switch d-inline-block align-middle mb-0">
-                                        <input class="form-check-input" type="checkbox" id="blockBogon-${iface.interface}" 
-                                               ${blockBogon ? 'checked' : ''}
-                                               onchange="Rules.saveInterfaceSettings('${iface.interface}', this, 'bogon')">
-                                        <label class="form-check-label" for="blockBogon-${iface.interface}">Block Bogon</label>
-                                    </div>
-                                </div>
-                                <div class="col text-end">
-                                    <button class="btn btn-primary btn-sm" data-interface="${iface.interface}" data-action="add-rule">Add Rule</button>
-                                </div>
-                            </div>
+                    <div class="d-flex align-items-center mb-3 py-2 px-3 rules-toolbar rounded border">
+                        <span class="text-muted small me-2">Default:</span>
+                        <select class="form-select form-select-sm me-3" style="width: 100px;"
+                                onchange="Rules.saveInterfaceSettings('${iface.interface}', this, 'action')">
+                            <option value="pass" ${defaultAction === 'pass' ? 'selected' : ''}>Pass</option>
+                            <option value="block" ${defaultAction === 'block' ? 'selected' : ''}>Block</option>
+                            <option value="reject" ${defaultAction === 'reject' ? 'selected' : ''}>Reject</option>
+                        </select>
+                        <div class="vr mx-2"></div>
+                        <div class="form-check form-switch mb-0 me-3">
+                            <input class="form-check-input" type="checkbox" id="blockReserved-${iface.interface}"
+                                   ${blockReserved ? 'checked' : ''}
+                                   onchange="Rules.saveInterfaceSettings('${iface.interface}', this, 'reserved')">
+                            <label class="form-check-label small" for="blockReserved-${iface.interface}">Block RFC1918</label>
                         </div>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="blockBogon-${iface.interface}"
+                                   ${blockBogon ? 'checked' : ''}
+                                   onchange="Rules.saveInterfaceSettings('${iface.interface}', this, 'bogon')">
+                            <label class="form-check-label small" for="blockBogon-${iface.interface}">Block Bogon</label>
+                        </div>
+                        <button class="btn btn-primary btn-sm ms-auto" data-interface="${iface.interface}" data-action="add-rule">
+                            <i class="bi bi-plus-lg me-1"></i>Add Rule
+                        </button>
                     </div>
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table class="table table-hover align-middle mb-0">
                             <thead>
                                 <tr>
-                                    <th style="width: 70px;">#</th>
-                                    <th>Action</th>
-                                    <th>Protocol</th>
+                                    <th style="width: 80px;">#</th>
+                                    <th style="width: 100px;">Action</th>
+                                    <th style="width: 100px;">Protocol</th>
                                     <th>Source</th>
                                     <th>Destination</th>
                                     <th>Description</th>
-                                    <th>Status</th>
-                                    <th style="width: 140px;">Order</th>
-                                    <th style="width: 120px;">Actions</th>
+                                    <th style="width: 100px;">Status</th>
+                                    <th style="width: 110px;">Order</th>
+                                    <th style="width: 130px;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="${tabId}-body">
-                                <tr><td colspan="9" class="text-center text-muted">Loading rules...</td></tr>
+                                <tr><td colspan="9" class="text-center text-muted py-4">Loading rules...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -319,49 +356,98 @@ var Rules = {
     renderRulesForInterface: function(interfaceName, bodyId) {
         const tbody = $('#' + bodyId);
         if (!tbody.length) return;
-        
+
         const rules = this.rules.filter(r => r.interface && r.interface.toLowerCase() === interfaceName.toLowerCase());
 
         if (rules.length === 0) {
-            tbody.html('<tr><td colspan="9" class="text-center text-muted">No rules configured</td></tr>');
+            const filterMsg = this.ruleTypeFilter
+                ? `No ${this.ruleTypeFilter} rules configured for this interface`
+                : 'No rules configured for this interface';
+            tbody.html(`<tr><td colspan="9" class="text-center text-muted py-4"><i class="bi bi-inbox me-2"></i>${filterMsg}</td></tr>`);
             return;
         }
 
         let html = '';
-        rules.sort((a, b) => (a.isSystem === b.isSystem ? a.ruleNumber - b.ruleNumber : a.isSystem ? -1 : 1));
-        rules.forEach((rule, idx) => {
+        // Sort: system rules first, then managed, then user; within each by rule number
+        const sortedRules = [...rules].sort((a, b) => {
+            const typeOrder = { system: 0, managed: 1, user: 2 };
+            const aOrder = typeOrder[a.ruleType] ?? 2;
+            const bOrder = typeOrder[b.ruleType] ?? 2;
+            if (aOrder !== bOrder) return aOrder - bOrder;
+            return a.ruleNumber - b.ruleNumber;
+        });
+
+        // Find first and last user rules for order button logic
+        const userRules = sortedRules.filter(r => r.ruleType === 'user');
+
+        sortedRules.forEach((rule) => {
             const actionBadge = this.actionBadge(rule.action);
             const statusBadge = rule.enabled
-                ? '<span class="badge bg-success">Enabled</span>'
-                : '<span class="badge bg-secondary">Disabled</span>';
-            const systemBadge = rule.isSystem
-                ? '<span class="badge bg-info ms-1">System</span>'
-                : '';
-            const managedBadge = rule.isManaged
-                ? '<span class="badge bg-warning text-dark ms-1">Managed</span>'
-                : '';
-            const isLocked = rule.isSystem || rule.isManaged;
-            const orderControls = isLocked
-                ? '<span class="text-muted">-</span>'
-                : `
-                    <button class="btn btn-sm btn-outline-secondary me-1" data-action="move-up" data-id="${rule.id}" data-interface="${interfaceName}" ${idx === 0 ? 'disabled' : ''}>Up</button>
-                    <button class="btn btn-sm btn-outline-secondary" data-action="move-down" data-id="${rule.id}" data-interface="${interfaceName}" ${idx === rules.length - 1 ? 'disabled' : ''}>Down</button>
+                ? '<span class="badge bg-success-subtle text-success">Enabled</span>'
+                : '<span class="badge bg-secondary-subtle text-secondary">Disabled</span>';
+
+            const isLocked = rule.ruleType !== 'user';
+            const userIndex = userRules.findIndex(r => r.id === rule.id);
+            const isFirstUser = userIndex === 0;
+            const isLastUser = userIndex === userRules.length - 1;
+
+            // Rule number with type badge
+            let ruleNumCell = `<span class="fw-semibold">${rule.ruleNumber || '-'}</span>`;
+            ruleNumCell += '<br>' + this.ruleTypeBadge(rule.ruleType);
+
+            // Order controls
+            let orderControls = '';
+            if (isLocked) {
+                orderControls = '<span class="text-muted small">-</span>';
+            } else {
+                orderControls = `
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-secondary" data-action="move-up" data-id="${rule.id}" data-interface="${interfaceName}" ${isFirstUser ? 'disabled' : ''} title="Move up">
+                            <i class="bi bi-chevron-up"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" data-action="move-down" data-id="${rule.id}" data-interface="${interfaceName}" ${isLastUser ? 'disabled' : ''} title="Move down">
+                            <i class="bi bi-chevron-down"></i>
+                        </button>
+                    </div>
                 `;
-            const actions = isLocked
-                ? '<span class="text-muted">Locked</span>'
-                : `
-                    <button class="btn btn-sm btn-outline-primary me-1" data-action="edit-rule" data-id="${rule.id}">Edit</button>
-                    <button class="btn btn-sm btn-outline-danger" data-action="delete-rule" data-id="${rule.id}">Delete</button>
+            }
+
+            // Action buttons
+            let actions = '';
+            if (isLocked) {
+                const lockReason = rule.ruleType === 'system' ? 'System' : 'Managed';
+                actions = `<span class="badge bg-secondary-subtle text-secondary">${lockReason}</span>`;
+            } else {
+                actions = `
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" data-action="edit-rule" data-id="${rule.id}" title="Edit">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-outline-danger" data-action="delete-rule" data-id="${rule.id}" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
                 `;
+            }
+
+            // Row styling based on rule type
+            let rowClass = '';
+            if (!rule.enabled) {
+                rowClass = 'rule-disabled';
+            } else if (rule.ruleType === 'system') {
+                rowClass = 'rule-system';
+            } else if (rule.ruleType === 'managed') {
+                rowClass = 'rule-managed';
+            }
 
             html += `
-                <tr>
-                    <td><strong>${rule.ruleNumber || ''}</strong>${systemBadge}${managedBadge}</td>
+                <tr class="${rowClass}">
+                    <td>${ruleNumCell}</td>
                     <td>${actionBadge}</td>
-                    <td>${this.protocolLabel(rule.protocol)}</td>
-                    <td>${this.formatEndpoint(rule.sourceType, rule.sourceValue, rule.sourcePort)}</td>
-                    <td>${this.formatEndpoint(rule.destinationType, rule.destinationValue, rule.destinationPort)}</td>
-                    <td>${rule.description || '-'}</td>
+                    <td><code class="small">${this.protocolLabel(rule.protocol)}</code></td>
+                    <td class="small">${this.formatEndpoint(rule.sourceType, rule.sourceValue, rule.sourcePort)}</td>
+                    <td class="small">${this.formatEndpoint(rule.destinationType, rule.destinationValue, rule.destinationPort)}</td>
+                    <td class="small text-truncate" style="max-width: 200px;" title="${rule.description || ''}">${rule.description || '<span class="text-muted">-</span>'}</td>
                     <td>${statusBadge}</td>
                     <td>${orderControls}</td>
                     <td>${actions}</td>
@@ -370,6 +456,17 @@ var Rules = {
         });
 
         tbody.html(html);
+    },
+
+    ruleTypeBadge: function(ruleType) {
+        switch (ruleType) {
+            case 'system':
+                return '<span class="badge bg-info-subtle text-info small">System</span>';
+            case 'managed':
+                return '<span class="badge bg-warning-subtle text-warning small">Managed</span>';
+            default:
+                return '<span class="badge bg-primary-subtle text-primary small">User</span>';
+        }
     },
 
     attachEventHandlers: function() {
@@ -386,6 +483,13 @@ var Rules = {
             if (rule) {
                 this.showRuleModal(rule, rule.interface);
             }
+        });
+
+        // Rule type filter handlers
+        $(document).off('click', '.rule-type-filter');
+        $(document).on('click', '.rule-type-filter', (e) => {
+            const type = $(e.currentTarget).data('type');
+            this.setRuleTypeFilter(type);
         });
 
         $(document).off('click', '[data-action="delete-rule"]');
@@ -594,7 +698,7 @@ var Rules = {
         });
     },
 
-    saveRule: async function(id) {
+    saveRule: async function(id, skipValidation) {
         const form = document.getElementById('ruleForm');
         if (!form || !form.checkValidity()) {
             if (form) form.reportValidity();
@@ -635,16 +739,45 @@ var Rules = {
             }
         }
 
+        // Validate rule for conflicts before saving (unless explicitly skipped)
+        if (!skipValidation) {
+            const validationResult = await this.validateRule(rule, id);
+            if (validationResult && validationResult.hasConflicts) {
+                if (!validationResult.canProceed) {
+                    // Blocking conflict - show error and don't proceed
+                    this.showConflictModal(validationResult, null, id);
+                    return;
+                }
+                // Warning conflicts - show modal and let user decide
+                this.showConflictModal(validationResult, rule, id);
+                return;
+            }
+        }
+
+        // Proceed with save
+        await this.doSaveRule(rule, id);
+    },
+
+    doSaveRule: async function(rule, id) {
         try {
             let response;
             if (id) {
-                response = await Monolith.API.put(`/firewall/rules/${id}`, payload);
+                response = await Monolith.API.put(`/firewall/rules/${id}`, rule);
             } else {
-                response = await Monolith.API.post('/firewall/rules', payload);
+                response = await Monolith.API.post('/firewall/rules', rule);
             }
 
             if (response.Success || response.success) {
-                bootstrap.Modal.getInstance(document.getElementById('ruleModal')).hide();
+                const ruleModalEl = document.getElementById('ruleModal');
+                if (ruleModalEl) {
+                    const ruleModal = bootstrap.Modal.getInstance(ruleModalEl);
+                    if (ruleModal) ruleModal.hide();
+                }
+                const conflictModalEl = document.getElementById('conflictModal');
+                if (conflictModalEl) {
+                    const conflictModal = bootstrap.Modal.getInstance(conflictModalEl);
+                    if (conflictModal) conflictModal.hide();
+                }
                 this.markPendingChanges();
                 await this.loadRules();
                 this.renderTabs();
@@ -656,6 +789,107 @@ var Rules = {
             console.error('Failed to save rule:', error);
             this.showMessage('Failed to save rule', 'danger');
         }
+    },
+
+    validateRule: async function(rule, excludeRuleId) {
+        try {
+            const response = await Monolith.API.post('/api/core', {
+                action: 'firewall.rules.validate',
+                payload: {
+                    interface: rule.interface,
+                    direction: rule.direction,
+                    action: rule.action,
+                    addressFamily: rule.addressFamily,
+                    protocol: rule.protocol,
+                    sourceType: rule.sourceType,
+                    sourceValue: rule.sourceValue,
+                    sourcePort: rule.sourcePort,
+                    destinationType: rule.destinationType,
+                    destinationValue: rule.destinationValue,
+                    destinationPort: rule.destinationPort,
+                    excludeRuleId: excludeRuleId || null
+                }
+            });
+
+            if (response.Success || response.success) {
+                const data = response.Data || response.data || {};
+                return {
+                    isValid: data.IsValid !== undefined ? data.IsValid : (data.isValid !== undefined ? data.isValid : true),
+                    hasConflicts: data.HasConflicts !== undefined ? data.HasConflicts : (data.hasConflicts !== undefined ? data.hasConflicts : false),
+                    canProceed: data.CanProceed !== undefined ? data.CanProceed : (data.canProceed !== undefined ? data.canProceed : true),
+                    conflicts: data.Conflicts || data.conflicts || [],
+                    suggestion: data.Suggestion || data.suggestion || null
+                };
+            }
+            return null;
+        } catch (error) {
+            console.warn('Failed to validate rule:', error);
+            return null;
+        }
+    },
+
+    showConflictModal: function(validationResult, rule, ruleId) {
+        const conflicts = validationResult.conflicts || [];
+        const canProceed = validationResult.canProceed;
+
+        let conflictHtml = '';
+        conflicts.forEach(c => {
+            const severity = c.Severity || c.severity || 'warning';
+            const severityClass = severity === 'error' ? 'danger' : (severity === 'info' ? 'info' : 'warning');
+            const severityIcon = severity === 'error' ? 'x-circle-fill' : (severity === 'info' ? 'info-circle-fill' : 'exclamation-triangle-fill');
+
+            conflictHtml += `
+                <div class="alert alert-${severityClass} d-flex align-items-start mb-2">
+                    <i class="bi bi-${severityIcon} me-2 mt-1 flex-shrink-0"></i>
+                    <div>
+                        <strong>${c.ConflictingRuleDescription || c.conflictingRuleDescription || 'Existing Rule'}</strong>
+                        <p class="mb-1">${c.Message || c.message || 'Conflict detected'}</p>
+                        ${c.Resolution || c.resolution ? `<small class="text-muted"><i class="bi bi-lightbulb me-1"></i>${c.Resolution || c.resolution}</small>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+
+        const modalHtml = `
+            <div class="modal fade" id="conflictModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header ${canProceed ? 'bg-warning-subtle' : 'bg-danger-subtle'}">
+                            <h5 class="modal-title">
+                                <i class="bi bi-${canProceed ? 'exclamation-triangle' : 'x-circle'} me-2"></i>
+                                ${canProceed ? 'Rule Conflict Warning' : 'Rule Conflict Error'}
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="text-muted mb-3">Your rule conflicts with existing rules:</p>
+                            ${conflictHtml}
+                            ${validationResult.suggestion ? `<div class="alert alert-light border mt-3"><i class="bi bi-lightbulb me-2"></i>${validationResult.suggestion}</div>` : ''}
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            ${canProceed ? `<button type="button" class="btn btn-warning" id="btnSaveAnyway">Save Anyway</button>` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        $('#conflictModal').remove();
+        $('body').append(modalHtml);
+        const modal = new bootstrap.Modal(document.getElementById('conflictModal'));
+        modal.show();
+
+        if (canProceed && rule) {
+            $('#btnSaveAnyway').off('click').on('click', () => {
+                modal.hide();
+                this.doSaveRule(rule, ruleId);
+            });
+        }
+
+        $('#conflictModal').on('hidden.bs.modal', function() {
+            $(this).remove();
+        });
     },
 
     deleteRule: async function(id) {
@@ -822,16 +1056,59 @@ var Rules = {
         const allowWebUi = this.defaults.AllowManagementWebUi !== undefined
             ? this.defaults.AllowManagementWebUi
             : (this.defaults.allowManagementWebUi !== undefined ? this.defaults.allowManagementWebUi : true);
-        const allowDevAccess = this.defaults.AllowDeveloperSystemAccess !== undefined
-            ? this.defaults.AllowDeveloperSystemAccess
-            : (this.defaults.allowDeveloperSystemAccess !== undefined ? this.defaults.allowDeveloperSystemAccess : true);
+        const allowSsh = this.defaults.AllowSshAccess !== undefined
+            ? this.defaults.AllowSshAccess
+            : (this.defaults.allowSshAccess !== undefined ? this.defaults.allowSshAccess : true);
 
         $('#defaultLanAction').val(lan);
         $('#defaultWanAction').val(wan);
         $('#defaultOptAction').val(opt);
         $('#defaultBlockReserved').prop('checked', !!blockReserved);
         $('#defaultAllowWebUi').prop('checked', !!allowWebUi);
-        $('#defaultAllowDevAccess').prop('checked', !!allowDevAccess);
+        $('#defaultAllowSsh').prop('checked', !!allowSsh);
+    },
+
+    renderRuleTypeFilter: function() {
+        var container = $('#ruleTypeFilterContainer');
+        if (!container.length) {
+            // Create the container if it doesn't exist - insert before tabs
+            $('#rulesTabs').before(`
+                <div id="ruleTypeFilterContainer" class="d-flex align-items-center gap-3 mb-3 px-3 py-2 bg-body-tertiary rounded border">
+                    <span class="text-muted small">Filter by type:</span>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-outline-secondary rule-type-filter ${!this.ruleTypeFilter ? 'active' : ''}" data-type="">
+                            All <span class="badge bg-secondary ms-1">${this.ruleSummary.total}</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-info rule-type-filter ${this.ruleTypeFilter === 'system' ? 'active' : ''}" data-type="system">
+                            System <span class="badge bg-info ms-1">${this.ruleSummary.system}</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-primary rule-type-filter ${this.ruleTypeFilter === 'user' ? 'active' : ''}" data-type="user">
+                            User <span class="badge bg-primary ms-1">${this.ruleSummary.user}</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-warning rule-type-filter ${this.ruleTypeFilter === 'managed' ? 'active' : ''}" data-type="managed">
+                            Managed <span class="badge bg-warning text-dark ms-1">${this.ruleSummary.managed}</span>
+                        </button>
+                    </div>
+                </div>
+            `);
+            container = $('#ruleTypeFilterContainer');
+        } else {
+            // Update counts
+            container.find('[data-type=""]').find('.badge').text(this.ruleSummary.total);
+            container.find('[data-type="system"]').find('.badge').text(this.ruleSummary.system);
+            container.find('[data-type="user"]').find('.badge').text(this.ruleSummary.user);
+            container.find('[data-type="managed"]').find('.badge').text(this.ruleSummary.managed);
+
+            // Update active state
+            container.find('.rule-type-filter').removeClass('active');
+            container.find(`[data-type="${this.ruleTypeFilter || ''}"]`).addClass('active');
+        }
+    },
+
+    setRuleTypeFilter: async function(ruleType) {
+        this.ruleTypeFilter = ruleType || null;
+        await this.loadRules();
+        this.renderTabs();
     },
 
     saveDefaults: async function() {
@@ -841,7 +1118,7 @@ var Rules = {
             optDefaultAction: $('#defaultOptAction').val(),
             blockReservedOnWan: $('#defaultBlockReserved').is(':checked'),
             allowManagementWebUi: $('#defaultAllowWebUi').is(':checked'),
-            allowDeveloperSystemAccess: $('#defaultAllowDevAccess').is(':checked')
+            allowSshAccess: $('#defaultAllowSsh').is(':checked')
         };
 
         try {
@@ -863,11 +1140,11 @@ var Rules = {
     actionBadge: function(action) {
         switch (action) {
             case 'pass':
-                return '<span class="badge bg-success">Pass</span>';
+                return '<span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Pass</span>';
             case 'reject':
-                return '<span class="badge bg-warning">Reject</span>';
+                return '<span class="badge bg-warning text-dark"><i class="bi bi-x-circle me-1"></i>Reject</span>';
             default:
-                return '<span class="badge bg-danger">Block</span>';
+                return '<span class="badge bg-danger"><i class="bi bi-slash-circle me-1"></i>Block</span>';
         }
     },
 

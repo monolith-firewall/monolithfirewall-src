@@ -72,25 +72,19 @@ var Nat = {
                             <ul class="nav nav-tabs mb-3" id="natTabs" role="tablist">
                                 <li class="nav-item" role="presentation">
                                     <button class="nav-link active" id="portForwardTabBtn" data-bs-toggle="tab" data-bs-target="#portForwardTab" type="button" role="tab" aria-controls="portForwardTab" aria-selected="true" data-nat-type="port_forward">
-                                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
-                                            <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7z"/>
-                                        </svg>
+                                        <i class="fas fa-arrow-right me-1"></i>
                                         Port Forward
                                     </button>
                                 </li>
                                 <li class="nav-item" role="presentation">
                                     <button class="nav-link" id="oneToOneTabBtn" data-bs-toggle="tab" data-bs-target="#oneToOneTab" type="button" role="tab" aria-controls="oneToOneTab" aria-selected="false" data-nat-type="one_to_one">
-                                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
-                                            <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7z"/>
-                                        </svg>
+                                        <i class="fas fa-exchange-alt me-1"></i>
                                         1:1
                                     </button>
                                 </li>
                                 <li class="nav-item" role="presentation">
                                     <button class="nav-link" id="outboundTabBtn" data-bs-toggle="tab" data-bs-target="#outboundTab" type="button" role="tab" aria-controls="outboundTab" aria-selected="false" data-nat-type="outbound">
-                                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" class="me-1">
-                                            <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7z"/>
-                                        </svg>
+                                        <i class="fas fa-sign-out-alt me-1"></i>
                                         Outbound
                                     </button>
                                 </li>

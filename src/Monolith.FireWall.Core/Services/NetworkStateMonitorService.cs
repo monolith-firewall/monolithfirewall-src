@@ -707,10 +707,10 @@ public sealed class NetworkStateMonitorService : IDisposable
 
     private async Task NotifyInterfaceAddedAsync(string interfaceName, CancellationToken cancellationToken)
     {
-        var change = new InterfaceStateChange
+        var change = new NetworkInterfaceChange
         {
             InterfaceName = interfaceName,
-            ChangeType = NetworkChangeType.InterfaceAdded,
+            ChangeType = InterfaceChangeType.InterfaceAdded,
             OccurredAt = DateTime.UtcNow
         };
 
@@ -735,10 +735,10 @@ public sealed class NetworkStateMonitorService : IDisposable
 
     private async Task NotifyInterfaceRemovedAsync(string interfaceName, CancellationToken cancellationToken)
     {
-        var change = new InterfaceStateChange
+        var change = new NetworkInterfaceChange
         {
             InterfaceName = interfaceName,
-            ChangeType = NetworkChangeType.InterfaceRemoved,
+            ChangeType = InterfaceChangeType.InterfaceRemoved,
             OccurredAt = DateTime.UtcNow
         };
 
@@ -763,12 +763,17 @@ public sealed class NetworkStateMonitorService : IDisposable
 
     private async Task NotifyLinkStateChangedAsync(string interfaceName, LinkState previous, LinkState current, CancellationToken cancellationToken)
     {
-        var change = new InterfaceStateChange
+        var interfaceChange = new NetworkInterfaceChange
         {
             InterfaceName = interfaceName,
-            ChangeType = current == LinkState.Up ? NetworkChangeType.LinkUp : NetworkChangeType.LinkDown,
-            PreviousLinkState = previous,
-            NewLinkState = current,
+            ChangeType = current == LinkState.Up ? InterfaceChangeType.LinkUp : InterfaceChangeType.LinkDown,
+            OccurredAt = DateTime.UtcNow
+        };
+
+        var linkChange = new NetworkLinkChange
+        {
+            InterfaceName = interfaceName,
+            IsUp = current == LinkState.Up,
             OccurredAt = DateTime.UtcNow
         };
 
@@ -782,7 +787,9 @@ public sealed class NetworkStateMonitorService : IDisposable
         {
             try
             {
-                await listener.OnInterfaceStateChangedAsync(change, cancellationToken);
+                // Call both the general interface change and the specific link change
+                await listener.OnInterfaceStateChangedAsync(interfaceChange, cancellationToken);
+                await listener.OnLinkStateChangedAsync(linkChange, cancellationToken);
             }
             catch
             {
@@ -793,10 +800,24 @@ public sealed class NetworkStateMonitorService : IDisposable
 
     private async Task NotifyIpChangedAsync(string interfaceName, string? previousIp, string? newIp, CancellationToken cancellationToken)
     {
-        var change = new InterfaceStateChange
+        InterfaceChangeType changeType;
+        if (string.IsNullOrEmpty(previousIp) && !string.IsNullOrEmpty(newIp))
+        {
+            changeType = InterfaceChangeType.IpAdded;
+        }
+        else if (!string.IsNullOrEmpty(previousIp) && string.IsNullOrEmpty(newIp))
+        {
+            changeType = InterfaceChangeType.IpRemoved;
+        }
+        else
+        {
+            changeType = InterfaceChangeType.IpChanged;
+        }
+
+        var change = new NetworkInterfaceChange
         {
             InterfaceName = interfaceName,
-            ChangeType = NetworkChangeType.IpChanged,
+            ChangeType = changeType,
             PreviousIpAddress = previousIp,
             NewIpAddress = newIp,
             OccurredAt = DateTime.UtcNow
@@ -823,10 +844,10 @@ public sealed class NetworkStateMonitorService : IDisposable
 
     private async Task NotifyGatewayChangedAsync(string interfaceName, string? previousGateway, string? newGateway, CancellationToken cancellationToken)
     {
-        var change = new InterfaceStateChange
+        var change = new NetworkInterfaceChange
         {
             InterfaceName = interfaceName,
-            ChangeType = NetworkChangeType.GatewayChanged,
+            ChangeType = InterfaceChangeType.GatewayChanged,
             PreviousGateway = previousGateway,
             NewGateway = newGateway,
             OccurredAt = DateTime.UtcNow
@@ -843,6 +864,30 @@ public sealed class NetworkStateMonitorService : IDisposable
             try
             {
                 await listener.OnInterfaceStateChangedAsync(change, cancellationToken);
+            }
+            catch
+            {
+                // Don't let listener errors stop notifications
+            }
+        }
+    }
+
+    /// <summary>
+    /// Notifies listeners of a gateway health change. Called by GatewaySyncService.
+    /// </summary>
+    public async Task NotifyGatewayHealthChangedAsync(NetworkGatewayChange change, CancellationToken cancellationToken)
+    {
+        INetworkStateListener[] listeners;
+        lock (_listenersLock)
+        {
+            listeners = _listeners.ToArray();
+        }
+
+        foreach (var listener in listeners)
+        {
+            try
+            {
+                await listener.OnGatewayHealthChangedAsync(change, cancellationToken);
             }
             catch
             {
@@ -1072,30 +1117,3 @@ public sealed class NetworkStateMonitorService : IDisposable
     }
 }
 
-// ========================================================================
-// Listener interfaces
-// ========================================================================
-
-/// <summary>
-/// Interface for components that want to be notified of network state changes.
-/// </summary>
-public interface INetworkStateListener
-{
-    Task OnInterfaceStateChangedAsync(InterfaceStateChange change, CancellationToken cancellationToken);
-}
-
-/// <summary>
-/// Represents a network interface state change event.
-/// </summary>
-public sealed class InterfaceStateChange
-{
-    public string InterfaceName { get; set; } = string.Empty;
-    public NetworkChangeType ChangeType { get; set; }
-    public LinkState? PreviousLinkState { get; set; }
-    public LinkState? NewLinkState { get; set; }
-    public string? PreviousIpAddress { get; set; }
-    public string? NewIpAddress { get; set; }
-    public string? PreviousGateway { get; set; }
-    public string? NewGateway { get; set; }
-    public DateTime OccurredAt { get; set; }
-}
