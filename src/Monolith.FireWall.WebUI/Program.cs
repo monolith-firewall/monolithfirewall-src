@@ -122,13 +122,6 @@ if (sqliteForDI != null)
     builder.Services.AddSingleton<Monolith.FireWall.WebUI.Features.Users.Services.UserGroupService>();
     builder.Services.AddSingleton<Monolith.FireWall.WebUI.Features.SystemLogs.SystemLogsManager>();
     
-    // Firewall services
-    builder.Services.AddSingleton<AliasesManager>();
-    builder.Services.AddSingleton<NatManager>();
-    builder.Services.AddSingleton<VirtualIpsManager>();
-    builder.Services.AddSingleton<TrafficShaperManager>();
-    builder.Services.AddSingleton<SchedulesManager>();
-    builder.Services.AddSingleton<FirewallService>();
 }
 
 // Register custom application model provider to filter out controllers from package assemblies
@@ -703,114 +696,56 @@ app.MapRazorPages();
 app.MapHub<Monolith.FireWall.WebUI.Hubs.PendingChangesHub>("/hubs/pending-changes");
 app.MapHub<Monolith.FireWall.WebUI.Hubs.SystemEventsHub>("/hubs/system-events");
 
-// Login endpoint
-app.MapPost("/api/auth/login", async (HttpContext context, UserService userService, UserGroupService userGroupService) =>
+// Login endpoint - validates via Core, session management stays in WebUI
+app.MapPost("/api/auth/login", async (HttpContext context, Monolith.FireWall.WebUI.Services.CoreApiClient coreClient) =>
 {
-    var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    var username = "";
-    
     try
     {
         var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
         var loginData = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
 
-        username = loginData.GetProperty("username").GetString() ?? "";
-        var password = loginData.GetProperty("password").GetString();
+        var username = loginData.GetProperty("username").GetString() ?? "";
+        var password = loginData.GetProperty("password").GetString() ?? "";
 
-        var user = await userService.ValidateLoginAsync(username, password ?? "");
-        
-        if (user == null)
+        // Validate credentials via Core
+        var coreRequest = new { action = "users.login", payload = new { username, password } };
+        var responseJson = await coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+        var response = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(responseJson);
+
+        var success = response.GetProperty("Success").GetBoolean();
+        if (!success)
         {
-            // Log failed login attempt
-            try
-            {
-                await Monolith.FireWall.Common.Services.LoggingManager.Instance.LogMonolithAsync(
-                    category: "Auth",
-                    level: "Warning",
-                    source: "Authentication",
-                    message: $"Failed login attempt for username: {username}",
-                    userId: null,
-                    ipAddress: ipAddress,
-                    details: new Dictionary<string, object> { { "username", username }, { "reason", "Invalid credentials" } }
-                );
-            }
-            catch (Exception logEx)
-            {
-                Console.WriteLine($"Failed to log failed login attempt: {logEx.Message}");
-            }
-            
-            return Results.Json(new { success = false, error = "Invalid credentials" });
+            var error = response.TryGetProperty("Error", out var errEl) ? errEl.GetString() : "Invalid credentials";
+            return Results.Json(new { success = false, error });
         }
 
-        // Get effective permissions from user groups
-        string[] effectivePermissions;
-        try
-        {
-            effectivePermissions = await userGroupService.GetUserEffectivePermissionsAsync(user.Id);
-        }
-        catch (Exception permEx)
-        {
-            // If getting permissions fails, use wildcard as fallback
-            Console.WriteLine($"Warning: Failed to get user permissions: {permEx.Message}");
-            effectivePermissions = new[] { "*" };
-        }
+        // Extract user data and permissions from Core response
+        var data = response.GetProperty("Data");
+        var user = data.GetProperty("User");
+        var userId = user.GetProperty("Id").GetInt32();
+        var userName = user.GetProperty("Username").GetString() ?? "";
+        var email = user.TryGetProperty("Email", out var emailEl) ? emailEl.GetString() ?? "" : "";
+        var roles = user.TryGetProperty("Roles", out var rolesEl) && rolesEl.ValueKind == System.Text.Json.JsonValueKind.Array
+            ? rolesEl.EnumerateArray().Select(r => r.GetString() ?? "").ToArray()
+            : Array.Empty<string>();
+        var permissions = data.TryGetProperty("Permissions", out var permsEl) && permsEl.ValueKind == System.Text.Json.JsonValueKind.Array
+            ? permsEl.EnumerateArray().Select(p => p.GetString() ?? "").ToArray()
+            : new[] { "*" };
 
-        // Create user context
-        var userContext = new Monolith.FireWall.Common.Models.UserContext(
-            user.Id,
-            user.Username,
-            user.GetRoles(),
-            effectivePermissions
-        );
-
-        // Set session
+        // Create user context and set session (stays in WebUI)
+        var userContext = new Monolith.FireWall.Common.Models.UserContext(userId, userName, roles, permissions);
         AuthenticationMiddleware.SetUserSession(context, userContext);
 
-        // Log successful login
-        try
-        {
-            await Monolith.FireWall.Common.Services.LoggingManager.Instance.LogMonolithAsync(
-                category: "Auth",
-                level: "Info",
-                source: "Authentication",
-                message: $"User '{user.Username}' logged in successfully",
-                userId: user.Id,
-                ipAddress: ipAddress,
-                details: new Dictionary<string, object> { { "username", user.Username }, { "roles", string.Join(", ", user.GetRoles()) } }
-            );
-        }
-        catch (Exception logEx)
-        {
-            // Log to console if logging fails, but don't fail the login
-            Console.WriteLine($"Failed to log authentication event: {logEx.Message}");
-        }
-
-        return Results.Json(new { 
-            success = true, 
-            data = new { 
+        return Results.Json(new {
+            success = true,
+            data = new {
                 authenticated = true,
-                user = new {
-                    id = user.Id,
-                    username = user.Username,
-                    email = user.Email,
-                    roles = user.GetRoles()
-                }
-            } 
+                user = new { id = userId, username = userName, email, roles }
+            }
         });
     }
     catch (Exception ex)
     {
-        // Log login error
-        await Monolith.FireWall.Common.Services.LoggingManager.Instance.LogMonolithAsync(
-            category: "Auth",
-            level: "Error",
-            source: "Authentication",
-            message: $"Login error for username: {username}",
-            userId: null,
-            ipAddress: ipAddress,
-            details: new Dictionary<string, object> { { "username", username }, { "error", ex.Message } }
-        );
-        
         return Results.Json(new { success = false, error = ex.Message });
     }
 });
@@ -849,49 +784,53 @@ app.MapPost("/api/auth/logout", async (HttpContext context) =>
 });
 
 // Get current user
-// Profile API routes
-app.MapPost("/api/profile/update", async (HttpContext context, UserService userService) =>
+// Profile API routes - proxy through Core
+app.MapPost("/api/profile/update", async (HttpContext context, Monolith.FireWall.WebUI.Services.CoreApiClient coreClient) =>
 {
     try
     {
-        // TODO: Implement profile update
-        var response = new
-        {
-            Success = true,
-            Data = (object?)null,
-            Error = (string?)null
-        };
-        return Results.Json(response);
+        var user = AuthenticationMiddleware.GetUser(context);
+        if (user == null) return Results.Json(new { success = false, error = "Not authenticated" }, statusCode: 401);
+
+        var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
+        var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
+        // Merge userId into payload
+        var payloadDict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(body) ?? new();
+        payloadDict["id"] = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(user.UserId.ToString());
+        var coreRequest = new { action = "users.update", payload = payloadDict };
+        var responseJson = await coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+        return Results.Text(responseJson, "application/json");
     }
     catch (Exception ex)
     {
-        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+        return Results.Json(new { success = false, error = ex.Message }, statusCode: 500);
     }
 });
 
-app.MapPost("/api/profile/change-password", async (HttpContext context, UserService userService) =>
+app.MapPost("/api/profile/change-password", async (HttpContext context, Monolith.FireWall.WebUI.Services.CoreApiClient coreClient) =>
 {
     try
     {
-        using var reader = new StreamReader(context.Request.Body);
-        var body = await reader.ReadToEndAsync();
-        // TODO: Implement password change
-        var response = new
-        {
-            Success = true,
-            Data = (object?)null,
-            Error = (string?)null
-        };
-        return Results.Json(response);
+        var user = AuthenticationMiddleware.GetUser(context);
+        if (user == null) return Results.Json(new { success = false, error = "Not authenticated" }, statusCode: 401);
+
+        var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
+        var bodyEl = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
+        var currentPassword = bodyEl.TryGetProperty("currentPassword", out var cpEl) ? cpEl.GetString() ?? "" : "";
+        var newPassword = bodyEl.TryGetProperty("newPassword", out var npEl) ? npEl.GetString() ?? "" : "";
+
+        var coreRequest = new { action = "users.password.change", payload = new { userId = user.UserId, currentPassword, newPassword } };
+        var responseJson = await coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+        return Results.Text(responseJson, "application/json");
     }
     catch (Exception ex)
     {
-        return Results.Json(new { Success = false, Data = (object?)null, Error = ex.Message }, statusCode: 500);
+        return Results.Json(new { success = false, error = ex.Message }, statusCode: 500);
     }
 });
 
-// Theme endpoints
-app.MapGet("/api/users/profile/theme", async (HttpContext httpContext, UserService userService) =>
+// Theme endpoints - proxy through Core
+app.MapGet("/api/users/profile/theme", async (HttpContext httpContext, Monolith.FireWall.WebUI.Services.CoreApiClient coreClient) =>
 {
     try
     {
@@ -901,18 +840,17 @@ app.MapGet("/api/users/profile/theme", async (HttpContext httpContext, UserServi
             return Results.Json(new { success = false, error = "Not authenticated" }, statusCode: 401);
         }
 
-        var theme = await userService.GetUserThemeAsync(user.UserId);
-        return Results.Json(new { success = true, data = new { theme } });
+        var coreRequest = new { action = "users.theme.get", payload = new { userId = user.UserId } };
+        var responseJson = await coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+        return Results.Text(responseJson, "application/json");
     }
     catch (Exception ex)
     {
-        var logger = httpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Error getting user theme");
         return Results.Json(new { success = false, error = ex.Message }, statusCode: 500);
     }
 });
 
-app.MapPut("/api/users/profile/theme", async (HttpContext httpContext, UserService userService, ILogger<Program> logger) =>
+app.MapPut("/api/users/profile/theme", async (HttpContext httpContext, Monolith.FireWall.WebUI.Services.CoreApiClient coreClient) =>
 {
     try
     {
@@ -924,7 +862,7 @@ app.MapPut("/api/users/profile/theme", async (HttpContext httpContext, UserServi
 
         var body = await new StreamReader(httpContext.Request.Body).ReadToEndAsync();
         var request = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
-        
+
         if (!request.TryGetProperty("theme", out var themeEl))
         {
             return Results.Json(new { success = false, error = "Theme is required" }, statusCode: 400);
@@ -936,27 +874,17 @@ app.MapPut("/api/users/profile/theme", async (HttpContext httpContext, UserServi
             return Results.Json(new { success = false, error = "Theme cannot be empty" }, statusCode: 400);
         }
 
-        var updated = await userService.UpdateUserThemeAsync(user.UserId, theme);
-        if (!updated)
-        {
-            return Results.Json(new { success = false, error = "Failed to update theme" }, statusCode: 500);
-        }
-
-        logger.LogInformation("User {UserId} theme updated to {Theme}", user.UserId, theme);
-        return Results.Json(new { success = true, data = new { theme } });
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.Json(new { success = false, error = ex.Message }, statusCode: 400);
+        var coreRequest = new { action = "users.theme.update", payload = new { userId = user.UserId, theme } };
+        var responseJson = await coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+        return Results.Text(responseJson, "application/json");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Error updating user theme");
         return Results.Json(new { success = false, error = ex.Message }, statusCode: 500);
     }
 });
 
-app.MapGet("/api/user/current", async (HttpContext httpContext, UserService userService) =>
+app.MapGet("/api/user/current", async (HttpContext httpContext, Monolith.FireWall.WebUI.Services.CoreApiClient coreClient) =>
 {
     var user = AuthenticationMiddleware.GetUser(httpContext);
     if (user == null)
@@ -965,9 +893,20 @@ app.MapGet("/api/user/current", async (HttpContext httpContext, UserService user
         return Results.Json(new { success = false, authenticated = false });
     }
 
-    // Get full user entity to include theme
-    var userEntity = await userService.GetUserByIdAsync(user.UserId);
-    
+    // Get theme from Core
+    var theme = "dark";
+    try
+    {
+        var coreRequest = new { action = "users.theme.get", payload = new { userId = user.UserId } };
+        var responseJson = await coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+        var response = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(responseJson);
+        if (response.GetProperty("Success").GetBoolean() && response.TryGetProperty("Data", out var data))
+        {
+            theme = data.GetProperty("theme").GetString() ?? "dark";
+        }
+    }
+    catch { /* fallback to dark */ }
+
     return Results.Json(new {
         success = true,
         authenticated = true,
@@ -976,7 +915,7 @@ app.MapGet("/api/user/current", async (HttpContext httpContext, UserService user
             username = user.Username,
             roles = user.Roles,
             permissions = user.Permissions,
-            theme = userEntity?.Theme ?? "dark"
+            theme
         }
     });
 });

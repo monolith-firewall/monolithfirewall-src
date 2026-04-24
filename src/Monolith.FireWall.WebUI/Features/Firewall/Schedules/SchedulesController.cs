@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Monolith.FireWall.WebUI.Features.Firewall;
 using Monolith.FireWall.WebUI.Features.Firewall.Schedules;
 
 namespace Monolith.FireWall.WebUI.Features.Firewall.Schedules;
@@ -8,12 +7,12 @@ namespace Monolith.FireWall.WebUI.Features.Firewall.Schedules;
 [Route("api/firewall/schedules")]
 public class SchedulesController : ControllerBase
 {
-    private readonly FirewallService _firewallService;
+    private readonly Services.CoreApiClient _coreClient;
     private readonly ILogger<SchedulesController> _logger;
 
-    public SchedulesController(FirewallService firewallService, ILogger<SchedulesController> logger)
+    public SchedulesController(Services.CoreApiClient coreClient, ILogger<SchedulesController> logger)
     {
-        _firewallService = firewallService;
+        _coreClient = coreClient;
         _logger = logger;
     }
 
@@ -22,22 +21,9 @@ public class SchedulesController : ControllerBase
     {
         try
         {
-            var schedules = await _firewallService.Schedules.ListSchedulesAsync();
-            var totalCount = schedules.Count;
-            var paginated = schedules.Skip(offset).Take(limit).ToList();
-            
-            return Ok(new
-            {
-                success = true,
-                data = new
-                {
-                    items = paginated,
-                    totalCount,
-                    limit,
-                    offset
-                },
-                error = (string?)null
-            });
+            var coreRequest = new { action = "firewall.schedules.list" };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -51,11 +37,13 @@ public class SchedulesController : ControllerBase
     {
         try
         {
-            var schedule = await _firewallService.Schedules.GetScheduleAsync(id);
-            if (schedule == null)
-                return NotFound(new { success = false, data = (object?)null, error = "Schedule not found" });
-
-            return Ok(new { success = true, data = schedule, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.schedules.get",
+                payload = new { id }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -69,14 +57,13 @@ public class SchedulesController : ControllerBase
     {
         try
         {
-            var schedule = await _firewallService.Schedules.GetScheduleAsync(id);
-            if (schedule == null)
-                return NotFound(new { success = false, data = (object?)null, error = "Schedule not found" });
-
-            // TODO: Implement actual schedule active check based on current time
-            var isActive = false; // Placeholder
-            
-            return Ok(new { success = true, data = new { isActive }, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.schedules.active",
+                payload = new { id }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -90,11 +77,19 @@ public class SchedulesController : ControllerBase
     {
         try
         {
-            var created = await _firewallService.Schedules.CreateScheduleAsync(schedule);
-            _firewallService.MarkPendingChanges();
-            
-            return CreatedAtAction(nameof(Get), new { id = created.Id }, 
-                new { success = true, data = created, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.schedules.create",
+                payload = new
+                {
+                    name = schedule.Name,
+                    description = schedule.Description,
+                    timeRanges = schedule.TimeRanges,
+                    enabled = schedule.Enabled
+                }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -108,10 +103,20 @@ public class SchedulesController : ControllerBase
     {
         try
         {
-            var updated = await _firewallService.Schedules.UpdateScheduleAsync(id, schedule);
-            _firewallService.MarkPendingChanges();
-            
-            return Ok(new { success = true, data = updated, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.schedules.update",
+                payload = new
+                {
+                    id,
+                    name = schedule.Name,
+                    description = schedule.Description,
+                    timeRanges = schedule.TimeRanges,
+                    enabled = schedule.Enabled
+                }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -125,12 +130,13 @@ public class SchedulesController : ControllerBase
     {
         try
         {
-            var success = await _firewallService.Schedules.DeleteScheduleAsync(id);
-            if (!success)
-                return NotFound(new { success = false, data = (object?)null, error = "Schedule not found" });
-
-            _firewallService.MarkPendingChanges();
-            return Ok(new { success = true, data = (object?)null, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.schedules.delete",
+                payload = new { id }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {

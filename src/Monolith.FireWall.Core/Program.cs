@@ -131,6 +131,13 @@ class Program
                 await sqlite.TableSyncService.SyncTableAsync<GatewayHealthEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<GatewayMonitorConfigEntity>();
                 await sqlite.TableSyncService.SyncTableAsync<FirewallDynamicAliasEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<VirtualIpEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<TrafficShaperRuleEntity>();
+
+                // User management tables
+                await sqlite.TableSyncService.SyncTableAsync<UserEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<UserGroupEntity>();
+                await sqlite.TableSyncService.SyncTableAsync<UserGroupMemberEntity>();
 
                 // Sync DHCP tables (from monolith-network package)
                 // Note: These are in a package, but we sync them here to ensure tables exist
@@ -300,6 +307,19 @@ class Program
         // Create Backup manager
         var backupManager = new Services.BackupManager(logger, commandRunner);
 
+        // Create User manager and initialize default admin
+        var userManager = new Services.UserManager();
+        try
+        {
+            await userManager.InitializeAsync();
+            Console.WriteLine("  ✓ User manager initialized");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  ⚠ User manager initialization failed: {ex.Message}");
+            coreLogger.Warning($"User manager initialization failed: {ex.Message}");
+        }
+
         // Create remaining network operational state stores (operationalStateStore, dynamicAliasStore, and gatewayHealthStore created earlier)
         var networkStateChangeStore = new NetworkStateChangeStore();
         var gatewayGroupStore = new GatewayGroupStore();
@@ -380,6 +400,7 @@ class Program
             gatewayHealthMonitor,
             operationalStateStore,
             gatewayHealthStore,
+            userManager,
             config.SocketPath,
             config.MaxConcurrentConnections
         );

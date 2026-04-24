@@ -1,5 +1,6 @@
 using System.Text;
 using Monolith.FireWall.Common.Services;
+using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Platform;
 using Monolith.FireWall.Platform.Models;
 
@@ -480,17 +481,3 @@ public sealed class TrafficShaperStatus
     public string Details { get; set; } = string.Empty;
 }
 
-/// <summary>
-/// Traffic shaper rule view model
-/// </summary>
-public sealed class TrafficShaperRuleView
-{
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string Interface { get; set; } = string.Empty;
-    public int BandwidthUp { get; set; } // Kbps
-    public int BandwidthDown { get; set; } // Kbps
-    public string Scheduler { get; set; } = "fq_codel";
-    public string? Description { get; set; }
-    public bool Enabled { get; set; } = true;
-}

@@ -1,5 +1,8 @@
+using System.Text.Json;
 using CodeLogic;
 using CL.SQLite.Services;
+using Monolith.FireWall.Common.Services;
+using Monolith.FireWall.Core.Models;
 
 namespace Monolith.FireWall.Core.Services.Firewall;
 
@@ -8,12 +11,175 @@ namespace Monolith.FireWall.Core.Services.Firewall;
 /// </summary>
 public sealed class FirewallScheduleManager
 {
+    private readonly LoggingManager _loggingManager;
     private CL.SQLite.SQLiteLibrary? _sqlite;
     private Repository<FirewallScheduleEntity>? _repository;
 
     public FirewallScheduleManager()
     {
+        _loggingManager = LoggingManager.Instance;
         Initialize();
+    }
+
+    /// <summary>
+    /// List all schedules
+    /// </summary>
+    public async Task<List<FirewallScheduleView>> ListSchedulesAsync()
+    {
+        if (_repository == null)
+        {
+            return new List<FirewallScheduleView>();
+        }
+
+        var result = await _repository.GetAllAsync();
+        var entities = result.IsSuccess && result.Data != null
+            ? result.Data.ToList()
+            : new List<FirewallScheduleEntity>();
+
+        return entities
+            .Select(EntityToView)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Get a schedule view by ID
+    /// </summary>
+    public async Task<FirewallScheduleView?> GetScheduleViewAsync(int id)
+    {
+        var entity = await GetScheduleByIdAsync(id);
+        return entity == null ? null : EntityToView(entity);
+    }
+
+    /// <summary>
+    /// Create a new schedule
+    /// </summary>
+    public async Task<(bool Success, string? Error, FirewallScheduleView? Schedule)> CreateScheduleAsync(FirewallScheduleRequest request)
+    {
+        if (_repository == null)
+        {
+            return (false, "Schedule storage not available", null);
+        }
+
+        var validation = ValidateRequest(request);
+        if (!validation.Success)
+        {
+            return (false, validation.Error, null);
+        }
+
+        var now = DateTime.UtcNow;
+        var timeRangesJson = SerializeTimeRanges(request.TimeRanges);
+
+        var entity = new FirewallScheduleEntity
+        {
+            Name = request.Name!.Trim(),
+            Description = request.Description?.Trim() ?? string.Empty,
+            TimeRanges = timeRangesJson,
+            Enabled = request.Enabled,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        var insert = await _repository.InsertAsync(entity);
+        if (!insert.IsSuccess || insert.Data <= 0)
+        {
+            return (false, "Failed to create schedule", null);
+        }
+
+        entity.Id = (int)insert.Data;
+
+        await _loggingManager.LogSecurityAsync(
+            "Firewall",
+            "Info",
+            "FirewallSchedule",
+            $"Created schedule '{entity.Name}'",
+            details: new Dictionary<string, object>
+            {
+                ["scheduleId"] = entity.Id
+            });
+
+        return (true, null, EntityToView(entity));
+    }
+
+    /// <summary>
+    /// Update an existing schedule
+    /// </summary>
+    public async Task<(bool Success, string? Error, FirewallScheduleView? Schedule)> UpdateScheduleAsync(int id, FirewallScheduleRequest request)
+    {
+        if (_repository == null)
+        {
+            return (false, "Schedule storage not available", null);
+        }
+
+        var entity = await GetScheduleByIdAsync(id);
+        if (entity == null)
+        {
+            return (false, "Schedule not found", null);
+        }
+
+        var validation = ValidateRequest(request);
+        if (!validation.Success)
+        {
+            return (false, validation.Error, null);
+        }
+
+        entity.Name = request.Name!.Trim();
+        entity.Description = request.Description?.Trim() ?? string.Empty;
+        entity.TimeRanges = SerializeTimeRanges(request.TimeRanges);
+        entity.Enabled = request.Enabled;
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        var update = await _repository.UpdateAsync(entity);
+        if (!update.IsSuccess)
+        {
+            return (false, "Failed to update schedule", null);
+        }
+
+        await _loggingManager.LogSecurityAsync(
+            "Firewall",
+            "Info",
+            "FirewallSchedule",
+            $"Updated schedule '{entity.Name}'",
+            details: new Dictionary<string, object>
+            {
+                ["scheduleId"] = entity.Id
+            });
+
+        return (true, null, EntityToView(entity));
+    }
+
+    /// <summary>
+    /// Delete a schedule
+    /// </summary>
+    public async Task<bool> DeleteScheduleAsync(int id)
+    {
+        if (_repository == null)
+        {
+            return false;
+        }
+
+        var entity = await GetScheduleByIdAsync(id);
+        if (entity == null)
+        {
+            return true;
+        }
+
+        var delete = await _repository.DeleteAsync(id);
+        if (!delete.IsSuccess)
+        {
+            return false;
+        }
+
+        await _loggingManager.LogSecurityAsync(
+            "Firewall",
+            "Info",
+            "FirewallSchedule",
+            $"Deleted schedule '{entity.Name}'",
+            details: new Dictionary<string, object>
+            {
+                ["scheduleId"] = entity.Id
+            });
+
+        return true;
     }
 
     /// <summary>
@@ -58,6 +224,95 @@ public sealed class FirewallScheduleManager
         return result.Data.FirstOrDefault(s => s.Id == scheduleId);
     }
 
+    private static FirewallScheduleView EntityToView(FirewallScheduleEntity entity)
+    {
+        return new FirewallScheduleView
+        {
+            Id = entity.Id,
+            Name = entity.Name,
+            Description = entity.Description,
+            TimeRanges = DeserializeTimeRanges(entity.TimeRanges),
+            Enabled = entity.Enabled,
+            CreatedAt = entity.CreatedAt,
+            UpdatedAt = entity.UpdatedAt
+        };
+    }
+
+    private static List<FirewallScheduleTimeRange> DeserializeTimeRanges(string? timeRangesJson)
+    {
+        if (string.IsNullOrWhiteSpace(timeRangesJson))
+        {
+            return new List<FirewallScheduleTimeRange>();
+        }
+
+        try
+        {
+            // Try deserializing as FirewallScheduleTimeRange first
+            var ranges = JsonSerializer.Deserialize<List<FirewallScheduleTimeRange>>(timeRangesJson);
+            return ranges ?? new List<FirewallScheduleTimeRange>();
+        }
+        catch
+        {
+            return new List<FirewallScheduleTimeRange>();
+        }
+    }
+
+    private static string SerializeTimeRanges(List<FirewallScheduleTimeRange>? timeRanges)
+    {
+        if (timeRanges == null || timeRanges.Count == 0)
+        {
+            return "[]";
+        }
+
+        return JsonSerializer.Serialize(timeRanges);
+    }
+
+    private (bool Success, string? Error) ValidateRequest(FirewallScheduleRequest? request)
+    {
+        if (request == null)
+        {
+            return (false, "Request is required");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return (false, "Name is required");
+        }
+
+        if (request.TimeRanges != null)
+        {
+            foreach (var range in request.TimeRanges)
+            {
+                if (string.IsNullOrWhiteSpace(range.Day))
+                {
+                    return (false, "Day is required for each time range");
+                }
+
+                if (string.IsNullOrWhiteSpace(range.StartTime))
+                {
+                    return (false, "Start time is required for each time range");
+                }
+
+                if (string.IsNullOrWhiteSpace(range.EndTime))
+                {
+                    return (false, "End time is required for each time range");
+                }
+
+                if (!TimeSpan.TryParse(range.StartTime, out _))
+                {
+                    return (false, $"Invalid start time format: {range.StartTime}");
+                }
+
+                if (!TimeSpan.TryParse(range.EndTime, out _))
+                {
+                    return (false, $"Invalid end time format: {range.EndTime}");
+                }
+            }
+        }
+
+        return (true, null);
+    }
+
     /// <summary>
     /// Check if a given time falls within the schedule's time ranges
     /// </summary>
@@ -71,7 +326,7 @@ public sealed class FirewallScheduleManager
 
         try
         {
-            var ranges = System.Text.Json.JsonSerializer.Deserialize<List<TimeRange>>(schedule.TimeRanges);
+            var ranges = JsonSerializer.Deserialize<List<TimeRange>>(schedule.TimeRanges);
             if (ranges == null || ranges.Count == 0)
             {
                 // No time ranges - always active

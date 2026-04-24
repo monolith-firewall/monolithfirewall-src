@@ -610,3 +610,99 @@ public sealed class RuleConflict
     public string Message { get; set; } = string.Empty;
     public string? Resolution { get; set; }
 }
+
+// Virtual IP Models
+public sealed class VirtualIpView
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Interface { get; set; } = string.Empty;
+    public string Address { get; set; } = string.Empty;
+    public string Subnet { get; set; } = string.Empty;
+    public string Mode { get; set; } = string.Empty;
+    public int? VhId { get; set; }
+    public string? CarpPassword { get; set; }
+    public int? AdvSkew { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public bool Enabled { get; set; }
+}
+
+public class FirewallVirtualIpRequest
+{
+    public string? Name { get; set; }
+    public string? Type { get; set; }  // "ipalias", "carp", "proxyarp"
+    public string? Interface { get; set; }
+    public string? Address { get; set; }
+    public int SubnetBits { get; set; } = 24;
+    public string? Description { get; set; }
+    public bool Enabled { get; set; } = true;
+    public int? Vhid { get; set; }
+    public string? CarpPassword { get; set; }
+    public string? Advskew { get; set; }
+}
+
+public sealed class FirewallVirtualIpUpdateRequest : FirewallVirtualIpRequest
+{
+    public int Id { get; set; }
+}
+
+// Traffic Shaper Models
+public sealed class TrafficShaperRuleView
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Interface { get; set; } = string.Empty;
+    public int BandwidthUp { get; set; }
+    public int BandwidthDown { get; set; }
+    public string Scheduler { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public bool Enabled { get; set; }
+}
+
+public class FirewallTrafficShaperRequest
+{
+    public string? Name { get; set; }
+    public string? Interface { get; set; }
+    public int BandwidthUp { get; set; } = 1000;
+    public int BandwidthDown { get; set; } = 1000;
+    public string? Scheduler { get; set; }
+    public string? Description { get; set; }
+    public bool Enabled { get; set; } = true;
+}
+
+public sealed class FirewallTrafficShaperUpdateRequest : FirewallTrafficShaperRequest
+{
+    public int Id { get; set; }
+}
+
+// Schedule Models
+public sealed class FirewallScheduleView
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public List<FirewallScheduleTimeRange> TimeRanges { get; set; } = new();
+    public bool Enabled { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
+public sealed class FirewallScheduleTimeRange
+{
+    public string Day { get; set; } = string.Empty;
+    public string StartTime { get; set; } = string.Empty;
+    public string EndTime { get; set; } = string.Empty;
+}
+
+public class FirewallScheduleRequest
+{
+    public string? Name { get; set; }
+    public string? Description { get; set; }
+    public List<FirewallScheduleTimeRange>? TimeRanges { get; set; }
+    public bool Enabled { get; set; } = true;
+}
+
+public sealed class FirewallScheduleUpdateRequest : FirewallScheduleRequest
+{
+    public int Id { get; set; }
+}

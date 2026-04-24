@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Monolith.FireWall.WebUI.Features.Firewall;
 using Monolith.FireWall.WebUI.Features.Firewall.TrafficShaper;
 
 namespace Monolith.FireWall.WebUI.Features.Firewall.TrafficShaper;
@@ -8,12 +7,12 @@ namespace Monolith.FireWall.WebUI.Features.Firewall.TrafficShaper;
 [Route("api/firewall/traffic-shaper")]
 public class TrafficShaperController : ControllerBase
 {
-    private readonly FirewallService _firewallService;
+    private readonly Services.CoreApiClient _coreClient;
     private readonly ILogger<TrafficShaperController> _logger;
 
-    public TrafficShaperController(FirewallService firewallService, ILogger<TrafficShaperController> logger)
+    public TrafficShaperController(Services.CoreApiClient coreClient, ILogger<TrafficShaperController> logger)
     {
-        _firewallService = firewallService;
+        _coreClient = coreClient;
         _logger = logger;
     }
 
@@ -22,22 +21,9 @@ public class TrafficShaperController : ControllerBase
     {
         try
         {
-            var rules = await _firewallService.TrafficShaper.ListRulesAsync();
-            var totalCount = rules.Count;
-            var paginated = rules.Skip(offset).Take(limit).ToList();
-            
-            return Ok(new
-            {
-                success = true,
-                data = new
-                {
-                    items = paginated,
-                    totalCount,
-                    limit,
-                    offset
-                },
-                error = (string?)null
-            });
+            var coreRequest = new { action = "firewall.trafficshaper.list" };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -51,11 +37,13 @@ public class TrafficShaperController : ControllerBase
     {
         try
         {
-            var rule = await _firewallService.TrafficShaper.GetRuleAsync(id);
-            if (rule == null)
-                return NotFound(new { success = false, data = (object?)null, error = "Traffic shaper rule not found" });
-
-            return Ok(new { success = true, data = rule, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.trafficshaper.get",
+                payload = new { id }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -69,11 +57,22 @@ public class TrafficShaperController : ControllerBase
     {
         try
         {
-            var created = await _firewallService.TrafficShaper.CreateRuleAsync(rule);
-            _firewallService.MarkPendingChanges();
-            
-            return CreatedAtAction(nameof(Get), new { id = created.Id }, 
-                new { success = true, data = created, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.trafficshaper.create",
+                payload = new
+                {
+                    name = rule.Name,
+                    @interface = rule.Interface,
+                    bandwidthUp = rule.BandwidthUp,
+                    bandwidthDown = rule.BandwidthDown,
+                    scheduler = rule.Scheduler,
+                    description = rule.Description,
+                    enabled = rule.Enabled
+                }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -87,10 +86,23 @@ public class TrafficShaperController : ControllerBase
     {
         try
         {
-            var updated = await _firewallService.TrafficShaper.UpdateRuleAsync(id, rule);
-            _firewallService.MarkPendingChanges();
-            
-            return Ok(new { success = true, data = updated, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.trafficshaper.update",
+                payload = new
+                {
+                    id,
+                    name = rule.Name,
+                    @interface = rule.Interface,
+                    bandwidthUp = rule.BandwidthUp,
+                    bandwidthDown = rule.BandwidthDown,
+                    scheduler = rule.Scheduler,
+                    description = rule.Description,
+                    enabled = rule.Enabled
+                }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -104,12 +116,13 @@ public class TrafficShaperController : ControllerBase
     {
         try
         {
-            var success = await _firewallService.TrafficShaper.DeleteRuleAsync(id);
-            if (!success)
-                return NotFound(new { success = false, data = (object?)null, error = "Traffic shaper rule not found" });
-
-            _firewallService.MarkPendingChanges();
-            return Ok(new { success = true, data = (object?)null, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.trafficshaper.delete",
+                payload = new { id }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {

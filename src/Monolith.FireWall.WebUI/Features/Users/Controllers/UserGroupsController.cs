@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Monolith.FireWall.WebUI.Features.Users.Models;
-using Monolith.FireWall.WebUI.Features.Users.Services;
+using System.Text.Json;
 
 namespace Monolith.FireWall.WebUI.Features.Users.Controllers;
 
@@ -8,63 +7,39 @@ namespace Monolith.FireWall.WebUI.Features.Users.Controllers;
 [Route("api/usergroups")]
 public class UserGroupsController : ControllerBase
 {
-    private readonly UserGroupService _service;
+    private readonly Monolith.FireWall.WebUI.Services.CoreApiClient _coreClient;
     private readonly ILogger<UserGroupsController> _logger;
 
-    public UserGroupsController(UserGroupService service, ILogger<UserGroupsController> logger)
+    public UserGroupsController(Monolith.FireWall.WebUI.Services.CoreApiClient coreClient, ILogger<UserGroupsController> logger)
     {
-        _service = service;
+        _coreClient = coreClient;
         _logger = logger;
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<ActionResult> GetAll()
     {
         try
         {
-            var groups = await _service.GetAllGroupsAsync();
-            var groupsData = groups.Select(g => new
-            {
-                id = g.Id,
-                name = g.Name,
-                description = g.Description,
-                permissions = g.GetPermissions(),
-                enabled = g.Enabled,
-                createdAt = g.CreatedAt,
-                updatedAt = g.UpdatedAt
-            });
-            return Ok(new { success = true, data = groupsData });
+            var coreRequest = new { action = "users.groups.list" };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting all groups");
+            _logger.LogError(ex, "Error listing groups");
             return StatusCode(500, new { success = false, error = ex.Message });
         }
     }
 
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(int id)
+    public async Task<ActionResult> GetById(int id)
     {
         try
         {
-            var group = await _service.GetGroupByIdAsync(id);
-            if (group == null)
-                return NotFound(new { success = false, error = "Group not found" });
-
-            return Ok(new
-            {
-                success = true,
-                data = new
-                {
-                    id = group.Id,
-                    name = group.Name,
-                    description = group.Description,
-                    permissions = group.GetPermissions(),
-                    enabled = group.Enabled,
-                    createdAt = group.CreatedAt,
-                    updatedAt = group.UpdatedAt
-                }
-            });
+            var coreRequest = new { action = "users.groups.get", payload = new { id } };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -74,22 +49,13 @@ public class UserGroupsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] CreateGroupRequest request)
+    public async Task<ActionResult> Create([FromBody] JsonElement body)
     {
         try
         {
-            var id = await _service.CreateGroupAsync(
-                request.Name,
-                request.Description,
-                request.Permissions ?? Array.Empty<string>());
-
-            if (id > 0)
-            {
-                var group = await _service.GetGroupByIdAsync(id);
-                return CreatedAtAction(nameof(GetById), new { id }, new { success = true, data = group });
-            }
-
-            return BadRequest(new { success = false, error = "Failed to create group" });
+            var coreRequest = new { action = "users.groups.create", payload = body };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -99,23 +65,15 @@ public class UserGroupsController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    public async Task<IActionResult> Update(int id, [FromBody] UpdateGroupRequest request)
+    public async Task<ActionResult> Update(int id, [FromBody] JsonElement body)
     {
         try
         {
-            var success = await _service.UpdateGroupAsync(
-                id,
-                request.Description,
-                request.Permissions,
-                request.Enabled);
-
-            if (success)
-            {
-                var group = await _service.GetGroupByIdAsync(id);
-                return Ok(new { success = true, data = group });
-            }
-
-            return NotFound(new { success = false, error = "Group not found" });
+            var payloadDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body.GetRawText()) ?? new();
+            payloadDict["id"] = JsonSerializer.Deserialize<JsonElement>(id.ToString());
+            var coreRequest = new { action = "users.groups.update", payload = payloadDict };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -125,15 +83,13 @@ public class UserGroupsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<ActionResult> Delete(int id)
     {
         try
         {
-            var success = await _service.DeleteGroupAsync(id);
-            if (success)
-                return Ok(new { success = true });
-
-            return NotFound(new { success = false, error = "Group not found" });
+            var coreRequest = new { action = "users.groups.delete", payload = new { id } };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -143,12 +99,13 @@ public class UserGroupsController : ControllerBase
     }
 
     [HttpGet("{id}/users")]
-    public async Task<IActionResult> GetGroupUsers(int id)
+    public async Task<ActionResult> GetGroupUsers(int id)
     {
         try
         {
-            var users = await _service.GetGroupUsersAsync(id);
-            return Ok(new { success = true, data = users });
+            var coreRequest = new { action = "users.groups.users", payload = new { groupId = id } };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -158,15 +115,13 @@ public class UserGroupsController : ControllerBase
     }
 
     [HttpPost("{id}/users/{userId}")]
-    public async Task<IActionResult> AddUserToGroup(int id, int userId)
+    public async Task<ActionResult> AddUserToGroup(int id, int userId)
     {
         try
         {
-            var success = await _service.AddUserToGroupAsync(userId, id);
-            if (success)
-                return Ok(new { success = true });
-
-            return BadRequest(new { success = false, error = "Failed to add user to group" });
+            var coreRequest = new { action = "users.groups.adduser", payload = new { userId, groupId = id } };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -176,15 +131,13 @@ public class UserGroupsController : ControllerBase
     }
 
     [HttpDelete("{id}/users/{userId}")]
-    public async Task<IActionResult> RemoveUserFromGroup(int id, int userId)
+    public async Task<ActionResult> RemoveUserFromGroup(int id, int userId)
     {
         try
         {
-            var success = await _service.RemoveUserFromGroupAsync(userId, id);
-            if (success)
-                return Ok(new { success = true });
-
-            return BadRequest(new { success = false, error = "Failed to remove user from group" });
+            var coreRequest = new { action = "users.groups.removeuser", payload = new { userId, groupId = id } };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -194,12 +147,13 @@ public class UserGroupsController : ControllerBase
     }
 
     [HttpGet("user/{userId}/permissions")]
-    public async Task<IActionResult> GetUserEffectivePermissions(int userId)
+    public async Task<ActionResult> GetUserEffectivePermissions(int userId)
     {
         try
         {
-            var permissions = await _service.GetUserEffectivePermissionsAsync(userId);
-            return Ok(new { success = true, data = permissions });
+            var coreRequest = new { action = "users.permissions", payload = new { userId } };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -208,15 +162,3 @@ public class UserGroupsController : ControllerBase
         }
     }
 }
-
-public record CreateGroupRequest(
-    string Name,
-    string? Description,
-    string[]? Permissions
-);
-
-public record UpdateGroupRequest(
-    string? Description,
-    string[]? Permissions,
-    bool? Enabled
-);

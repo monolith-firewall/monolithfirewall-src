@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Monolith.FireWall.WebUI.Features.Firewall;
 using Monolith.FireWall.WebUI.Features.Firewall.VirtualIps;
 
 namespace Monolith.FireWall.WebUI.Features.Firewall.VirtualIps;
@@ -8,12 +7,12 @@ namespace Monolith.FireWall.WebUI.Features.Firewall.VirtualIps;
 [Route("api/firewall/virtual-ips")]
 public class VirtualIpsController : ControllerBase
 {
-    private readonly FirewallService _firewallService;
+    private readonly Services.CoreApiClient _coreClient;
     private readonly ILogger<VirtualIpsController> _logger;
 
-    public VirtualIpsController(FirewallService firewallService, ILogger<VirtualIpsController> logger)
+    public VirtualIpsController(Services.CoreApiClient coreClient, ILogger<VirtualIpsController> logger)
     {
-        _firewallService = firewallService;
+        _coreClient = coreClient;
         _logger = logger;
     }
 
@@ -22,22 +21,9 @@ public class VirtualIpsController : ControllerBase
     {
         try
         {
-            var virtualIps = await _firewallService.VirtualIps.ListVirtualIpsAsync();
-            var totalCount = virtualIps.Count;
-            var paginated = virtualIps.Skip(offset).Take(limit).ToList();
-            
-            return Ok(new
-            {
-                success = true,
-                data = new
-                {
-                    items = paginated,
-                    totalCount,
-                    limit,
-                    offset
-                },
-                error = (string?)null
-            });
+            var coreRequest = new { action = "firewall.virtualips.list" };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -51,11 +37,13 @@ public class VirtualIpsController : ControllerBase
     {
         try
         {
-            var vip = await _firewallService.VirtualIps.GetVirtualIpAsync(id);
-            if (vip == null)
-                return NotFound(new { success = false, data = (object?)null, error = "Virtual IP not found" });
-
-            return Ok(new { success = true, data = vip, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.virtualips.get",
+                payload = new { id }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -69,11 +57,25 @@ public class VirtualIpsController : ControllerBase
     {
         try
         {
-            var created = await _firewallService.VirtualIps.CreateVirtualIpAsync(vip);
-            _firewallService.MarkPendingChanges();
-            
-            return CreatedAtAction(nameof(Get), new { id = created.Id }, 
-                new { success = true, data = created, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.virtualips.create",
+                payload = new
+                {
+                    name = vip.Name,
+                    type = vip.Type,
+                    @interface = vip.Interface,
+                    address = vip.Address,
+                    subnetBits = vip.SubnetBits,
+                    description = vip.Description,
+                    enabled = vip.Enabled,
+                    vhid = vip.Vhid,
+                    carpPassword = vip.CarpPassword,
+                    advskew = vip.Advskew
+                }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -87,10 +89,26 @@ public class VirtualIpsController : ControllerBase
     {
         try
         {
-            var updated = await _firewallService.VirtualIps.UpdateVirtualIpAsync(id, vip);
-            _firewallService.MarkPendingChanges();
-            
-            return Ok(new { success = true, data = updated, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.virtualips.update",
+                payload = new
+                {
+                    id,
+                    name = vip.Name,
+                    type = vip.Type,
+                    @interface = vip.Interface,
+                    address = vip.Address,
+                    subnetBits = vip.SubnetBits,
+                    description = vip.Description,
+                    enabled = vip.Enabled,
+                    vhid = vip.Vhid,
+                    carpPassword = vip.CarpPassword,
+                    advskew = vip.Advskew
+                }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -104,12 +122,13 @@ public class VirtualIpsController : ControllerBase
     {
         try
         {
-            var success = await _firewallService.VirtualIps.DeleteVirtualIpAsync(id);
-            if (!success)
-                return NotFound(new { success = false, data = (object?)null, error = "Virtual IP not found" });
-
-            _firewallService.MarkPendingChanges();
-            return Ok(new { success = true, data = (object?)null, error = (string?)null });
+            var coreRequest = new
+            {
+                action = "firewall.virtualips.delete",
+                payload = new { id }
+            };
+            var responseJson = await _coreClient.SendRequestAsync(System.Text.Json.JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {

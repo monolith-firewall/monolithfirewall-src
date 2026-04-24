@@ -19,6 +19,9 @@ public sealed class FirewallManager
         InterfaceSettings = new FirewallInterfaceSettingsManager();
         Rules = new FirewallRulesManager(interfaceStore);
         States = new FirewallStatesManager(commandRunner, logger, interfaceStore);
+        VirtualIps = new FirewallVirtualIpManager();
+        TrafficShaper = new TrafficShaperManager();
+        Schedules = new FirewallScheduleManager();
         ApplyManager = new FirewallApplyManager(Aliases, Nat, NatSettings, Rules, Defaults, InterfaceSettings, interfaceStore, commandRunner, interfaceIntegration);
     }
 
@@ -29,5 +32,8 @@ public sealed class FirewallManager
     public FirewallInterfaceSettingsManager InterfaceSettings { get; }
     public FirewallRulesManager Rules { get; }
     public FirewallStatesManager States { get; }
+    public FirewallVirtualIpManager VirtualIps { get; }
+    public TrafficShaperManager TrafficShaper { get; }
+    public FirewallScheduleManager Schedules { get; }
     public FirewallApplyManager ApplyManager { get; }
 }

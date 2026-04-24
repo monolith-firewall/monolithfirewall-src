@@ -1,5 +1,6 @@
 using System.Text;
 using Monolith.FireWall.Common.Services;
+using Monolith.FireWall.Core.Models;
 using Monolith.FireWall.Core.Services.Platform;
 using Monolith.FireWall.Platform.Models;
 
@@ -415,19 +416,3 @@ public sealed class VirtualIpStatus
     public bool IsApplied { get; set; }
 }
 
-/// <summary>
-/// Virtual IP view model (matches WebUI model)
-/// </summary>
-public sealed class VirtualIpView
-{
-    public int Id { get; set; }
-    public string Interface { get; set; } = string.Empty;
-    public string Address { get; set; } = string.Empty;
-    public string? Subnet { get; set; }
-    public string Mode { get; set; } = "ipalias";
-    public int? VhId { get; set; }
-    public string? CarpPassword { get; set; }
-    public int? AdvSkew { get; set; }
-    public string? Description { get; set; }
-    public bool Enabled { get; set; } = true;
-}

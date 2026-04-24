@@ -41,6 +41,22 @@ public sealed class FirewallHandler : ICoreRequestHandler
         "firewall.interface_settings.update",
         "firewall.states.list",
         "firewall.states.kill",
+        "firewall.virtualips.list",
+        "firewall.virtualips.get",
+        "firewall.virtualips.create",
+        "firewall.virtualips.update",
+        "firewall.virtualips.delete",
+        "firewall.trafficshaper.list",
+        "firewall.trafficshaper.get",
+        "firewall.trafficshaper.create",
+        "firewall.trafficshaper.update",
+        "firewall.trafficshaper.delete",
+        "firewall.schedules.list",
+        "firewall.schedules.get",
+        "firewall.schedules.create",
+        "firewall.schedules.update",
+        "firewall.schedules.delete",
+        "firewall.schedules.active",
         "firewall.status",
         "firewall.config",
         "firewall.pending",
@@ -353,6 +369,162 @@ public sealed class FirewallHandler : ICoreRequestHandler
                 return updateSettingsResult
                     ? new ApiResponse(true, new { success = true }, null)
                     : new ApiResponse(false, null, "Failed to update interface settings");
+
+            // Virtual IPs
+            case "firewall.virtualips.list":
+                var virtualIps = await context.FirewallManager.VirtualIps.ListVirtualIpsAsync();
+                return new ApiResponse(true, virtualIps, null);
+
+            case "firewall.virtualips.get":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallIdRequest vipGetRequest, out var vipGetError))
+                {
+                    return new ApiResponse(false, null, vipGetError);
+                }
+
+                var vip = await context.FirewallManager.VirtualIps.GetVirtualIpAsync(vipGetRequest.Id);
+                return vip == null
+                    ? new ApiResponse(false, null, "Virtual IP not found")
+                    : new ApiResponse(true, vip, null);
+
+            case "firewall.virtualips.create":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallVirtualIpRequest vipCreateRequest, out var vipCreateError))
+                {
+                    return new ApiResponse(false, null, vipCreateError);
+                }
+
+                var vipCreate = await context.FirewallManager.VirtualIps.CreateVirtualIpAsync(vipCreateRequest);
+                return vipCreate.Success
+                    ? new ApiResponse(true, vipCreate.VirtualIp, null)
+                    : new ApiResponse(false, null, vipCreate.Error ?? "Failed to create virtual IP");
+
+            case "firewall.virtualips.update":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallVirtualIpUpdateRequest vipUpdateRequest, out var vipUpdateError))
+                {
+                    return new ApiResponse(false, null, vipUpdateError);
+                }
+
+                var vipUpdate = await context.FirewallManager.VirtualIps.UpdateVirtualIpAsync(vipUpdateRequest.Id, vipUpdateRequest);
+                return vipUpdate.Success
+                    ? new ApiResponse(true, vipUpdate.VirtualIp, null)
+                    : new ApiResponse(false, null, vipUpdate.Error ?? "Failed to update virtual IP");
+
+            case "firewall.virtualips.delete":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallIdRequest vipDeleteRequest, out var vipDeleteError))
+                {
+                    return new ApiResponse(false, null, vipDeleteError);
+                }
+
+                var vipDeleted = await context.FirewallManager.VirtualIps.DeleteVirtualIpAsync(vipDeleteRequest.Id);
+                return vipDeleted
+                    ? new ApiResponse(true, new { id = vipDeleteRequest.Id }, null)
+                    : new ApiResponse(false, null, "Failed to delete virtual IP");
+
+            // Traffic Shaper
+            case "firewall.trafficshaper.list":
+                var shaperRules = await context.FirewallManager.TrafficShaper.ListRulesAsync();
+                return new ApiResponse(true, shaperRules, null);
+
+            case "firewall.trafficshaper.get":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallIdRequest shaperGetRequest, out var shaperGetError))
+                {
+                    return new ApiResponse(false, null, shaperGetError);
+                }
+
+                var shaperRule = await context.FirewallManager.TrafficShaper.GetRuleAsync(shaperGetRequest.Id);
+                return shaperRule == null
+                    ? new ApiResponse(false, null, "Traffic shaper rule not found")
+                    : new ApiResponse(true, shaperRule, null);
+
+            case "firewall.trafficshaper.create":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallTrafficShaperRequest shaperCreateRequest, out var shaperCreateError))
+                {
+                    return new ApiResponse(false, null, shaperCreateError);
+                }
+
+                var shaperCreate = await context.FirewallManager.TrafficShaper.CreateRuleAsync(shaperCreateRequest);
+                return shaperCreate.Success
+                    ? new ApiResponse(true, shaperCreate.Rule, null)
+                    : new ApiResponse(false, null, shaperCreate.Error ?? "Failed to create traffic shaper rule");
+
+            case "firewall.trafficshaper.update":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallTrafficShaperUpdateRequest shaperUpdateRequest, out var shaperUpdateError))
+                {
+                    return new ApiResponse(false, null, shaperUpdateError);
+                }
+
+                var shaperUpdate = await context.FirewallManager.TrafficShaper.UpdateRuleAsync(shaperUpdateRequest.Id, shaperUpdateRequest);
+                return shaperUpdate.Success
+                    ? new ApiResponse(true, shaperUpdate.Rule, null)
+                    : new ApiResponse(false, null, shaperUpdate.Error ?? "Failed to update traffic shaper rule");
+
+            case "firewall.trafficshaper.delete":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallIdRequest shaperDeleteRequest, out var shaperDeleteError))
+                {
+                    return new ApiResponse(false, null, shaperDeleteError);
+                }
+
+                var shaperDeleted = await context.FirewallManager.TrafficShaper.DeleteRuleAsync(shaperDeleteRequest.Id);
+                return shaperDeleted
+                    ? new ApiResponse(true, new { id = shaperDeleteRequest.Id }, null)
+                    : new ApiResponse(false, null, "Failed to delete traffic shaper rule");
+
+            // Schedules
+            case "firewall.schedules.list":
+                var schedules = await context.FirewallManager.Schedules.ListSchedulesAsync();
+                return new ApiResponse(true, schedules, null);
+
+            case "firewall.schedules.get":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallIdRequest scheduleGetRequest, out var scheduleGetError))
+                {
+                    return new ApiResponse(false, null, scheduleGetError);
+                }
+
+                var schedule = await context.FirewallManager.Schedules.GetScheduleViewAsync(scheduleGetRequest.Id);
+                return schedule == null
+                    ? new ApiResponse(false, null, "Schedule not found")
+                    : new ApiResponse(true, schedule, null);
+
+            case "firewall.schedules.create":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallScheduleRequest scheduleCreateRequest, out var scheduleCreateError))
+                {
+                    return new ApiResponse(false, null, scheduleCreateError);
+                }
+
+                var scheduleCreate = await context.FirewallManager.Schedules.CreateScheduleAsync(scheduleCreateRequest);
+                return scheduleCreate.Success
+                    ? new ApiResponse(true, scheduleCreate.Schedule, null)
+                    : new ApiResponse(false, null, scheduleCreate.Error ?? "Failed to create schedule");
+
+            case "firewall.schedules.update":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallScheduleUpdateRequest scheduleUpdateRequest, out var scheduleUpdateError))
+                {
+                    return new ApiResponse(false, null, scheduleUpdateError);
+                }
+
+                var scheduleUpdate = await context.FirewallManager.Schedules.UpdateScheduleAsync(scheduleUpdateRequest.Id, scheduleUpdateRequest);
+                return scheduleUpdate.Success
+                    ? new ApiResponse(true, scheduleUpdate.Schedule, null)
+                    : new ApiResponse(false, null, scheduleUpdate.Error ?? "Failed to update schedule");
+
+            case "firewall.schedules.delete":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallIdRequest scheduleDeleteRequest, out var scheduleDeleteError))
+                {
+                    return new ApiResponse(false, null, scheduleDeleteError);
+                }
+
+                var scheduleDeleted = await context.FirewallManager.Schedules.DeleteScheduleAsync(scheduleDeleteRequest.Id);
+                return scheduleDeleted
+                    ? new ApiResponse(true, new { id = scheduleDeleteRequest.Id }, null)
+                    : new ApiResponse(false, null, "Failed to delete schedule");
+
+            case "firewall.schedules.active":
+                if (!CoreRequestParsing.TryGetPayload(request, out FirewallIdRequest scheduleActiveRequest, out var scheduleActiveError))
+                {
+                    return new ApiResponse(false, null, scheduleActiveError);
+                }
+
+                var isActive = await context.FirewallManager.Schedules.IsScheduleActiveAsync(scheduleActiveRequest.Id);
+                return new ApiResponse(true, new { id = scheduleActiveRequest.Id, active = isActive }, null);
 
             case "firewall.status":
                 var aliasCount = (await context.FirewallManager.Aliases.ListAliasesAsync()).Count;

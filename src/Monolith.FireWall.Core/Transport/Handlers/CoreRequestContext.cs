@@ -26,7 +26,8 @@ public sealed class CoreRequestContext
         GatewayGroupManager? gatewayGroupManager = null,
         GatewayHealthMonitor? gatewayHealthMonitor = null,
         InterfaceOperationalStateStore? operationalStateStore = null,
-        GatewayHealthStore? gatewayHealthStore = null)
+        GatewayHealthStore? gatewayHealthStore = null,
+        UserManager? userManager = null)
     {
         Logger = logger;
         ModuleRegistry = moduleRegistry;
@@ -47,6 +48,7 @@ public sealed class CoreRequestContext
         GatewayHealthMonitor = gatewayHealthMonitor;
         OperationalStateStore = operationalStateStore;
         GatewayHealthStore = gatewayHealthStore;
+        UserManager = userManager!;
     }
 
     public ILogger Logger { get; }
@@ -88,4 +90,9 @@ public sealed class CoreRequestContext
     /// Gateway health store for health status data.
     /// </summary>
     public GatewayHealthStore? GatewayHealthStore { get; }
+
+    /// <summary>
+    /// User manager for authentication, users, groups, and permissions.
+    /// </summary>
+    public UserManager UserManager { get; }
 }

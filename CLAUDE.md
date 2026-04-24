@@ -6,6 +6,7 @@
 - `src/Monolith.FireWall.WebUI/` - ASP.NET Razor Pages web interface
 - `src/Monolith.FireWall.Common/` - Shared models and interfaces
 - `src/Monolith.FireWall.Platform/` - Platform-specific implementations
+- `tmp/monolithfirewall-packages/` - Separate git repo (https://github.com/monolith-firewall/monolithfirewall-packages) cloned into tmp/. Contains add-on packages (monolith-diagnostics, monolith-network, monolith-vpn). This directory is gitignored and not part of the main repo.
 
 ## Installation Paths
 

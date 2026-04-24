@@ -35,6 +35,7 @@ public class UnixSocketListener
     private readonly GatewayHealthMonitor? _gatewayHealthMonitor;
     private readonly InterfaceOperationalStateStore? _operationalStateStore;
     private readonly GatewayHealthStore? _gatewayHealthStore;
+    private readonly Services.UserManager? _userManager;
     private readonly List<ICoreRequestHandler> _coreHandlers;
     private readonly string _socketPath;
     private readonly int _maxConcurrentConnections;
@@ -65,6 +66,7 @@ public class UnixSocketListener
         GatewayHealthMonitor? gatewayHealthMonitor = null,
         InterfaceOperationalStateStore? operationalStateStore = null,
         GatewayHealthStore? gatewayHealthStore = null,
+        Services.UserManager? userManager = null,
         string socketPath = "/var/lib/monolith-firewall/run/monolith-core.sock",
         int maxConcurrentConnections = 20)
     {
@@ -90,6 +92,7 @@ public class UnixSocketListener
         _gatewayHealthMonitor = gatewayHealthMonitor;
         _operationalStateStore = operationalStateStore;
         _gatewayHealthStore = gatewayHealthStore;
+        _userManager = userManager;
         _socketPath = socketPath;
         _maxConcurrentConnections = maxConcurrentConnections;
         _cts = new CancellationTokenSource();
@@ -118,7 +121,8 @@ public class UnixSocketListener
             new GatewayGroupHandler(),
             new GatewayHealthHandler(),
             new OperationalStateHandler(),
-            new ModuleServicesHandler()
+            new ModuleServicesHandler(),
+            new UsersHandler()
         };
     }
 
@@ -346,7 +350,8 @@ public class UnixSocketListener
                                 _gatewayGroupManager,
                                 _gatewayHealthMonitor,
                                 _operationalStateStore,
-                                _gatewayHealthStore);
+                                _gatewayHealthStore,
+                                _userManager);
                             response = await handler.HandleAsync(context, request, cancellationToken);
                         }
                         else

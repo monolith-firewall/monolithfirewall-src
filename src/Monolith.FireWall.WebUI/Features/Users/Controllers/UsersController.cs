@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Monolith.FireWall.WebUI.Features.Users.Models;
-using Monolith.FireWall.WebUI.Features.Users.Services;
+using System.Text.Json;
 
 namespace Monolith.FireWall.WebUI.Features.Users.Controllers;
 
@@ -8,141 +7,95 @@ namespace Monolith.FireWall.WebUI.Features.Users.Controllers;
 [Route("api/users")]
 public class UsersController : ControllerBase
 {
-    private readonly UserService _userService;
+    private readonly Monolith.FireWall.WebUI.Services.CoreApiClient _coreClient;
     private readonly ILogger<UsersController> _logger;
 
-    public UsersController(UserService userService, ILogger<UsersController> logger)
+    public UsersController(Monolith.FireWall.WebUI.Services.CoreApiClient coreClient, ILogger<UsersController> logger)
     {
-        _userService = userService;
+        _coreClient = coreClient;
         _logger = logger;
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<object>>> GetAllUsers()
-    {
-        var users = await _userService.GetAllUsersAsync();
-        var groupService = HttpContext.RequestServices.GetRequiredService<UserGroupService>();
-        
-        var usersWithDetails = new List<object>();
-        foreach (var user in users)
-        {
-            var groups = await groupService.GetUserGroupsAsync(user.Id);
-            usersWithDetails.Add(new
-            {
-                id = user.Id,
-                username = user.Username,
-                email = user.Email,
-                enabled = user.Enabled,
-                roles = user.GetRoles(),
-                groups = groups.Select(g => new { id = g.Id, name = g.Name }).ToList(),
-                createdAt = user.CreatedAt,
-                updatedAt = user.UpdatedAt
-            });
-        }
-        
-        return Ok(new { success = true, data = usersWithDetails });
-    }
-
-    [HttpGet("{id}")]
-    public async Task<ActionResult<UserEntity>> GetUser(int id)
-    {
-        var user = await _userService.GetUserByIdAsync(id);
-        if (user == null)
-            return NotFound(new { success = false, error = "User not found" });
-
-        // Get user's groups and effective permissions
-        var groupService = HttpContext.RequestServices.GetRequiredService<UserGroupService>();
-        var groups = await groupService.GetUserGroupsAsync(id);
-        var effectivePermissions = await groupService.GetUserEffectivePermissionsAsync(id);
-
-        return Ok(new
-        {
-            success = true,
-            data = new
-            {
-                id = user.Id,
-                username = user.Username,
-                email = user.Email,
-                enabled = user.Enabled,
-                roles = user.GetRoles(),
-                groups = groups.Select(g => new { id = g.Id, name = g.Name }),
-                permissions = effectivePermissions,
-                createdAt = user.CreatedAt,
-                updatedAt = user.UpdatedAt
-            }
-        });
-    }
-
-    [HttpPost]
-    public async Task<ActionResult<UserEntity>> CreateUser([FromBody] CreateUserRequest request)
+    public async Task<ActionResult> GetAllUsers()
     {
         try
         {
-            var user = await _userService.CreateUserAsync(
-                request.Username,
-                request.Email,
-                request.Password,
-                request.Roles ?? Array.Empty<string>()
-            );
-            return Ok(new { success = true, data = user });
+            var coreRequest = new { action = "users.list" };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing users");
+            return StatusCode(500, new { success = false, data = (object?)null, error = ex.Message });
+        }
+    }
+
+    [HttpGet("{id}")]
+    public async Task<ActionResult> GetUser(int id)
+    {
+        try
+        {
+            var coreRequest = new { action = "users.get", payload = new { id } };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting user {Id}", id);
+            return StatusCode(500, new { success = false, data = (object?)null, error = ex.Message });
+        }
+    }
+
+    [HttpPost]
+    public async Task<ActionResult> CreateUser([FromBody] JsonElement body)
+    {
+        try
+        {
+            var coreRequest = new { action = "users.create", payload = body };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating user");
-            return BadRequest(new { success = false, error = ex.Message });
+            return StatusCode(500, new { success = false, data = (object?)null, error = ex.Message });
         }
     }
 
     [HttpPut("{id}")]
-    public async Task<ActionResult<UserEntity>> UpdateUser(int id, [FromBody] UpdateUserRequest request)
+    public async Task<ActionResult> UpdateUser(int id, [FromBody] JsonElement body)
     {
         try
         {
-            var user = await _userService.GetUserByIdAsync(id);
-            if (user == null)
-                return NotFound(new { success = false, error = "User not found" });
-
-            user.Email = request.Email ?? user.Email;
-            if (request.Roles != null)
-                user.SetRoles(request.Roles);
-            user.Enabled = request.Enabled ?? user.Enabled;
-
-            if (!string.IsNullOrEmpty(request.Password))
-            {
-                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
-            }
-
-            await _userService.UpdateUserAsync(user);
-            return Ok(new { success = true, data = user });
+            // Merge id into the payload
+            var payloadDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body.GetRawText()) ?? new();
+            payloadDict["id"] = JsonSerializer.Deserialize<JsonElement>(id.ToString());
+            var coreRequest = new { action = "users.update", payload = payloadDict };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating user");
-            return BadRequest(new { success = false, error = ex.Message });
+            _logger.LogError(ex, "Error updating user {Id}", id);
+            return StatusCode(500, new { success = false, data = (object?)null, error = ex.Message });
         }
     }
 
     [HttpDelete("{id}")]
     public async Task<ActionResult> DeleteUser(int id)
     {
-        var deleted = await _userService.DeleteUserAsync(id);
-        if (!deleted)
-            return NotFound(new { success = false, error = "User not found" });
-
-        return Ok(new { success = true, data = new { deleted = true } });
+        try
+        {
+            var coreRequest = new { action = "users.delete", payload = new { id } };
+            var responseJson = await _coreClient.SendRequestAsync(JsonSerializer.Serialize(coreRequest));
+            return Content(responseJson, "application/json");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting user {Id}", id);
+            return StatusCode(500, new { success = false, data = (object?)null, error = ex.Message });
+        }
     }
 }
-
-public record CreateUserRequest(
-    string Username,
-    string Email,
-    string Password,
-    string[]? Roles
-);
-
-public record UpdateUserRequest(
-    string? Email,
-    string? Password,
-    string[]? Roles,
-    bool? Enabled
-);
