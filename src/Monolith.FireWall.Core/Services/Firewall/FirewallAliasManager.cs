@@ -29,8 +29,8 @@ public sealed class FirewallAliasManager
         }
 
         var aliasResult = await _aliasRepository.GetAllAsync();
-        var aliases = aliasResult.IsSuccess && aliasResult.Data != null
-            ? aliasResult.Data.ToList()
+        var aliases = aliasResult.IsSuccess && aliasResult.Value != null
+            ? aliasResult.Value.ToList()
             : new List<FirewallAliasEntity>();
 
         if (aliases.Count == 0)
@@ -39,8 +39,8 @@ public sealed class FirewallAliasManager
         }
 
         var entryResult = await _entryRepository.GetAllAsync();
-        var entries = entryResult.IsSuccess && entryResult.Data != null
-            ? entryResult.Data.ToList()
+        var entries = entryResult.IsSuccess && entryResult.Value != null
+            ? entryResult.Value.ToList()
             : new List<FirewallAliasEntryEntity>();
 
         var entryLookup = entries
@@ -72,18 +72,18 @@ public sealed class FirewallAliasManager
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<FirewallAliasEntity>();
+        var query = _sqlite.GetQueryBuilder<FirewallAliasEntity>();
         var result = await query
             .Where(a => a.Name == name)
             .FirstOrDefaultAsync();
 
-        if (!result.IsSuccess || result.Data == null)
+        if (!result.IsSuccess || result.Value == null)
         {
             return null;
         }
 
-        var entries = await GetAliasEntriesAsync(result.Data.Id);
-        return BuildView(result.Data, entries);
+        var entries = await GetAliasEntriesAsync(result.Value.Id);
+        return BuildView(result.Value, entries);
     }
 
     public async Task<(bool Success, string? Error, FirewallAliasView? Alias)> CreateAliasAsync(FirewallAliasRequest request)
@@ -117,12 +117,12 @@ public sealed class FirewallAliasManager
         };
 
         var insertResult = await _aliasRepository.InsertAsync(aliasEntity);
-        if (!insertResult.IsSuccess || insertResult.Data <= 0)
+        if (!insertResult.IsSuccess || insertResult.Value <= 0)
         {
             return (false, "Failed to create alias", null);
         }
 
-        aliasEntity.Id = (int)insertResult.Data;
+        aliasEntity.Id = (int)insertResult.Value;
         await UpsertEntriesAsync(aliasEntity.Id, request.Content!);
 
         await _loggingManager.LogSecurityAsync(
@@ -239,17 +239,17 @@ public sealed class FirewallAliasManager
             return new List<string>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<FirewallAliasEntity>();
+        var query = _sqlite.GetQueryBuilder<FirewallAliasEntity>();
         var result = await query
             .Where(a => a.Name == name)
             .FirstOrDefaultAsync();
 
-        if (!result.IsSuccess || result.Data == null)
+        if (!result.IsSuccess || result.Value == null)
         {
             return new List<string>();
         }
 
-        return await GetAliasEntriesAsync(result.Data.Id);
+        return await GetAliasEntriesAsync(result.Value.Id);
     }
 
     private static FirewallAliasView BuildView(FirewallAliasEntity entity, List<string> entries)
@@ -398,7 +398,7 @@ public sealed class FirewallAliasManager
         }
 
         var result = await _aliasRepository.GetByIdAsync(id);
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     private async Task<List<string>> GetAliasEntriesAsync(int aliasId)
@@ -408,17 +408,17 @@ public sealed class FirewallAliasManager
             return new List<string>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<FirewallAliasEntryEntity>();
+        var query = _sqlite.GetQueryBuilder<FirewallAliasEntryEntity>();
         var result = await query
             .Where(e => e.AliasId == aliasId)
-            .ExecuteAsync();
+            .ToListAsync();
 
-        if (!result.IsSuccess || result.Data == null)
+        if (!result.IsSuccess || result.Value == null)
         {
             return new List<string>();
         }
 
-        return result.Data
+        return result.Value
             .OrderBy(e => e.Id)
             .Select(e => e.Value)
             .ToList();
@@ -460,17 +460,17 @@ public sealed class FirewallAliasManager
             return;
         }
 
-        var query = _sqlite.CreateQueryBuilder<FirewallAliasEntryEntity>();
+        var query = _sqlite.GetQueryBuilder<FirewallAliasEntryEntity>();
         var entries = await query
             .Where(e => e.AliasId == aliasId)
-            .ExecuteAsync();
+            .ToListAsync();
 
-        if (!entries.IsSuccess || entries.Data == null)
+        if (!entries.IsSuccess || entries.Value == null)
         {
             return;
         }
 
-        foreach (var entry in entries.Data)
+        foreach (var entry in entries.Value)
         {
             await _entryRepository.DeleteAsync(entry.Id);
         }
@@ -480,15 +480,15 @@ public sealed class FirewallAliasManager
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _aliasRepository = sqlite.CreateRepository<FirewallAliasEntity>();
-            _entryRepository = sqlite.CreateRepository<FirewallAliasEntryEntity>();
+            _aliasRepository = sqlite.GetRepository<FirewallAliasEntity>();
+            _entryRepository = sqlite.GetRepository<FirewallAliasEntryEntity>();
         }
         catch
         {

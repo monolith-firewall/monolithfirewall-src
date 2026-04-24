@@ -1,4 +1,4 @@
-using CodeLogic.Localization;
+using CodeLogic.Core.Localization;
 
 namespace Monolith.FireWall.Common.Interfaces;
 

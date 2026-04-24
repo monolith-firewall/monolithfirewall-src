@@ -20,14 +20,14 @@ public sealed class FirewallInterfaceSettingsManager
     {
         if (_repository == null) return new List<FirewallInterfaceSettingsEntity>();
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess && result.Data != null ? result.Data.ToList() : new List<FirewallInterfaceSettingsEntity>();
+        return result.IsSuccess && result.Value != null ? result.Value.ToList() : new List<FirewallInterfaceSettingsEntity>();
     }
 
     public async Task<FirewallInterfaceSettingsEntity?> GetByInterfaceAsync(string interfaceName)
     {
         if (_repository == null) return null;
         var result = await _repository.GetAllAsync();
-        return result.Data?.FirstOrDefault(s => string.Equals(s.InterfaceName, interfaceName, StringComparison.OrdinalIgnoreCase));
+        return result.Value?.FirstOrDefault(s => string.Equals(s.InterfaceName, interfaceName, StringComparison.OrdinalIgnoreCase));
     }
 
     public async Task<bool> UpdateSettingsAsync(FirewallInterfaceSettingsEntity settings)
@@ -54,10 +54,10 @@ public sealed class FirewallInterfaceSettingsManager
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite != null)
             {
-                _repository = sqlite.CreateRepository<FirewallInterfaceSettingsEntity>();
+                _repository = sqlite.GetRepository<FirewallInterfaceSettingsEntity>();
             }
         }
         catch

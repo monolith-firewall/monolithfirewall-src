@@ -21,14 +21,14 @@ public class SetupStateStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<SetupStateEntity>();
+            _repository = sqlite.GetRepository<SetupStateEntity>();
         }
         catch
         {
@@ -47,12 +47,12 @@ public class SetupStateStore
 
         try
         {
-            var query = _sqlite.CreateQueryBuilder<SetupStateEntity>();
+            var query = _sqlite.GetQueryBuilder<SetupStateEntity>();
             var result = await query
                 .Where(s => s.Id == 1)
                 .FirstOrDefaultAsync();
 
-            return result.IsSuccess ? result.Data : null;
+            return result.IsSuccess ? result.Value : null;
         }
         catch
         {

@@ -27,9 +27,9 @@ public class UserService
             _logger.LogInformation("UserService initializing...");
 
             // Sync tables
-            await sqlite.TableSyncService!.SyncTableAsync<UserEntity>();
-            await sqlite.TableSyncService!.SyncTableAsync<Models.UserGroupEntity>();
-            await sqlite.TableSyncService!.SyncTableAsync<Models.UserGroupMemberEntity>();
+            await sqlite.TableSync!.SyncTableAsync<UserEntity>();
+            await sqlite.TableSync!.SyncTableAsync<Models.UserGroupEntity>();
+            await sqlite.TableSync!.SyncTableAsync<Models.UserGroupMemberEntity>();
             _logger.LogInformation("User tables synced");
 
             // Check for admin user
@@ -82,8 +82,8 @@ public class UserService
             
             // Ensure Administrators group exists and admin user is in it
             var groupRepo = new Repositories.UserGroupRepository(sqlite);
-            await sqlite.TableSyncService!.SyncTableAsync<Models.UserGroupEntity>();
-            await sqlite.TableSyncService!.SyncTableAsync<Models.UserGroupMemberEntity>();
+            await sqlite.TableSync!.SyncTableAsync<Models.UserGroupEntity>();
+            await sqlite.TableSync!.SyncTableAsync<Models.UserGroupMemberEntity>();
             
             // Check for "Administrators" group (preferred) or "Admin" group (legacy)
             var adminGroup = await groupRepo.GetByNameAsync("Administrators");

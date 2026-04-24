@@ -57,12 +57,12 @@ public sealed class FirewallNatSettingsManager
         if (entity.Id == 0)
         {
             var insert = await _repository.InsertAsync(entity);
-            if (!insert.IsSuccess || insert.Data <= 0)
+            if (!insert.IsSuccess || insert.Value <= 0)
             {
                 return (false, "Failed to save NAT settings", null);
             }
 
-            entity.Id = (int)insert.Data;
+            entity.Id = (int)insert.Value;
         }
         else
         {
@@ -99,12 +99,12 @@ public sealed class FirewallNatSettingsManager
         }
 
         var result = await _repository.GetAllAsync();
-        if (!result.IsSuccess || result.Data == null)
+        if (!result.IsSuccess || result.Value == null)
         {
             return null;
         }
 
-        return result.Data.FirstOrDefault();
+        return result.Value.FirstOrDefault();
     }
 
     private static string NormalizeReflectionMode(string? mode)
@@ -129,14 +129,14 @@ public sealed class FirewallNatSettingsManager
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<FirewallNatSettingsEntity>();
+            _repository = sqlite.GetRepository<FirewallNatSettingsEntity>();
         }
         catch
         {

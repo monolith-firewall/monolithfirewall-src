@@ -63,12 +63,12 @@ public sealed class FirewallDefaultsManager
         if (entity.Id == 0)
         {
             var insert = await _repository.InsertAsync(entity);
-            if (!insert.IsSuccess || insert.Data <= 0)
+            if (!insert.IsSuccess || insert.Value <= 0)
             {
                 return (false, "Failed to save defaults", null);
             }
 
-            entity.Id = (int)insert.Data;
+            entity.Id = (int)insert.Value;
         }
         else
         {
@@ -110,12 +110,12 @@ public sealed class FirewallDefaultsManager
         }
 
         var result = await _repository.GetAllAsync();
-        if (!result.IsSuccess || result.Data == null)
+        if (!result.IsSuccess || result.Value == null)
         {
             return null;
         }
 
-        return result.Data.FirstOrDefault();
+        return result.Value.FirstOrDefault();
     }
 
     private static string NormalizeAction(string? action)
@@ -139,13 +139,13 @@ public sealed class FirewallDefaultsManager
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
-            _repository = sqlite.CreateRepository<FirewallDefaultsEntity>();
+            _repository = sqlite.GetRepository<FirewallDefaultsEntity>();
         }
         catch
         {

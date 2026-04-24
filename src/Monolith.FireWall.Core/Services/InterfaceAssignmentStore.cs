@@ -22,8 +22,8 @@ public sealed class InterfaceAssignmentStore
         }
 
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<InterfaceAssignmentEntity>();
     }
 
@@ -34,12 +34,12 @@ public sealed class InterfaceAssignmentStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<InterfaceAssignmentEntity>();
+        var query = _sqlite.GetQueryBuilder<InterfaceAssignmentEntity>();
         var result = await query
             .Where(a => a.InterfaceName == iface)
             .FirstOrDefaultAsync();
 
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<bool> UpsertAsync(InterfaceAssignmentEntity assignment)
@@ -95,14 +95,14 @@ public sealed class InterfaceAssignmentStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<InterfaceAssignmentEntity>();
+            _repository = sqlite.GetRepository<InterfaceAssignmentEntity>();
         }
         catch
         {

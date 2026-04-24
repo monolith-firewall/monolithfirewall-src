@@ -22,8 +22,8 @@ public sealed class SystemTuneablesStore
         }
 
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<SystemTuneableEntity>();
     }
 
@@ -34,9 +34,9 @@ public sealed class SystemTuneablesStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<SystemTuneableEntity>();
+        var query = _sqlite.GetQueryBuilder<SystemTuneableEntity>();
         var result = await query.Where(t => t.Key == key).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<bool> UpsertAsync(SystemTuneableEntity entity)
@@ -60,7 +60,7 @@ public sealed class SystemTuneablesStore
             return false;
         }
 
-        entity.Id = Convert.ToInt32(insert.Data);
+        entity.Id = Convert.ToInt32(insert.Value);
         return true;
     }
 
@@ -81,14 +81,14 @@ public sealed class SystemTuneablesStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<SystemTuneableEntity>();
+            _repository = sqlite.GetRepository<SystemTuneableEntity>();
         }
         catch
         {

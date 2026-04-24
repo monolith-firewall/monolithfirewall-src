@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using CodeLogic.Configuration;
+using CodeLogic.Core.Configuration;
 
 namespace Monolith.FireWall.Core.Configuration;
 

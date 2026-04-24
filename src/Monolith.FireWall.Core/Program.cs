@@ -1,7 +1,7 @@
 using CodeLogic;
 using Monolith.FireWall.Core.Services;
 using Monolith.FireWall.Core.Transport;
-using CodeLogic.Logging;
+using CodeLogic.Core.Logging;
 using Adapter = Monolith.FireWall.Core.Services.ModuleContextAdapter;
 using Monolith.FireWall.Core.Services.Platform;
 using Monolith.FireWall.Common.Models;
@@ -24,8 +24,8 @@ class Program
         Console.WriteLine("[1/4] Initializing CodeLogic framework...");
         var initResult = await CodeLogic.CodeLogic.InitializeAsync(opts =>
         {
-            opts.RootDirectory = "/var/lib/monolith-firewall/codelogic";
-            opts.PluginsDirectory = "/var/lib/monolith-firewall/plugins";
+            opts.FrameworkRootPath = "/var/lib/monolith-firewall/codelogic";
+            opts.ApplicationRootPath = "/var/lib/monolith-firewall/plugins";
         });
 
         if (!initResult.Success)
@@ -79,7 +79,7 @@ class Program
         var logger = new CodeLogicLoggerAdapter(coreLogger);
 
         // Get CL.SQLite
-        var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+        var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
         if (sqlite == null)
         {
             Console.WriteLine("  ✗ CL.SQLite library not found");
@@ -89,55 +89,55 @@ class Program
 
         try
         {
-            if (sqlite.TableSyncService == null)
+            if (sqlite.TableSync == null)
             {
                 Console.WriteLine("  ⚠ SQLite table sync service not available");
             }
             else
             {
-                await sqlite.TableSyncService.SyncTableAsync<InterfaceAssignmentEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<GatewayEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<StaticRouteEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<PackageInstallationEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<ModuleStateEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<LogEntryEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<SystemTuneableEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<SystemSettingsEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<MonitorDefinitionEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<MonitorStatusEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<SystemNotificationEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<FirewallAliasEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<FirewallAliasEntryEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<FirewallNatRuleEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<FirewallNatSettingsEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<FirewallDefaultsEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<FirewallInterfaceSettingsEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<FirewallScheduleEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<FirewallRuleEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<WebUiSettingsEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<SetupStateEntity>();
+                await sqlite.TableSync.SyncTableAsync<InterfaceAssignmentEntity>();
+                await sqlite.TableSync.SyncTableAsync<GatewayEntity>();
+                await sqlite.TableSync.SyncTableAsync<StaticRouteEntity>();
+                await sqlite.TableSync.SyncTableAsync<PackageInstallationEntity>();
+                await sqlite.TableSync.SyncTableAsync<ModuleStateEntity>();
+                await sqlite.TableSync.SyncTableAsync<LogEntryEntity>();
+                await sqlite.TableSync.SyncTableAsync<SystemTuneableEntity>();
+                await sqlite.TableSync.SyncTableAsync<SystemSettingsEntity>();
+                await sqlite.TableSync.SyncTableAsync<MonitorDefinitionEntity>();
+                await sqlite.TableSync.SyncTableAsync<MonitorStatusEntity>();
+                await sqlite.TableSync.SyncTableAsync<SystemNotificationEntity>();
+                await sqlite.TableSync.SyncTableAsync<FirewallAliasEntity>();
+                await sqlite.TableSync.SyncTableAsync<FirewallAliasEntryEntity>();
+                await sqlite.TableSync.SyncTableAsync<FirewallNatRuleEntity>();
+                await sqlite.TableSync.SyncTableAsync<FirewallNatSettingsEntity>();
+                await sqlite.TableSync.SyncTableAsync<FirewallDefaultsEntity>();
+                await sqlite.TableSync.SyncTableAsync<FirewallInterfaceSettingsEntity>();
+                await sqlite.TableSync.SyncTableAsync<FirewallScheduleEntity>();
+                await sqlite.TableSync.SyncTableAsync<FirewallRuleEntity>();
+                await sqlite.TableSync.SyncTableAsync<WebUiSettingsEntity>();
+                await sqlite.TableSync.SyncTableAsync<SetupStateEntity>();
 
                 // Settings overhaul: new configuration management tables
-                await sqlite.TableSyncService.SyncTableAsync<SystemConfigEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<ModuleConfigEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<PendingChangeEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<ConfigHistoryEntity>();
+                await sqlite.TableSync.SyncTableAsync<SystemConfigEntity>();
+                await sqlite.TableSync.SyncTableAsync<ModuleConfigEntity>();
+                await sqlite.TableSync.SyncTableAsync<PendingChangeEntity>();
+                await sqlite.TableSync.SyncTableAsync<ConfigHistoryEntity>();
 
                 // Network operational state and gateway groups (dual-state model)
-                await sqlite.TableSyncService.SyncTableAsync<InterfaceOperationalStateEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<NetworkStateChangeEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<GatewayGroupEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<GatewayGroupMemberEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<GatewayHealthEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<GatewayMonitorConfigEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<FirewallDynamicAliasEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<VirtualIpEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<TrafficShaperRuleEntity>();
+                await sqlite.TableSync.SyncTableAsync<InterfaceOperationalStateEntity>();
+                await sqlite.TableSync.SyncTableAsync<NetworkStateChangeEntity>();
+                await sqlite.TableSync.SyncTableAsync<GatewayGroupEntity>();
+                await sqlite.TableSync.SyncTableAsync<GatewayGroupMemberEntity>();
+                await sqlite.TableSync.SyncTableAsync<GatewayHealthEntity>();
+                await sqlite.TableSync.SyncTableAsync<GatewayMonitorConfigEntity>();
+                await sqlite.TableSync.SyncTableAsync<FirewallDynamicAliasEntity>();
+                await sqlite.TableSync.SyncTableAsync<VirtualIpEntity>();
+                await sqlite.TableSync.SyncTableAsync<TrafficShaperRuleEntity>();
 
                 // User management tables
-                await sqlite.TableSyncService.SyncTableAsync<UserEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<UserGroupEntity>();
-                await sqlite.TableSyncService.SyncTableAsync<UserGroupMemberEntity>();
+                await sqlite.TableSync.SyncTableAsync<UserEntity>();
+                await sqlite.TableSync.SyncTableAsync<UserGroupEntity>();
+                await sqlite.TableSync.SyncTableAsync<UserGroupMemberEntity>();
 
                 // Sync DHCP tables (from monolith-network package)
                 // Note: These are in a package, but we sync them here to ensure tables exist
@@ -154,7 +154,7 @@ class Program
                         if (syncMethod != null)
                         {
                             var genericMethod = syncMethod.MakeGenericMethod(dhcpInterfaceType);
-                            await (Task)genericMethod.Invoke(sqlite.TableSyncService, new object[] { CancellationToken.None })!;
+                            await (Task)genericMethod.Invoke(sqlite.TableSync, new object[] { CancellationToken.None })!;
                         }
                     }
                     if (dhcpSettingsType != null)
@@ -163,7 +163,7 @@ class Program
                         if (syncMethod != null)
                         {
                             var genericMethod = syncMethod.MakeGenericMethod(dhcpSettingsType);
-                            await (Task)genericMethod.Invoke(sqlite.TableSyncService, new object[] { CancellationToken.None })!;
+                            await (Task)genericMethod.Invoke(sqlite.TableSync, new object[] { CancellationToken.None })!;
                         }
                     }
                     if (dhcpLeaseType != null)
@@ -172,7 +172,7 @@ class Program
                         if (syncMethod != null)
                         {
                             var genericMethod = syncMethod.MakeGenericMethod(dhcpLeaseType);
-                            await (Task)genericMethod.Invoke(sqlite.TableSyncService, new object[] { CancellationToken.None })!;
+                            await (Task)genericMethod.Invoke(sqlite.TableSync, new object[] { CancellationToken.None })!;
                         }
                     }
                 }
@@ -191,7 +191,7 @@ class Program
         // Initialize setup state - check if this is a fresh install
         try
         {
-            if (sqlite?.TableSyncService != null)
+            if (sqlite?.TableSync != null)
             {
                 // Check if setup state exists
                 var setupStateStore = new Services.SetupStateStore();
@@ -433,7 +433,7 @@ class Program
 
                     // Setup localization for this package
                     var packageLocDir = Path.Combine("/var/lib/monolith-firewall/codelogic/localization", packageInfo.Definition.Id);
-                    var packageLocManager = new CodeLogic.Localization.LocalizationManager(
+                    var packageLocManager = new CodeLogic.Core.Localization.LocalizationManager(
                         packageLocDir,
                         codeLogicConfig.Localization.DefaultCulture
                     );
@@ -857,7 +857,7 @@ class Program
         {
             logger.LogInformation($"[SYNC] Starting table sync for package: {packageInfo.Definition.Id}");
             
-            if (sqlite?.TableSyncService == null)
+            if (sqlite?.TableSync == null)
             {
                 logger.LogWarning($"[SYNC] SQLite or TableSyncService not available for package: {packageInfo.Definition.Id}");
                 return;
@@ -901,7 +901,7 @@ class Program
                     if (syncMethod != null)
                     {
                         var genericMethod = syncMethod.MakeGenericMethod(entityType);
-                        var task = (Task)genericMethod.Invoke(sqlite.TableSyncService, new object[] { CancellationToken.None })!;
+                        var task = (Task)genericMethod.Invoke(sqlite.TableSync, new object[] { CancellationToken.None })!;
                         await task;
                         logger.LogInformation($"  ✓ Table {tableName} synced");
                     }
@@ -926,12 +926,12 @@ class Program
 internal class ProgramPackageContext : Monolith.FireWall.Common.Interfaces.IPackageContext
 {
     private readonly Monolith.FireWall.Common.Interfaces.ILogger _logger;
-    private readonly CodeLogic.Localization.ILocalizationManager _localization;
+    private readonly CodeLogic.Core.Localization.ILocalizationManager _localization;
 
     public ProgramPackageContext(
         Monolith.FireWall.Common.Interfaces.ILogger logger,
         string packageId,
-        CodeLogic.Localization.ILocalizationManager localization)
+        CodeLogic.Core.Localization.ILocalizationManager localization)
     {
         _logger = logger;
         PackageId = packageId;
@@ -940,5 +940,5 @@ internal class ProgramPackageContext : Monolith.FireWall.Common.Interfaces.IPack
 
     public string PackageId { get; }
     public Monolith.FireWall.Common.Interfaces.ILogger Logger => _logger;
-    public CodeLogic.Localization.ILocalizationManager Localization => _localization;
+    public CodeLogic.Core.Localization.ILocalizationManager Localization => _localization;
 }

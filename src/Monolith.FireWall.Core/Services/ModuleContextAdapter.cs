@@ -68,7 +68,7 @@ public class ModuleContextAdapter : IModuleContext
 
         if (typeof(T) == typeof(CL.SQLite.SQLiteLibrary))
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite != null)
                 return (T)(object)sqlite;
         }

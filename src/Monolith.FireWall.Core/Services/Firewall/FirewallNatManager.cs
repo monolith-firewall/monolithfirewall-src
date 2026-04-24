@@ -25,8 +25,8 @@ public sealed class FirewallNatManager
         }
 
         var result = await _repository.GetAllAsync();
-        var rules = result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        var rules = result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<FirewallNatRuleEntity>();
 
         return rules
@@ -80,12 +80,12 @@ public sealed class FirewallNatManager
         };
 
         var insert = await _repository.InsertAsync(entity);
-        if (!insert.IsSuccess || insert.Data <= 0)
+        if (!insert.IsSuccess || insert.Value <= 0)
         {
             return (false, "Failed to create NAT rule", null);
         }
 
-        entity.Id = (int)insert.Data;
+        entity.Id = (int)insert.Value;
 
         await _loggingManager.LogSecurityAsync(
             "Firewall",
@@ -287,12 +287,12 @@ public sealed class FirewallNatManager
             return 0;
         }
 
-        var query = _sqlite.CreateQueryBuilder<FirewallNatRuleEntity>();
+        var query = _sqlite.GetQueryBuilder<FirewallNatRuleEntity>();
         var result = await query
             .OrderByDescending(r => r.RuleNumber)
             .FirstOrDefaultAsync();
 
-        return result.IsSuccess && result.Data != null ? result.Data.RuleNumber : 0;
+        return result.IsSuccess && result.Value != null ? result.Value.RuleNumber : 0;
     }
 
     private async Task<FirewallNatRuleEntity?> GetEntityAsync(int id)
@@ -303,7 +303,7 @@ public sealed class FirewallNatManager
         }
 
         var result = await _repository.GetByIdAsync(id);
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     private async Task ReindexRulesAsync()
@@ -428,14 +428,14 @@ public sealed class FirewallNatManager
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<FirewallNatRuleEntity>();
+            _repository = sqlite.GetRepository<FirewallNatRuleEntity>();
         }
         catch
         {

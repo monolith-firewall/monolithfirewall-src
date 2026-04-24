@@ -24,8 +24,8 @@ public sealed class MonitoringStore
         }
 
         var result = await _definitions.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<MonitorDefinitionEntity>();
     }
 
@@ -36,9 +36,9 @@ public sealed class MonitoringStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<MonitorDefinitionEntity>();
+        var query = _sqlite.GetQueryBuilder<MonitorDefinitionEntity>();
         var result = await query.Where(d => d.Key == key).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<bool> UpsertDefinitionAsync(MonitorDefinitionEntity definition)
@@ -68,8 +68,8 @@ public sealed class MonitoringStore
         }
 
         var result = await _statuses.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<MonitorStatusEntity>();
     }
 
@@ -80,9 +80,9 @@ public sealed class MonitoringStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<MonitorStatusEntity>();
+        var query = _sqlite.GetQueryBuilder<MonitorStatusEntity>();
         var result = await query.Where(s => s.MonitorKey == key).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<bool> UpsertStatusAsync(MonitorStatusEntity status)
@@ -112,12 +112,12 @@ public sealed class MonitoringStore
         }
 
         var result = await _notifications.InsertAsync(notification);
-        if (!result.IsSuccess || result.Data == null)
+        if (!result.IsSuccess || result.Value == null)
         {
             return 0;
         }
 
-        return result.Data > int.MaxValue ? int.MaxValue : (int)result.Data;
+        return result.Value > int.MaxValue ? int.MaxValue : (int)result.Value;
     }
 
     public async Task<List<SystemNotificationEntity>> GetNotificationsAsync(int limit, bool unreadOnly)
@@ -127,7 +127,7 @@ public sealed class MonitoringStore
             return new List<SystemNotificationEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<SystemNotificationEntity>().Select(n => n);
+        var query = _sqlite.GetQueryBuilder<SystemNotificationEntity>().Select(n => n);
         if (unreadOnly)
         {
             query = query.Where(n => n.ReadAt == null);
@@ -136,10 +136,10 @@ public sealed class MonitoringStore
         var result = await query
             .OrderByDescending(n => n.CreatedAt)
             .Take(limit)
-            .ExecuteAsync();
+            .ToListAsync();
 
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<SystemNotificationEntity>();
     }
 
@@ -150,9 +150,9 @@ public sealed class MonitoringStore
             return 0;
         }
 
-        var query = _sqlite.CreateQueryBuilder<SystemNotificationEntity>().Select(n => n);
-        var result = await query.Where(n => n.ReadAt == null).ExecuteAsync();
-        return result.IsSuccess && result.Data != null ? result.Data.Count() : 0;
+        var query = _sqlite.GetQueryBuilder<SystemNotificationEntity>().Select(n => n);
+        var result = await query.Where(n => n.ReadAt == null).ToListAsync();
+        return result.IsSuccess && result.Value != null ? result.Value.Count() : 0;
     }
 
     public async Task<bool> MarkNotificationsReadAsync(IEnumerable<int> ids)
@@ -173,13 +173,13 @@ public sealed class MonitoringStore
         foreach (var id in idList)
         {
             var entityResult = await _notifications.GetByIdAsync(id);
-            if (!entityResult.IsSuccess || entityResult.Data == null)
+            if (!entityResult.IsSuccess || entityResult.Value == null)
             {
                 ok = false;
                 continue;
             }
 
-            var notification = entityResult.Data;
+            var notification = entityResult.Value;
             if (notification.ReadAt.HasValue)
             {
                 continue;
@@ -200,16 +200,16 @@ public sealed class MonitoringStore
             return false;
         }
 
-        var query = _sqlite.CreateQueryBuilder<SystemNotificationEntity>();
-        var result = await query.Where(n => n.ReadAt == null).ExecuteAsync();
-        if (!result.IsSuccess || result.Data == null)
+        var query = _sqlite.GetQueryBuilder<SystemNotificationEntity>();
+        var result = await query.Where(n => n.ReadAt == null).ToListAsync();
+        if (!result.IsSuccess || result.Value == null)
         {
             return false;
         }
 
         var now = DateTime.UtcNow;
         var ok = true;
-        foreach (var notification in result.Data)
+        foreach (var notification in result.Value)
         {
             notification.ReadAt = now;
             var update = await _notifications.UpdateAsync(notification);
@@ -249,15 +249,15 @@ public sealed class MonitoringStore
             return false;
         }
 
-        var query = _sqlite.CreateQueryBuilder<SystemNotificationEntity>();
-        var result = await query.ExecuteAsync();
-        if (!result.IsSuccess || result.Data == null)
+        var query = _sqlite.GetQueryBuilder<SystemNotificationEntity>();
+        var result = await query.ToListAsync();
+        if (!result.IsSuccess || result.Value == null)
         {
             return false;
         }
 
         var ok = true;
-        foreach (var notification in result.Data)
+        foreach (var notification in result.Value)
         {
             var deleteResult = await _notifications.DeleteAsync(notification.Id);
             ok = ok && deleteResult.IsSuccess;
@@ -273,15 +273,15 @@ public sealed class MonitoringStore
             return false;
         }
 
-        var query = _sqlite.CreateQueryBuilder<SystemNotificationEntity>();
-        var result = await query.Where(n => n.ReadAt != null).ExecuteAsync();
-        if (!result.IsSuccess || result.Data == null)
+        var query = _sqlite.GetQueryBuilder<SystemNotificationEntity>();
+        var result = await query.Where(n => n.ReadAt != null).ToListAsync();
+        if (!result.IsSuccess || result.Value == null)
         {
             return false;
         }
 
         var ok = true;
-        foreach (var notification in result.Data)
+        foreach (var notification in result.Value)
         {
             var deleteResult = await _notifications.DeleteAsync(notification.Id);
             ok = ok && deleteResult.IsSuccess;
@@ -294,16 +294,16 @@ public sealed class MonitoringStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _definitions = sqlite.CreateRepository<MonitorDefinitionEntity>();
-            _statuses = sqlite.CreateRepository<MonitorStatusEntity>();
-            _notifications = sqlite.CreateRepository<SystemNotificationEntity>();
+            _definitions = sqlite.GetRepository<MonitorDefinitionEntity>();
+            _statuses = sqlite.GetRepository<MonitorStatusEntity>();
+            _notifications = sqlite.GetRepository<SystemNotificationEntity>();
         }
         catch
         {

@@ -22,8 +22,8 @@ public sealed class GatewayStore
         }
 
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<GatewayEntity>();
     }
 
@@ -34,9 +34,9 @@ public sealed class GatewayStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayEntity>();
+        var query = _sqlite.GetQueryBuilder<GatewayEntity>();
         var result = await query.Where(g => g.Id == id).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<GatewayEntity?> GetByAddressAsync(string address)
@@ -46,9 +46,9 @@ public sealed class GatewayStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayEntity>();
+        var query = _sqlite.GetQueryBuilder<GatewayEntity>();
         var result = await query.Where(g => g.Address == address).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<bool> InsertAsync(GatewayEntity gateway)
@@ -64,7 +64,7 @@ public sealed class GatewayStore
             return false;
         }
 
-        gateway.Id = Convert.ToInt32(result.Data);
+        gateway.Id = Convert.ToInt32(result.Value);
         return true;
     }
 
@@ -94,14 +94,14 @@ public sealed class GatewayStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<GatewayEntity>();
+            _repository = sqlite.GetRepository<GatewayEntity>();
         }
         catch
         {

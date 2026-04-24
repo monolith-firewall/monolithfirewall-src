@@ -27,8 +27,8 @@ public sealed class GatewayGroupStore
         }
 
         var result = await _groupRepository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<GatewayGroupEntity>();
     }
 
@@ -39,9 +39,9 @@ public sealed class GatewayGroupStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayGroupEntity>();
+        var query = _sqlite.GetQueryBuilder<GatewayGroupEntity>();
         var result = await query.Where(g => g.Id == id).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<GatewayGroupEntity?> GetGroupByNameAsync(string name)
@@ -51,9 +51,9 @@ public sealed class GatewayGroupStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayGroupEntity>();
+        var query = _sqlite.GetQueryBuilder<GatewayGroupEntity>();
         var result = await query.Where(g => g.Name == name).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<List<GatewayGroupEntity>> GetEnabledGroupsAsync()
@@ -63,10 +63,10 @@ public sealed class GatewayGroupStore
             return new List<GatewayGroupEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayGroupEntity>();
-        var result = await query.Where(g => g.Enabled == true).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        var query = _sqlite.GetQueryBuilder<GatewayGroupEntity>();
+        var result = await query.Where(g => g.Enabled == true).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<GatewayGroupEntity>();
     }
 
@@ -83,7 +83,7 @@ public sealed class GatewayGroupStore
             return false;
         }
 
-        group.Id = Convert.ToInt32(result.Data);
+        group.Id = Convert.ToInt32(result.Value);
         return true;
     }
 
@@ -128,8 +128,8 @@ public sealed class GatewayGroupStore
         }
 
         var result = await _memberRepository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<GatewayGroupMemberEntity>();
     }
 
@@ -140,10 +140,10 @@ public sealed class GatewayGroupStore
             return new List<GatewayGroupMemberEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayGroupMemberEntity>();
-        var result = await query.Where(m => m.GroupId == groupId).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.OrderBy(m => m.Tier).ThenBy(m => m.Priority).ToList()
+        var query = _sqlite.GetQueryBuilder<GatewayGroupMemberEntity>();
+        var result = await query.Where(m => m.GroupId == groupId).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.OrderBy(m => m.Tier).ThenBy(m => m.Priority).ToList()
             : new List<GatewayGroupMemberEntity>();
     }
 
@@ -154,10 +154,10 @@ public sealed class GatewayGroupStore
             return new List<GatewayGroupMemberEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayGroupMemberEntity>();
-        var result = await query.Where(m => m.GatewayId == gatewayId).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        var query = _sqlite.GetQueryBuilder<GatewayGroupMemberEntity>();
+        var result = await query.Where(m => m.GatewayId == gatewayId).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<GatewayGroupMemberEntity>();
     }
 
@@ -168,11 +168,11 @@ public sealed class GatewayGroupStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayGroupMemberEntity>();
+        var query = _sqlite.GetQueryBuilder<GatewayGroupMemberEntity>();
         var result = await query
             .Where(m => m.GroupId == groupId && m.GatewayId == gatewayId)
             .FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<bool> InsertMemberAsync(GatewayGroupMemberEntity member)
@@ -188,7 +188,7 @@ public sealed class GatewayGroupStore
             return false;
         }
 
-        member.Id = Convert.ToInt32(result.Data);
+        member.Id = Convert.ToInt32(result.Value);
         return true;
     }
 
@@ -249,7 +249,7 @@ public sealed class GatewayGroupStore
             {
                 return false;
             }
-            member.Id = Convert.ToInt32(result.Data);
+            member.Id = Convert.ToInt32(result.Value);
         }
 
         return true;
@@ -259,15 +259,15 @@ public sealed class GatewayGroupStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _groupRepository = sqlite.CreateRepository<GatewayGroupEntity>();
-            _memberRepository = sqlite.CreateRepository<GatewayGroupMemberEntity>();
+            _groupRepository = sqlite.GetRepository<GatewayGroupEntity>();
+            _memberRepository = sqlite.GetRepository<GatewayGroupMemberEntity>();
         }
         catch
         {

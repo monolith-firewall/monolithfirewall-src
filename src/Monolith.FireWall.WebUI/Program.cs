@@ -97,8 +97,8 @@ try
 {
     var initResult = await CodeLogic.CodeLogic.InitializeAsync(opts =>
     {
-        opts.RootDirectory = "/var/lib/monolith-firewall/codelogic";
-        opts.PluginsDirectory = "/var/lib/monolith-firewall/plugins";
+        opts.FrameworkRootPath = "/var/lib/monolith-firewall/codelogic";
+        opts.ApplicationRootPath = "/var/lib/monolith-firewall/plugins";
     });
 
     if (initResult.Success && !initResult.IsFirstRun)
@@ -106,11 +106,11 @@ try
         await CodeLogic.CodeLogic.ConfigureAsync();
         await CodeLogic.CodeLogic.StartAsync();
     }
-    sqliteForDI = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+    sqliteForDI = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
 }
 catch
 {
-    sqliteForDI = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+    sqliteForDI = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
 }
 
 if (sqliteForDI != null)

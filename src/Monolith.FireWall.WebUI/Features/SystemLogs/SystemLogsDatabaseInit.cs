@@ -10,14 +10,14 @@ public static class SystemLogsDatabaseInit
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null) return;
 
-            var repository = sqlite.CreateRepository<LogEntryEntity>();
-            var queryBuilder = sqlite.CreateQueryBuilder<LogEntryEntity>();
+            var repository = sqlite.GetRepository<LogEntryEntity>();
+            var queryBuilder = sqlite.GetQueryBuilder<LogEntryEntity>();
             
             // Ensure table exists by trying to query it
-            _ = queryBuilder.Select(e => e).Take(1).ExecuteAsync().Result;
+            _ = queryBuilder.Select(e => e).Take(1).ToListAsync().Result;
             
             Console.WriteLine("✓ System Logs table initialized");
         }

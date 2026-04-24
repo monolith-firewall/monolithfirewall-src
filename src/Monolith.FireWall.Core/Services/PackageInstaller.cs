@@ -478,8 +478,8 @@ public sealed class PackageInstaller
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
-            if (sqlite?.TableSyncService == null)
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
+            if (sqlite?.TableSync == null)
             {
                 _logger.LogWarning($"SQLite library or TableSyncService not available - cannot sync tables for package {packageInfo.Definition.Id}");
                 return;
@@ -528,7 +528,7 @@ public sealed class PackageInstaller
                     if (syncMethod != null)
                     {
                         var genericMethod = syncMethod.MakeGenericMethod(entityType);
-                        var taskObject = genericMethod.Invoke(sqlite.TableSyncService, new object[] { cancellationToken });
+                        var taskObject = genericMethod.Invoke(sqlite.TableSync, new object[] { cancellationToken });
                         
                         if (taskObject is Task task)
                         {
@@ -907,7 +907,7 @@ public sealed class PackageInstaller
     {
         public ILogger Logger { get; }
         public string PackageId { get; }
-        public CodeLogic.Localization.ILocalizationManager Localization { get; }
+        public CodeLogic.Core.Localization.ILocalizationManager Localization { get; }
 
         public SimplePackageContext(ILogger logger, string packageId)
         {
@@ -916,7 +916,7 @@ public sealed class PackageInstaller
             // Create a localization manager for this package
             var codeLogicConfig = CodeLogic.CodeLogic.GetConfiguration();
             var packageLocDir = Path.Combine("/var/lib/monolith-firewall/codelogic/localization", packageId);
-            Localization = new CodeLogic.Localization.LocalizationManager(
+            Localization = new CodeLogic.Core.Localization.LocalizationManager(
                 packageLocDir,
                 codeLogicConfig?.Localization?.DefaultCulture ?? "en-US");
         }

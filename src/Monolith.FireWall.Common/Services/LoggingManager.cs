@@ -34,11 +34,11 @@ public class LoggingManager
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite != null)
             {
                 _sqlite = sqlite;
-                _repository = sqlite.CreateRepository<LogEntryEntity>();
+                _repository = sqlite.GetRepository<LogEntryEntity>();
             }
         }
         catch (Exception ex)
@@ -126,9 +126,9 @@ public class LoggingManager
             };
 
             var result = await _repository.InsertAsync(entity);
-            if (result != null && result.IsSuccess && result.Data > 0)
+            if (result.IsSuccess && result.Value > 0)
             {
-                entity.Id = (int)result.Data;
+                entity.Id = (int)result.Value;
             }
         }
         catch (Exception ex)
@@ -149,7 +149,7 @@ public class LoggingManager
                 return new LogQueryResult { Limit = queryParams.Limit, Offset = queryParams.Offset };
             }
 
-            var query = _sqlite.CreateQueryBuilder<LogEntryEntity>().Select(e => e);
+            var query = _sqlite.GetQueryBuilder<LogEntryEntity>().Select(e => e);
 
             // Apply filters
             if (!string.IsNullOrEmpty(queryParams.LogType))
@@ -183,17 +183,17 @@ public class LoggingManager
             }
 
             // Get total count
-            var countResult = await query.ExecuteAsync();
-            var totalCount = countResult?.Data?.Count() ?? 0;
+            var countResult = await query.CountAsync();
+            var totalCount = countResult.IsSuccess ? (int)countResult.Value : 0;
 
             // Apply pagination and ordering
             var logsResult = await query
                 .OrderByDescending(e => e.Timestamp)
                 .Skip(queryParams.Offset)
                 .Take(queryParams.Limit)
-                .ExecuteAsync();
+                .ToListAsync();
 
-            var entities = logsResult?.Data ?? new List<LogEntryEntity>();
+            var entities = logsResult.IsSuccess && logsResult.Value != null ? logsResult.Value : new List<LogEntryEntity>();
 
             // Convert entities to models
             var logs = entities.Select(e => EntityToLogEntry(e)).ToList();

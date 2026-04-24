@@ -27,8 +27,8 @@ public sealed class GatewayHealthStore
         }
 
         var result = await _healthRepository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<GatewayHealthEntity>();
     }
 
@@ -39,9 +39,9 @@ public sealed class GatewayHealthStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayHealthEntity>();
+        var query = _sqlite.GetQueryBuilder<GatewayHealthEntity>();
         var result = await query.Where(h => h.GatewayId == gatewayId).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<List<GatewayHealthEntity>> GetByStatusAsync(GatewayHealthStatus status)
@@ -51,10 +51,10 @@ public sealed class GatewayHealthStore
             return new List<GatewayHealthEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayHealthEntity>();
-        var result = await query.Where(h => h.Status == status).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        var query = _sqlite.GetQueryBuilder<GatewayHealthEntity>();
+        var result = await query.Where(h => h.Status == status).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<GatewayHealthEntity>();
     }
 
@@ -189,8 +189,8 @@ public sealed class GatewayHealthStore
         }
 
         var result = await _configRepository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<GatewayMonitorConfigEntity>();
     }
 
@@ -201,9 +201,9 @@ public sealed class GatewayHealthStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayMonitorConfigEntity>();
+        var query = _sqlite.GetQueryBuilder<GatewayMonitorConfigEntity>();
         var result = await query.Where(c => c.GatewayId == gatewayId).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<List<GatewayMonitorConfigEntity>> GetEnabledConfigsAsync()
@@ -213,10 +213,10 @@ public sealed class GatewayHealthStore
             return new List<GatewayMonitorConfigEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<GatewayMonitorConfigEntity>();
-        var result = await query.Where(c => c.Enabled == true).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        var query = _sqlite.GetQueryBuilder<GatewayMonitorConfigEntity>();
+        var result = await query.Where(c => c.Enabled == true).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<GatewayMonitorConfigEntity>();
     }
 
@@ -241,7 +241,7 @@ public sealed class GatewayHealthStore
             return false;
         }
 
-        config.Id = Convert.ToInt32(insert.Data);
+        config.Id = Convert.ToInt32(insert.Value);
         return true;
     }
 
@@ -315,15 +315,15 @@ public sealed class GatewayHealthStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _healthRepository = sqlite.CreateRepository<GatewayHealthEntity>();
-            _configRepository = sqlite.CreateRepository<GatewayMonitorConfigEntity>();
+            _healthRepository = sqlite.GetRepository<GatewayHealthEntity>();
+            _configRepository = sqlite.GetRepository<GatewayMonitorConfigEntity>();
         }
         catch
         {

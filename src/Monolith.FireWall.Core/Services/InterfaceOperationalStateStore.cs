@@ -22,8 +22,8 @@ public sealed class InterfaceOperationalStateStore
         }
 
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<InterfaceOperationalStateEntity>();
     }
 
@@ -34,12 +34,12 @@ public sealed class InterfaceOperationalStateStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<InterfaceOperationalStateEntity>();
+        var query = _sqlite.GetQueryBuilder<InterfaceOperationalStateEntity>();
         var result = await query
             .Where(s => s.InterfaceName == interfaceName)
             .FirstOrDefaultAsync();
 
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<List<InterfaceOperationalStateEntity>> GetByLinkStateAsync(LinkState state)
@@ -49,13 +49,13 @@ public sealed class InterfaceOperationalStateStore
             return new List<InterfaceOperationalStateEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<InterfaceOperationalStateEntity>();
+        var query = _sqlite.GetQueryBuilder<InterfaceOperationalStateEntity>();
         var result = await query
             .Where(s => s.LinkState == state)
-            .ExecuteAsync();
+            .ToListAsync();
 
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<InterfaceOperationalStateEntity>();
     }
 
@@ -66,13 +66,13 @@ public sealed class InterfaceOperationalStateStore
             return new List<InterfaceOperationalStateEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<InterfaceOperationalStateEntity>();
+        var query = _sqlite.GetQueryBuilder<InterfaceOperationalStateEntity>();
         var result = await query
             .Where(s => s.HealthStatus == status)
-            .ExecuteAsync();
+            .ToListAsync();
 
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<InterfaceOperationalStateEntity>();
     }
 
@@ -219,14 +219,14 @@ public sealed class InterfaceOperationalStateStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<InterfaceOperationalStateEntity>();
+            _repository = sqlite.GetRepository<InterfaceOperationalStateEntity>();
         }
         catch
         {

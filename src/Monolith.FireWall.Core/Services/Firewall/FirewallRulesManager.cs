@@ -34,12 +34,12 @@ public sealed class FirewallRulesManager
         }
 
         var result = await _repository.GetByIdAsync(id);
-        if (!result.IsSuccess || result.Data == null)
+        if (!result.IsSuccess || result.Value == null)
         {
             return null;
         }
 
-        return BuildView(result.Data, isSystem: false, systemTag: null);
+        return BuildView(result.Value, isSystem: false, systemTag: null);
     }
 
     public async Task<List<FirewallRuleView>> GetEffectiveRulesAsync(FirewallDefaultsView defaults)
@@ -114,12 +114,12 @@ public sealed class FirewallRulesManager
         };
 
         var insert = await _repository.InsertAsync(entity);
-        if (!insert.IsSuccess || insert.Data <= 0)
+        if (!insert.IsSuccess || insert.Value <= 0)
         {
             return (false, "Failed to create rule", null);
         }
 
-        entity.Id = (int)insert.Data;
+        entity.Id = (int)insert.Value;
 
         await _loggingManager.LogSecurityAsync(
             "Firewall",
@@ -143,7 +143,7 @@ public sealed class FirewallRulesManager
         }
 
         var existingResult = await _repository.GetByIdAsync(id);
-        if (!existingResult.IsSuccess || existingResult.Data == null)
+        if (!existingResult.IsSuccess || existingResult.Value == null)
         {
             return (false, "Rule not found", null);
         }
@@ -160,7 +160,7 @@ public sealed class FirewallRulesManager
             return (false, $"Interface '{interfaceName}' is not assigned", null);
         }
 
-        var existing = existingResult.Data;
+        var existing = existingResult.Value;
         existing.Interface = interfaceName;
         existing.Direction = NormalizeDirection(request.Direction);
         existing.Action = NormalizeAction(request.Action);
@@ -213,12 +213,12 @@ public sealed class FirewallRulesManager
         }
 
         var existingResult = await _repository.GetByIdAsync(id);
-        if (!existingResult.IsSuccess || existingResult.Data == null)
+        if (!existingResult.IsSuccess || existingResult.Value == null)
         {
             return true;
         }
 
-        var entity = existingResult.Data;
+        var entity = existingResult.Value;
         var delete = await _repository.DeleteAsync(id);
         if (!delete.IsSuccess)
         {
@@ -258,12 +258,12 @@ public sealed class FirewallRulesManager
         foreach (var ruleId in orderedIds)
         {
             var result = await _repository.GetByIdAsync(ruleId);
-            if (!result.IsSuccess || result.Data == null)
+            if (!result.IsSuccess || result.Value == null)
             {
                 continue;
             }
 
-            var entity = result.Data;
+            var entity = result.Value;
             if (!entity.Interface.Equals(interfaceName, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
@@ -297,8 +297,8 @@ public sealed class FirewallRulesManager
         var key = $"{request.PackageId}:{request.ModuleId ?? "default"}";
 
         var allResult = await _repository.GetAllAsync();
-        var existing = allResult.IsSuccess && allResult.Data != null
-            ? allResult.Data.FirstOrDefault(r => r.IsManaged && r.ManagedSourceId == key)
+        var existing = allResult.IsSuccess && allResult.Value != null
+            ? allResult.Value.FirstOrDefault(r => r.IsManaged && r.ManagedSourceId == key)
             : null;
 
         if (existing != null)
@@ -357,12 +357,12 @@ public sealed class FirewallRulesManager
         };
 
         var insert = await _repository.InsertAsync(entity);
-        if (!insert.IsSuccess || insert.Data <= 0)
+        if (!insert.IsSuccess || insert.Value <= 0)
         {
             return (false, "Failed to create managed rule", null);
         }
 
-        entity.Id = (int)insert.Data;
+        entity.Id = (int)insert.Value;
         return (true, null, BuildView(entity, isSystem: false, systemTag: null));
     }
 
@@ -536,8 +536,8 @@ public sealed class FirewallRulesManager
         }
 
         var result = await _repository.GetAllAsync();
-        var rules = result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        var rules = result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<FirewallRuleEntity>();
 
         return rules.Select(r => BuildView(r, isSystem: false, systemTag: null)).ToList();
@@ -726,12 +726,12 @@ public sealed class FirewallRulesManager
         }
 
         var result = await _repository.GetAllAsync();
-        if (!result.IsSuccess || result.Data == null)
+        if (!result.IsSuccess || result.Value == null)
         {
             return 0;
         }
 
-        var maxRule = result.Data
+        var maxRule = result.Value
             .Where(r => r.Interface.Equals(interfaceName, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(r => r.RuleNumber)
             .FirstOrDefault();
@@ -756,12 +756,12 @@ public sealed class FirewallRulesManager
         foreach (var rule in interfaceRules)
         {
             var result = await _repository.GetByIdAsync(rule.Id);
-            if (!result.IsSuccess || result.Data == null)
+            if (!result.IsSuccess || result.Value == null)
             {
                 continue;
             }
 
-            var entity = result.Data;
+            var entity = result.Value;
             entity.RuleNumber = position++;
             entity.UpdatedAt = DateTime.UtcNow;
             await _repository.UpdateAsync(entity);
@@ -937,13 +937,13 @@ public sealed class FirewallRulesManager
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
-            _repository = sqlite.CreateRepository<FirewallRuleEntity>();
+            _repository = sqlite.GetRepository<FirewallRuleEntity>();
         }
         catch
         {

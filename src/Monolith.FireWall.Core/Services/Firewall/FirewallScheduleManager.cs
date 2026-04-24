@@ -32,8 +32,8 @@ public sealed class FirewallScheduleManager
         }
 
         var result = await _repository.GetAllAsync();
-        var entities = result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        var entities = result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<FirewallScheduleEntity>();
 
         return entities
@@ -80,12 +80,12 @@ public sealed class FirewallScheduleManager
         };
 
         var insert = await _repository.InsertAsync(entity);
-        if (!insert.IsSuccess || insert.Data <= 0)
+        if (!insert.IsSuccess || insert.Value <= 0)
         {
             return (false, "Failed to create schedule", null);
         }
 
-        entity.Id = (int)insert.Data;
+        entity.Id = (int)insert.Value;
 
         await _loggingManager.LogSecurityAsync(
             "Firewall",
@@ -216,12 +216,12 @@ public sealed class FirewallScheduleManager
         }
 
         var result = await _repository.GetAllAsync();
-        if (!result.IsSuccess || result.Data == null)
+        if (!result.IsSuccess || result.Value == null)
         {
             return null;
         }
 
-        return result.Data.FirstOrDefault(s => s.Id == scheduleId);
+        return result.Value.FirstOrDefault(s => s.Id == scheduleId);
     }
 
     private static FirewallScheduleView EntityToView(FirewallScheduleEntity entity)
@@ -391,14 +391,14 @@ public sealed class FirewallScheduleManager
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<FirewallScheduleEntity>();
+            _repository = sqlite.GetRepository<FirewallScheduleEntity>();
         }
         catch
         {

@@ -26,7 +26,7 @@ public sealed class SystemConfigStore
 
         var result = await _repository.GetAllAsync();
         return result.IsSuccess
-            ? result.Data?.FirstOrDefault(e => e.Key == key)
+            ? result.Value?.FirstOrDefault(e => e.Key == key)
             : null;
     }
 
@@ -38,7 +38,7 @@ public sealed class SystemConfigStore
         if (_repository == null) return new List<SystemConfigEntity>();
 
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess ? result.Data?.ToList() ?? new List<SystemConfigEntity>() : new List<SystemConfigEntity>();
+        return result.IsSuccess ? result.Value?.ToList() ?? new List<SystemConfigEntity>() : new List<SystemConfigEntity>();
     }
 
     /// <summary>
@@ -50,7 +50,7 @@ public sealed class SystemConfigStore
 
         var result = await _repository.GetAllAsync();
         return result.IsSuccess
-            ? result.Data?.Where(e => e.Category == category).ToList() ?? new List<SystemConfigEntity>()
+            ? result.Value?.Where(e => e.Category == category).ToList() ?? new List<SystemConfigEntity>()
             : new List<SystemConfigEntity>();
     }
 
@@ -93,11 +93,11 @@ public sealed class SystemConfigStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null) return;
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<SystemConfigEntity>();
+            _repository = sqlite.GetRepository<SystemConfigEntity>();
         }
         catch
         {
@@ -129,7 +129,7 @@ public sealed class ModuleConfigStore
 
         var result = await _repository.GetAllAsync();
         return result.IsSuccess
-            ? result.Data?.FirstOrDefault(e => e.ModuleId == moduleId)
+            ? result.Value?.FirstOrDefault(e => e.ModuleId == moduleId)
             : null;
     }
 
@@ -142,7 +142,7 @@ public sealed class ModuleConfigStore
 
         var result = await _repository.GetAllAsync();
         return result.IsSuccess
-            ? result.Data?.FirstOrDefault(e => e.PackageId == packageId && e.ModuleId == moduleId)
+            ? result.Value?.FirstOrDefault(e => e.PackageId == packageId && e.ModuleId == moduleId)
             : null;
     }
 
@@ -154,7 +154,7 @@ public sealed class ModuleConfigStore
         if (_repository == null) return new List<ModuleConfigEntity>();
 
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess ? result.Data?.ToList() ?? new List<ModuleConfigEntity>() : new List<ModuleConfigEntity>();
+        return result.IsSuccess ? result.Value?.ToList() ?? new List<ModuleConfigEntity>() : new List<ModuleConfigEntity>();
     }
 
     /// <summary>
@@ -166,7 +166,7 @@ public sealed class ModuleConfigStore
 
         var result = await _repository.GetAllAsync();
         return result.IsSuccess
-            ? result.Data?.Where(e => e.PackageId == packageId).ToList() ?? new List<ModuleConfigEntity>()
+            ? result.Value?.Where(e => e.PackageId == packageId).ToList() ?? new List<ModuleConfigEntity>()
             : new List<ModuleConfigEntity>();
     }
 
@@ -209,11 +209,11 @@ public sealed class ModuleConfigStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null) return;
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<ModuleConfigEntity>();
+            _repository = sqlite.GetRepository<ModuleConfigEntity>();
         }
         catch
         {
@@ -244,7 +244,7 @@ public sealed class PendingChangesStore
         if (_repository == null) return null;
 
         var result = await _repository.GetByIdAsync(id);
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     /// <summary>
@@ -255,7 +255,7 @@ public sealed class PendingChangesStore
         if (_repository == null) return new List<PendingChangeEntity>();
 
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess ? result.Data?.ToList() ?? new List<PendingChangeEntity>() : new List<PendingChangeEntity>();
+        return result.IsSuccess ? result.Value?.ToList() ?? new List<PendingChangeEntity>() : new List<PendingChangeEntity>();
     }
 
     /// <summary>
@@ -267,7 +267,7 @@ public sealed class PendingChangesStore
 
         var result = await _repository.GetAllAsync();
         return result.IsSuccess
-            ? result.Data?.Where(e => e.Status == status).ToList() ?? new List<PendingChangeEntity>()
+            ? result.Value?.Where(e => e.Status == status).ToList() ?? new List<PendingChangeEntity>()
             : new List<PendingChangeEntity>();
     }
 
@@ -280,7 +280,7 @@ public sealed class PendingChangesStore
 
         var result = await _repository.GetAllAsync();
         return result.IsSuccess
-            ? result.Data?.Where(e => e.TargetKey == targetKey && e.Status == "Pending").ToList() ?? new List<PendingChangeEntity>()
+            ? result.Value?.Where(e => e.TargetKey == targetKey && e.Status == "Pending").ToList() ?? new List<PendingChangeEntity>()
             : new List<PendingChangeEntity>();
     }
 
@@ -293,7 +293,7 @@ public sealed class PendingChangesStore
 
         var result = await _repository.GetAllAsync();
         return result.IsSuccess
-            ? result.Data?.Where(e => e.TargetCategory == category && e.Status == "Pending").ToList() ?? new List<PendingChangeEntity>()
+            ? result.Value?.Where(e => e.TargetCategory == category && e.Status == "Pending").ToList() ?? new List<PendingChangeEntity>()
             : new List<PendingChangeEntity>();
     }
 
@@ -409,11 +409,11 @@ public sealed class PendingChangesStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null) return;
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<PendingChangeEntity>();
+            _repository = sqlite.GetRepository<PendingChangeEntity>();
         }
         catch
         {
@@ -444,7 +444,7 @@ public sealed class ConfigHistoryStore
         if (_repository == null) return null;
 
         var result = await _repository.GetByIdAsync(id);
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     /// <summary>
@@ -455,7 +455,7 @@ public sealed class ConfigHistoryStore
         if (_repository == null) return new List<ConfigHistoryEntity>();
 
         var result = await _repository.GetAllAsync(limit * 2); // Get more to sort
-        var entries = result.IsSuccess ? result.Data?.ToList() ?? new List<ConfigHistoryEntity>() : new List<ConfigHistoryEntity>();
+        var entries = result.IsSuccess ? result.Value?.ToList() ?? new List<ConfigHistoryEntity>() : new List<ConfigHistoryEntity>();
 
         // Sort by timestamp descending (most recent first) and take limit
         return entries.OrderByDescending(e => e.ChangedAt).Take(limit).ToList();
@@ -470,7 +470,7 @@ public sealed class ConfigHistoryStore
 
         var result = await _repository.GetAllAsync();
         var entries = result.IsSuccess
-            ? result.Data?.Where(e => e.ConfigType == configType && e.ConfigKey == configKey).ToList() ?? new List<ConfigHistoryEntity>()
+            ? result.Value?.Where(e => e.ConfigType == configType && e.ConfigKey == configKey).ToList() ?? new List<ConfigHistoryEntity>()
             : new List<ConfigHistoryEntity>();
         return entries.OrderByDescending(e => e.ChangedAt).Take(limit).ToList();
     }
@@ -514,9 +514,9 @@ public sealed class ConfigHistoryStore
         if (_repository == null) return 0;
 
         var all = await _repository.GetAllAsync(keepCount * 2);
-        if (!all.IsSuccess || all.Data == null) return 0;
+        if (!all.IsSuccess || all.Value == null) return 0;
 
-        var entries = all.Data.OrderByDescending(e => e.ChangedAt).ToList();
+        var entries = all.Value.OrderByDescending(e => e.ChangedAt).ToList();
         if (entries.Count <= keepCount) return 0;
 
         var toDelete = entries.Skip(keepCount).ToList();
@@ -533,11 +533,11 @@ public sealed class ConfigHistoryStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null) return;
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<ConfigHistoryEntity>();
+            _repository = sqlite.GetRepository<ConfigHistoryEntity>();
         }
         catch
         {

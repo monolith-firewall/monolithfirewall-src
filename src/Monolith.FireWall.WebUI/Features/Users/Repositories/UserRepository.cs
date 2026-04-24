@@ -13,20 +13,20 @@ public class UserRepository
 
     public UserRepository(CL.SQLite.SQLiteLibrary sqlite)
     {
-        _repository = sqlite.CreateRepository<UserEntity>();
-        _queryBuilder = sqlite.CreateQueryBuilder<UserEntity>();
+        _repository = sqlite.GetRepository<UserEntity>();
+        _queryBuilder = sqlite.GetQueryBuilder<UserEntity>();
     }
 
     public async Task<UserEntity?> GetByIdAsync(int id)
     {
         var result = await _repository.GetByIdAsync(id);
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<List<UserEntity>> GetAllAsync()
     {
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess ? result.Data : new List<UserEntity>();
+        return result.IsSuccess ? result.Value : new List<UserEntity>();
     }
 
     public async Task<UserEntity?> GetByUsernameAsync(string username)
@@ -35,13 +35,13 @@ public class UserRepository
             .Where(u => u.Username == username)
             .FirstOrDefaultAsync();
 
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<int> CreateAsync(UserEntity user)
     {
         var result = await _repository.InsertAsync(user);
-        return result.IsSuccess ? (int)result.Data : 0;
+        return result.IsSuccess ? (int)result.Value : 0;
     }
 
     public async Task<bool> UpdateAsync(UserEntity user)

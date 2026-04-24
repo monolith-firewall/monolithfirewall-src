@@ -22,8 +22,8 @@ public sealed class RoutingStore
         }
 
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<StaticRouteEntity>();
     }
 
@@ -34,9 +34,9 @@ public sealed class RoutingStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<StaticRouteEntity>();
+        var query = _sqlite.GetQueryBuilder<StaticRouteEntity>();
         var result = await query.Where(r => r.Id == id).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<bool> InsertAsync(StaticRouteEntity route)
@@ -52,7 +52,7 @@ public sealed class RoutingStore
             return false;
         }
 
-        route.Id = Convert.ToInt32(result.Data);
+        route.Id = Convert.ToInt32(result.Value);
 
         return true;
     }
@@ -72,14 +72,14 @@ public sealed class RoutingStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<StaticRouteEntity>();
+            _repository = sqlite.GetRepository<StaticRouteEntity>();
         }
         catch
         {

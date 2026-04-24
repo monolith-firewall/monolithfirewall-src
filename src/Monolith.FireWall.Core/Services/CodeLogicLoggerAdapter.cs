@@ -7,9 +7,9 @@ namespace Monolith.FireWall.Core.Services;
 /// </summary>
 public class CodeLogicLoggerAdapter : ILogger
 {
-    private readonly CodeLogic.Logging.ILogger _logger;
+    private readonly CodeLogic.Core.Logging.ILogger _logger;
 
-    public CodeLogicLoggerAdapter(CodeLogic.Logging.ILogger logger)
+    public CodeLogicLoggerAdapter(CodeLogic.Core.Logging.ILogger logger)
     {
         _logger = logger;
     }

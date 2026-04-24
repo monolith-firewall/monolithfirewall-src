@@ -9,15 +9,15 @@ public static class AliasesDatabaseInit
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null) return;
 
-            var repository = sqlite.CreateRepository<FirewallAliasEntity>();
+            var repository = sqlite.GetRepository<FirewallAliasEntity>();
             
             // Table will be created automatically by Repository on first use
             // But we can ensure it exists by trying to query it
-            var queryBuilder = sqlite.CreateQueryBuilder<FirewallAliasEntity>();
-            _ = queryBuilder.Select(e => e).Take(1).ExecuteAsync().Result;
+            var queryBuilder = sqlite.GetQueryBuilder<FirewallAliasEntity>();
+            _ = queryBuilder.Select(e => e).Take(1).ToListAsync().Result;
             
             Console.WriteLine("✓ Firewall Aliases table initialized");
         }

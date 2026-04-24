@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../tmp/CodeLogic3/src/CodeLogic.csproj" />
-    <ProjectReference Include="../../tmp/CodeLogic3.Libs/CL.SQLite/CL.SQLite.csproj" />
+    <PackageReference Include="CodeLogic" Version="4.0.0" />
+    <PackageReference Include="CodeLogic.SQLite" Version="4.0.1" />
   </ItemGroup>
 
 </Project>

@@ -25,10 +25,10 @@ public sealed class WebUiSettingsManager
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite != null)
             {
-                _repository = sqlite.CreateRepository<WebUiSettingsEntity>();
+                _repository = sqlite.GetRepository<WebUiSettingsEntity>();
                 _logger.LogInformation("WebUI settings repository initialized");
             }
             else
@@ -62,9 +62,9 @@ public sealed class WebUiSettingsManager
         try
         {
             var result = await _repository.GetAllAsync();
-            if (result.IsSuccess && result.Data != null && result.Data.Any())
+            if (result.IsSuccess && result.Value != null && result.Value.Any())
             {
-                var entity = result.Data.First();
+                var entity = result.Value.First();
                 var addresses = new List<string>();
                 
                 if (!string.IsNullOrEmpty(entity.BindingAddresses))
@@ -152,9 +152,9 @@ public sealed class WebUiSettingsManager
             var getAllResult = await _repository.GetAllAsync();
             WebUiSettingsEntity entity;
 
-            if (getAllResult.IsSuccess && getAllResult.Data != null && getAllResult.Data.Any())
+            if (getAllResult.IsSuccess && getAllResult.Value != null && getAllResult.Value.Any())
             {
-                entity = getAllResult.Data.First();
+                entity = getAllResult.Value.First();
             }
             else
             {

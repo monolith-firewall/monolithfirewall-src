@@ -29,8 +29,8 @@ public sealed class FirewallVirtualIpManager
         }
 
         var result = await _repository.GetAllAsync();
-        var entities = result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        var entities = result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<VirtualIpEntity>();
 
         return entities
@@ -75,12 +75,12 @@ public sealed class FirewallVirtualIpManager
         };
 
         var insert = await _repository.InsertAsync(entity);
-        if (!insert.IsSuccess || insert.Data <= 0)
+        if (!insert.IsSuccess || insert.Value <= 0)
         {
             return (false, "Failed to create virtual IP", null);
         }
 
-        entity.Id = (int)insert.Data;
+        entity.Id = (int)insert.Value;
 
         await _loggingManager.LogSecurityAsync(
             "Firewall",
@@ -273,21 +273,21 @@ public sealed class FirewallVirtualIpManager
         }
 
         var result = await _repository.GetByIdAsync(id);
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     private void Initialize()
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<VirtualIpEntity>();
+            _repository = sqlite.GetRepository<VirtualIpEntity>();
         }
         catch
         {

@@ -30,16 +30,16 @@ public sealed class UserManager
     {
         try
         {
-            var sqlite = Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null) return;
 
             _sqlite = sqlite;
-            _userRepository = sqlite.CreateRepository<UserEntity>();
-            _userQuery = sqlite.CreateQueryBuilder<UserEntity>();
-            _groupRepository = sqlite.CreateRepository<UserGroupEntity>();
-            _groupQuery = sqlite.CreateQueryBuilder<UserGroupEntity>();
-            _memberRepository = sqlite.CreateRepository<UserGroupMemberEntity>();
-            _memberQuery = sqlite.CreateQueryBuilder<UserGroupMemberEntity>();
+            _userRepository = sqlite.GetRepository<UserEntity>();
+            _userQuery = sqlite.GetQueryBuilder<UserEntity>();
+            _groupRepository = sqlite.GetRepository<UserGroupEntity>();
+            _groupQuery = sqlite.GetQueryBuilder<UserGroupEntity>();
+            _memberRepository = sqlite.GetRepository<UserGroupMemberEntity>();
+            _memberQuery = sqlite.GetQueryBuilder<UserGroupMemberEntity>();
         }
         catch
         {
@@ -72,7 +72,7 @@ public sealed class UserManager
                     UpdatedAt = DateTime.UtcNow
                 };
                 var groupInsert = await _groupRepository.InsertAsync(groupEntity);
-                adminGroupId = groupInsert.IsSuccess ? (int)groupInsert.Data : 0;
+                adminGroupId = groupInsert.IsSuccess ? (int)groupInsert.Value : 0;
 
                 if (adminGroupId > 0)
                 {
@@ -102,9 +102,9 @@ public sealed class UserManager
                 };
 
                 var userInsert = await _userRepository.InsertAsync(adminUser);
-                if (userInsert.IsSuccess && userInsert.Data > 0)
+                if (userInsert.IsSuccess && userInsert.Value > 0)
                 {
-                    adminUser.Id = (int)userInsert.Data;
+                    adminUser.Id = (int)userInsert.Value;
                     Console.WriteLine("  ✓ Created default admin user (password: monolith)");
 
                     // Add admin to Administrators group
@@ -130,10 +130,10 @@ public sealed class UserManager
         if (_userRepository == null) return new List<UserView>();
 
         var result = await _userRepository.GetAllAsync();
-        if (!result.IsSuccess || result.Data == null) return new List<UserView>();
+        if (!result.IsSuccess || result.Value == null) return new List<UserView>();
 
         var views = new List<UserView>();
-        foreach (var entity in result.Data)
+        foreach (var entity in result.Value)
         {
             views.Add(await BuildUserViewAsync(entity));
         }
@@ -183,10 +183,10 @@ public sealed class UserManager
         entity.SetRoles(request.Roles ?? Array.Empty<string>());
 
         var insert = await _userRepository.InsertAsync(entity);
-        if (!insert.IsSuccess || insert.Data <= 0)
+        if (!insert.IsSuccess || insert.Value <= 0)
             return (false, "Failed to create user", null);
 
-        entity.Id = (int)insert.Data;
+        entity.Id = (int)insert.Value;
 
         await _loggingManager.LogMonolithAsync(
             "User", "Info", "UserManagement",
@@ -252,9 +252,9 @@ public sealed class UserManager
         if (entity.GetRoles().Contains("admin"))
         {
             var allUsers = await _userRepository.GetAllAsync();
-            if (allUsers.IsSuccess && allUsers.Data != null)
+            if (allUsers.IsSuccess && allUsers.Value != null)
             {
-                var adminCount = allUsers.Data.Count(u => u.GetRoles().Contains("admin"));
+                var adminCount = allUsers.Value.Count(u => u.GetRoles().Contains("admin"));
                 if (adminCount <= 1) return false;
             }
         }
@@ -371,9 +371,9 @@ public sealed class UserManager
         if (_groupRepository == null) return new List<UserGroupView>();
 
         var result = await _groupRepository.GetAllAsync();
-        if (!result.IsSuccess || result.Data == null) return new List<UserGroupView>();
+        if (!result.IsSuccess || result.Value == null) return new List<UserGroupView>();
 
-        return result.Data.Select(BuildGroupView).ToList();
+        return result.Value.Select(BuildGroupView).ToList();
     }
 
     public async Task<UserGroupView?> GetGroupAsync(int id)
@@ -406,10 +406,10 @@ public sealed class UserManager
         entity.SetPermissions(request.Permissions ?? Array.Empty<string>());
 
         var insert = await _groupRepository.InsertAsync(entity);
-        if (!insert.IsSuccess || insert.Data <= 0)
+        if (!insert.IsSuccess || insert.Value <= 0)
             return (false, "Failed to create group", null);
 
-        entity.Id = (int)insert.Data;
+        entity.Id = (int)insert.Value;
 
         await _loggingManager.LogMonolithAsync(
             "User", "Info", "UserManagement",
@@ -492,9 +492,9 @@ public sealed class UserManager
         if (_memberRepository == null) return new List<UserView>();
 
         var allMembers = await _memberRepository.GetAllAsync();
-        if (!allMembers.IsSuccess || allMembers.Data == null) return new List<UserView>();
+        if (!allMembers.IsSuccess || allMembers.Value == null) return new List<UserView>();
 
-        var userIds = allMembers.Data
+        var userIds = allMembers.Value
             .Where(m => m.GroupId == groupId)
             .Select(m => m.UserId)
             .ToList();
@@ -517,7 +517,7 @@ public sealed class UserManager
             .Where(m => m.UserId == userId && m.GroupId == groupId)
             .FirstOrDefaultAsync();
 
-        if (existing.IsSuccess && existing.Data != null)
+        if (existing.IsSuccess && existing.Value != null)
             return true; // Already a member
 
         var member = new UserGroupMemberEntity
@@ -539,9 +539,9 @@ public sealed class UserManager
             .Where(m => m.UserId == userId && m.GroupId == groupId)
             .FirstOrDefaultAsync();
 
-        if (result.IsSuccess && result.Data != null)
+        if (result.IsSuccess && result.Value != null)
         {
-            var deleteResult = await _memberRepository.DeleteAsync(result.Data.Id);
+            var deleteResult = await _memberRepository.DeleteAsync(result.Value.Id);
             return deleteResult.IsSuccess;
         }
 
@@ -587,9 +587,9 @@ public sealed class UserManager
         if (_memberRepository == null) return new List<int>();
 
         var allMembers = await _memberRepository.GetAllAsync();
-        if (!allMembers.IsSuccess || allMembers.Data == null) return new List<int>();
+        if (!allMembers.IsSuccess || allMembers.Value == null) return new List<int>();
 
-        return allMembers.Data
+        return allMembers.Value
             .Where(m => m.UserId == userId)
             .Select(m => m.GroupId)
             .ToList();
@@ -603,7 +603,7 @@ public sealed class UserManager
     {
         if (_userRepository == null) return null;
         var result = await _userRepository.GetByIdAsync(id);
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     private async Task<UserEntity?> GetUserByUsernameInternalAsync(string username)
@@ -612,14 +612,14 @@ public sealed class UserManager
         var result = await _userQuery
             .Where(u => u.Username == username)
             .FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     private async Task<UserGroupEntity?> GetGroupEntityAsync(int id)
     {
         if (_groupRepository == null) return null;
         var result = await _groupRepository.GetByIdAsync(id);
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     private async Task<UserGroupEntity?> GetGroupByNameAsync(string name)
@@ -628,16 +628,16 @@ public sealed class UserManager
         var result = await _groupQuery
             .Where(g => g.Name == name)
             .FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     private async Task RemoveUserFromAllGroupsAsync(int userId)
     {
         if (_memberRepository == null) return;
         var allMembers = await _memberRepository.GetAllAsync();
-        if (!allMembers.IsSuccess || allMembers.Data == null) return;
+        if (!allMembers.IsSuccess || allMembers.Value == null) return;
 
-        foreach (var member in allMembers.Data.Where(m => m.UserId == userId))
+        foreach (var member in allMembers.Value.Where(m => m.UserId == userId))
         {
             await _memberRepository.DeleteAsync(member.Id);
         }
@@ -647,9 +647,9 @@ public sealed class UserManager
     {
         if (_memberRepository == null) return;
         var allMembers = await _memberRepository.GetAllAsync();
-        if (!allMembers.IsSuccess || allMembers.Data == null) return;
+        if (!allMembers.IsSuccess || allMembers.Value == null) return;
 
-        foreach (var member in allMembers.Data.Where(m => m.GroupId == groupId))
+        foreach (var member in allMembers.Value.Where(m => m.GroupId == groupId))
         {
             await _memberRepository.DeleteAsync(member.Id);
         }

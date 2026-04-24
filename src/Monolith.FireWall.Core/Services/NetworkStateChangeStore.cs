@@ -22,8 +22,8 @@ public sealed class NetworkStateChangeStore
         }
 
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.OrderByDescending(c => c.OccurredAt).Take(limit).ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.OrderByDescending(c => c.OccurredAt).Take(limit).ToList()
             : new List<NetworkStateChangeEntity>();
     }
 
@@ -34,9 +34,9 @@ public sealed class NetworkStateChangeStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<NetworkStateChangeEntity>();
+        var query = _sqlite.GetQueryBuilder<NetworkStateChangeEntity>();
         var result = await query.Where(c => c.Id == id).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<List<NetworkStateChangeEntity>> GetByTypeAsync(NetworkChangeType changeType, int limit = 50)
@@ -46,10 +46,10 @@ public sealed class NetworkStateChangeStore
             return new List<NetworkStateChangeEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<NetworkStateChangeEntity>();
-        var result = await query.Where(c => c.ChangeType == changeType).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.OrderByDescending(c => c.OccurredAt).Take(limit).ToList()
+        var query = _sqlite.GetQueryBuilder<NetworkStateChangeEntity>();
+        var result = await query.Where(c => c.ChangeType == changeType).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.OrderByDescending(c => c.OccurredAt).Take(limit).ToList()
             : new List<NetworkStateChangeEntity>();
     }
 
@@ -60,10 +60,10 @@ public sealed class NetworkStateChangeStore
             return new List<NetworkStateChangeEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<NetworkStateChangeEntity>();
-        var result = await query.Where(c => c.InterfaceName == interfaceName).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.OrderByDescending(c => c.OccurredAt).Take(limit).ToList()
+        var query = _sqlite.GetQueryBuilder<NetworkStateChangeEntity>();
+        var result = await query.Where(c => c.InterfaceName == interfaceName).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.OrderByDescending(c => c.OccurredAt).Take(limit).ToList()
             : new List<NetworkStateChangeEntity>();
     }
 
@@ -74,10 +74,10 @@ public sealed class NetworkStateChangeStore
             return new List<NetworkStateChangeEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<NetworkStateChangeEntity>();
-        var result = await query.Where(c => c.GatewayId == gatewayId).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.OrderByDescending(c => c.OccurredAt).Take(limit).ToList()
+        var query = _sqlite.GetQueryBuilder<NetworkStateChangeEntity>();
+        var result = await query.Where(c => c.GatewayId == gatewayId).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.OrderByDescending(c => c.OccurredAt).Take(limit).ToList()
             : new List<NetworkStateChangeEntity>();
     }
 
@@ -88,10 +88,10 @@ public sealed class NetworkStateChangeStore
             return new List<NetworkStateChangeEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<NetworkStateChangeEntity>();
-        var result = await query.Where(c => c.ResolvedAt == null).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.OrderByDescending(c => c.OccurredAt).ToList()
+        var query = _sqlite.GetQueryBuilder<NetworkStateChangeEntity>();
+        var result = await query.Where(c => c.ResolvedAt == null).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.OrderByDescending(c => c.OccurredAt).ToList()
             : new List<NetworkStateChangeEntity>();
     }
 
@@ -103,10 +103,10 @@ public sealed class NetworkStateChangeStore
         }
 
         var cutoff = DateTime.UtcNow - window;
-        var query = _sqlite.CreateQueryBuilder<NetworkStateChangeEntity>();
-        var result = await query.Where(c => c.OccurredAt >= cutoff).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.OrderByDescending(c => c.OccurredAt).ToList()
+        var query = _sqlite.GetQueryBuilder<NetworkStateChangeEntity>();
+        var result = await query.Where(c => c.OccurredAt >= cutoff).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.OrderByDescending(c => c.OccurredAt).ToList()
             : new List<NetworkStateChangeEntity>();
     }
 
@@ -124,7 +124,7 @@ public sealed class NetworkStateChangeStore
             return false;
         }
 
-        change.Id = Convert.ToInt64(result.Data);
+        change.Id = Convert.ToInt64(result.Value);
         return true;
     }
 
@@ -225,14 +225,14 @@ public sealed class NetworkStateChangeStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<NetworkStateChangeEntity>();
+            _repository = sqlite.GetRepository<NetworkStateChangeEntity>();
         }
         catch
         {

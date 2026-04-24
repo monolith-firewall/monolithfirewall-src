@@ -25,12 +25,12 @@ public sealed class PackageStateStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<PackageInstallationEntity>();
+        var query = _sqlite.GetQueryBuilder<PackageInstallationEntity>();
         var result = await query
             .Where(p => p.PackageId == packageId)
             .FirstOrDefaultAsync();
 
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<List<PackageInstallationEntity>> GetPackagesAsync()
@@ -41,8 +41,8 @@ public sealed class PackageStateStore
         }
 
         var result = await _packageRepository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<PackageInstallationEntity>();
     }
 
@@ -54,17 +54,17 @@ public sealed class PackageStateStore
             return states;
         }
 
-        var query = _sqlite.CreateQueryBuilder<ModuleStateEntity>();
+        var query = _sqlite.GetQueryBuilder<ModuleStateEntity>();
         var result = await query
             .Where(m => m.PackageId == packageId)
-            .ExecuteAsync();
+            .ToListAsync();
 
-        if (!result.IsSuccess || result.Data == null)
+        if (!result.IsSuccess || result.Value == null)
         {
             return states;
         }
 
-        foreach (var state in result.Data)
+        foreach (var state in result.Value)
         {
             if (!string.IsNullOrWhiteSpace(state.ModuleId))
             {
@@ -82,12 +82,12 @@ public sealed class PackageStateStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<ModuleStateEntity>();
+        var query = _sqlite.GetQueryBuilder<ModuleStateEntity>();
         var result = await query
             .Where(m => m.PackageId == packageId && m.ModuleId == moduleId)
             .FirstOrDefaultAsync();
 
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<bool> SetPackageInstalledAsync(string packageId, string version, string source, bool log = true)
@@ -191,7 +191,9 @@ public sealed class PackageStateStore
             return;
         }
 
-        await _moduleRepository.DeleteWhereAsync(m => m.PackageId == packageId);
+        await _sqlite!.GetQueryBuilder<ModuleStateEntity>()
+            .Where(m => m.PackageId == packageId)
+            .DeleteAsync();
     }
 
     public async Task<bool> SetModuleEnabledAsync(string packageId, string moduleId, bool enabled)
@@ -256,15 +258,15 @@ public sealed class PackageStateStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _packageRepository = sqlite.CreateRepository<PackageInstallationEntity>();
-            _moduleRepository = sqlite.CreateRepository<ModuleStateEntity>();
+            _packageRepository = sqlite.GetRepository<PackageInstallationEntity>();
+            _moduleRepository = sqlite.GetRepository<ModuleStateEntity>();
         }
         catch
         {

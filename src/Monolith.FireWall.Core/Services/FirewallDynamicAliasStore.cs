@@ -22,8 +22,8 @@ public sealed class FirewallDynamicAliasStore
         }
 
         var result = await _repository.GetAllAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<FirewallDynamicAliasEntity>();
     }
 
@@ -34,9 +34,9 @@ public sealed class FirewallDynamicAliasStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<FirewallDynamicAliasEntity>();
+        var query = _sqlite.GetQueryBuilder<FirewallDynamicAliasEntity>();
         var result = await query.Where(a => a.Id == id).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<FirewallDynamicAliasEntity?> GetByNameAsync(string name)
@@ -46,9 +46,9 @@ public sealed class FirewallDynamicAliasStore
             return null;
         }
 
-        var query = _sqlite.CreateQueryBuilder<FirewallDynamicAliasEntity>();
+        var query = _sqlite.GetQueryBuilder<FirewallDynamicAliasEntity>();
         var result = await query.Where(a => a.Name == name).FirstOrDefaultAsync();
-        return result.IsSuccess ? result.Data : null;
+        return result.IsSuccess ? result.Value : null;
     }
 
     public async Task<List<FirewallDynamicAliasEntity>> GetByInterfaceAsync(string interfaceName)
@@ -58,10 +58,10 @@ public sealed class FirewallDynamicAliasStore
             return new List<FirewallDynamicAliasEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<FirewallDynamicAliasEntity>();
-        var result = await query.Where(a => a.InterfaceName == interfaceName).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        var query = _sqlite.GetQueryBuilder<FirewallDynamicAliasEntity>();
+        var result = await query.Where(a => a.InterfaceName == interfaceName).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<FirewallDynamicAliasEntity>();
     }
 
@@ -72,10 +72,10 @@ public sealed class FirewallDynamicAliasStore
             return new List<FirewallDynamicAliasEntity>();
         }
 
-        var query = _sqlite.CreateQueryBuilder<FirewallDynamicAliasEntity>();
-        var result = await query.Where(a => a.AliasType == aliasType).ExecuteAsync();
-        return result.IsSuccess && result.Data != null
-            ? result.Data.ToList()
+        var query = _sqlite.GetQueryBuilder<FirewallDynamicAliasEntity>();
+        var result = await query.Where(a => a.AliasType == aliasType).ToListAsync();
+        return result.IsSuccess && result.Value != null
+            ? result.Value.ToList()
             : new List<FirewallDynamicAliasEntity>();
     }
 
@@ -95,7 +95,7 @@ public sealed class FirewallDynamicAliasStore
             return false;
         }
 
-        alias.Id = Convert.ToInt32(result.Data);
+        alias.Id = Convert.ToInt32(result.Value);
         return true;
     }
 
@@ -210,14 +210,14 @@ public sealed class FirewallDynamicAliasStore
     {
         try
         {
-            var sqlite = CodeLogic.Libs.Get<CL.SQLite.SQLiteLibrary>();
+            var sqlite = CodeLogic.Libraries.Get<CL.SQLite.SQLiteLibrary>();
             if (sqlite == null)
             {
                 return;
             }
 
             _sqlite = sqlite;
-            _repository = sqlite.CreateRepository<FirewallDynamicAliasEntity>();
+            _repository = sqlite.GetRepository<FirewallDynamicAliasEntity>();
         }
         catch
         {
